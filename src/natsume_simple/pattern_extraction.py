@@ -13,6 +13,7 @@ from spacy.symbols import (  # type: ignore
     ADP,
     NOUN,
     NUM,
+    PART,
     PRON,
     PROPN,
     PUNCT,
@@ -96,7 +97,6 @@ def simple_lemma(token: Token) -> str:
         str: The simplified lemma.
 
     Examples:
-        >>> from spacy.tokens import Token
         >>> nlp = spacy.load("ja_ginza")
         >>> simple_lemma(nlp("する")[0])
         'する'
@@ -123,12 +123,24 @@ def normalize_verb_span(tokens: Doc | Span, suru_token: Token) -> Optional[str]:
 
     Returns:
         Optional[str]: The normalized verb string, or None if normalization fails.
+
+    Examples:
+        >>> nlp = spacy.load("ja_ginza")
+        >>> doc = nlp("飛び立つでしょう")
+        >>> normalize_verb_span(doc, nlp("する")[0])
+        '飛び立つ'
+        >>> normalize_verb_span(nlp("考えられませんでした"), nlp("する")[0])
+        '考えられる'
+        >>> normalize_verb_span(nlp("扱うかです"), nlp("する")[0])
+        '扱う'
     """
     clean_tokens = [token for token in tokens if token.pos not in {PUNCT, SYM}]
     clean_tokens = list(
         takewhile(
-            lambda token: token.pos not in {ADP, SCONJ}
-            and token.norm_ not in {"から", "ため", "たり", "こと", "よう"},
+            lambda token: (
+                token.pos not in {ADP, SCONJ, PART}
+                and token.norm_ not in {"から", "ため", "たり", "こと", "よう", "です"}
+            ),
             clean_tokens,
         )
     )
