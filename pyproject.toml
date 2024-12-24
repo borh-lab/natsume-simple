@@ -15,7 +15,7 @@ dependencies = [
     "numpy>=1.24.3,<2.0.0",
     "spacy>=3.7.5",
     # "spacy-transformers>=1.2.5",
-    "torch>=2.5.0"
+    "torch>=2.5.0",
 ]
 
 [project.optional-dependencies]
@@ -31,6 +31,8 @@ cuda = ["cupy-cuda12x>=13.3.0"]
 dev-dependencies = [
     "ipykernel>=6.29.5",
     "ipywidgets>=8.1.5",
+    "jupyter>=1.1.1",
+    "notebook>=7.3.2",
     "pytest-testmon>=2.1.1",
     "pytest-watch>=4.2.0",
     "pytest>=8.3.3",
