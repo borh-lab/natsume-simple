@@ -1,7 +1,7 @@
 import argparse
 import re
 from collections.abc import Iterator
-from itertools import chain, takewhile, tee
+from itertools import chain, takewhile, dropwhile, tee
 from pathlib import Path
 from typing import Any, Iterable, List, Optional, Tuple
 
@@ -11,6 +11,9 @@ import spacy  # type: ignore
 import torch  # type: ignore
 from spacy.symbols import (  # type: ignore
     ADP,
+    ADJ,
+    AUX,
+    CCONJ,
     NOUN,
     NUM,
     PART,
@@ -135,39 +138,86 @@ def normalize_verb_span(tokens: Doc | Span, suru_token: Token) -> Optional[str]:
         '扱う'
         >>> normalize_verb_span(nlp("突入しちゃう"), suru_token)
         '突入する'
+        >>> normalize_verb_span(nlp("で囲んである"), suru_token)
+        '囲む'
+        >>> normalize_verb_span(nlp("たらしめている"), suru_token)
+        'たらしめる'
     """
-    clean_tokens = [token for token in tokens if token.pos not in {PUNCT, SYM}]
+    # Chain filtering steps together
     clean_tokens = list(
-        takewhile(
-            lambda token: (
-                token.pos not in {ADP, SCONJ, PART}
-                and token.norm_ not in {"から", "ため", "たり", "こと", "よう", "です"}
-            ),
-            clean_tokens,
+        chain(
+            takewhile(
+                lambda token: (
+                    token.pos not in {ADP, SCONJ, PART}
+                    and token.tag_ not in {"助詞-接続助詞"}
+                    or (
+                        token.pos == AUX and token.lemma_ == "れる"
+                    )  # Keep れる auxiliary
+                    or (
+                        token.pos == ADJ and token.dep_ == "amod"
+                    )  # Keep ADJ when it modifies
+                ),
+                dropwhile(
+                    lambda token: token.pos in {ADP, CCONJ, SCONJ, PART},
+                    (token for token in tokens if token.pos not in {PUNCT, SYM}),
+                ),
+            )
         )
     )
+
     if len(clean_tokens) == 1:
         return simple_lemma(clean_tokens[0])
 
+    if not clean_tokens:
+        logger.warning(
+            f"Failed to normalize verb span: {[t for t in tokens]}; clean_tokens: {clean_tokens}"
+        )
+        return None
+
     normalized_tokens: List[Token] = []
-    token_pairs: List[Tuple[Token, Token]] = list(pairwise(clean_tokens))
-    for i, (token, next_token) in enumerate(token_pairs):
+    for i, (token, next_token) in enumerate(pairwise(clean_tokens)):
         normalized_tokens.append(token)
         if next_token.lemma_ in ["ます", "た"]:
-            if re.match(r"^(五|上|下|サ|.変格|助動詞).+", ginza.inflection(token)):
-                break
-            else:
+            # Check UniDic POS tag for サ変可能 nouns
+            if "サ変可能" in token.tag_ or token.tag_.startswith("名詞-普通名詞-サ変"):
+                logger.debug(
+                    f"Adding suru token to: {normalized_tokens} in {tokens}/{clean_tokens}"
+                )
                 normalized_tokens.append(suru_token)
                 break
-        elif next_token.lemma_ == "だ":
+            elif token.tag_.startswith("動詞") or re.match(
+                r"^(五|上|下|サ|.変格|助動詞).+", ginza.inflection(token)
+            ):
+                break
+            else:
+                logger.warning(
+                    f"Unexpected token pattern: {token.text}/{token.tag_} in {tokens}/{clean_tokens}"
+                )
+        elif next_token.lemma_ in {
+            "から",
+            "ため",
+            "たり",
+            "こと",
+            "よう",
+            "です",
+            "べし",
+            "だ",
+        }:
+            # Stop here and don't include the stopword token
             break
-        elif i == len(token_pairs) - 1:
+        elif (
+            i == len(clean_tokens) - 2
+        ):  # Changed from -1 to -2 to handle final pair correctly
             normalized_tokens.append(next_token)
 
+    logger.debug(f"Normalized tokens: {[t.text for t in normalized_tokens]}")
     if len(normalized_tokens) == 1:
         return simple_lemma(normalized_tokens[0])
 
     if not normalized_tokens:
+        logger.warning(
+            f"Failed to normalize verb span: {[t for t in tokens]}; clean_tokens: {clean_tokens}"
+        )
         return None
 
     stem = normalized_tokens[0]
