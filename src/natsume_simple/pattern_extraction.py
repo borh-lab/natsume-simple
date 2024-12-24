@@ -126,13 +126,15 @@ def normalize_verb_span(tokens: Doc | Span, suru_token: Token) -> Optional[str]:
 
     Examples:
         >>> nlp = spacy.load("ja_ginza")
-        >>> doc = nlp("飛び立つでしょう")
-        >>> normalize_verb_span(doc, nlp("する")[0])
+        >>> doc, suru_token = nlp("飛び立つでしょう"), nlp("する")[0]
+        >>> normalize_verb_span(doc, suru_token)
         '飛び立つ'
-        >>> normalize_verb_span(nlp("考えられませんでした"), nlp("する")[0])
+        >>> normalize_verb_span(nlp("考えられませんでした"), suru_token)
         '考えられる'
-        >>> normalize_verb_span(nlp("扱うかです"), nlp("する")[0])
+        >>> normalize_verb_span(nlp("扱うかです"), suru_token)
         '扱う'
+        >>> normalize_verb_span(nlp("突入しちゃう"), suru_token)
+        '突入する'
     """
     clean_tokens = [token for token in tokens if token.pos not in {PUNCT, SYM}]
     clean_tokens = list(
