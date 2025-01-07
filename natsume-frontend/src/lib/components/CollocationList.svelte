@@ -1,5 +1,6 @@
 <script lang="ts">
 import type { CombinedResult, Result } from "$lib/query";
+import { getContext, onMount } from "svelte";
 import type { Writable } from "svelte/store";
 const {
 	collocates,
@@ -43,6 +44,20 @@ const {
 	getSolidColor: (corpus: string) => string;
 	corpusNorm: Record<string, number>;
 } = $props();
+
+const apiUrl = getContext<string>("apiUrl");
+
+let sentences: string[] = $state([]);
+
+onMount(async () => {
+	for (const collocate of collocates) {
+		const response = await fetch(
+			`${apiUrl}/sentences/${collocate.n}/${collocate.p}/${collocate.v}`,
+		);
+		const data = await response.json();
+		sentences = data;
+	}
+});
 </script>
 
 {#snippet frequencyBar(collocate: Result | CombinedResult)}
@@ -68,6 +83,7 @@ const {
 
 <ul class="list-none p-0 space-y-0 mt-2">
 	{#each collocates as collocate}
+		<!-- TODO: Add "Click to expand" to tooltip -->
 		<li
 			class="flex items-center justify-start p-0"
 			style="background-color: {$combinedSearch ? 'transparent' : getColor(collocate.corpus)}"
@@ -92,8 +108,18 @@ const {
 				useNormalization: $useNormalization
 			}}
 		>
-			{@render frequencyBar(collocate)}
-			{@render collocationContent(collocate)}
+			<details>
+				<summary class="list-none flex items-center justify-start p-0">
+					{@render frequencyBar(collocate)}
+					{@render collocationContent(collocate)}
+				</summary>
+				<ul class="list-none p-0 space-y-0 mt-2">
+					{#each sentences as sentence}
+						<li>{sentence}</li>
+						<!-- TODO: Highlight the collocate -->
+					{/each}
+				</ul>
+			</details>
 		</li>
 	{/each}
 </ul>

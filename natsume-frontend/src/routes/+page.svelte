@@ -5,7 +5,7 @@ import ThemeSwitch from "$lib/components/ThemeSwitch.svelte";
 import Options from "$lib/components/menus/Options.svelte";
 import Stats from "$lib/components/menus/Stats.svelte";
 
-import { afterUpdate, onMount, tick } from "svelte";
+import { afterUpdate, onMount, setContext, tick } from "svelte";
 import { type Writable, derived, writable } from "svelte/store";
 import "./../tailwind.css";
 import Loading from "$lib/components/Loading.svelte";
@@ -27,6 +27,8 @@ import HorizontallyScrollableContainer from "$lib/components/HorizontallyScrolla
 import type { CombinedResult, Result } from "$lib/query";
 
 const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:8000";
+setContext("apiUrl", apiUrl);
+
 const particles = ["が", "を", "に", "で", "から", "より", "と", "へ"];
 // TODO: Convert to runes
 const results = writable<Result[]>([]);
@@ -298,6 +300,7 @@ onMount(() => {
 	};
 });
 
+// TODO: Extract to a separate file
 function computeDerivedData(
 	results: Result[],
 	useNormalization: boolean,
@@ -306,31 +309,37 @@ function computeDerivedData(
 ) {
 	console.log("Computing derived data");
 	let derivedData: Record<string, CombinedResult[]>;
+
+	const appendedResults = results.map((result) => ({
+		...result,
+		n: searchTerm,
+	}));
+
 	if (combinedSearch) {
 		// Combine results across all particles first
-		const combinedResults = results.reduce<Record<string, CombinedResult>>(
-			(acc, curr) => {
-				if (selectedCorpora.includes(curr.corpus as string)) {
-					const key = `${curr.v}-${curr.p}`; // Use both verb and particle as key
-					if (!acc[key]) {
-						acc[key] = {
-							v: curr.v,
-							p: curr.p,
-							frequency: 0,
-							contributions: [],
-						};
-					}
-					acc[key].frequency +=
-						curr.frequency * (useNormalization ? corpusNorm[curr.corpus] : 1);
-					acc[key].contributions.push({
-						corpus: curr.corpus as string,
-						frequency: curr.frequency,
-					});
+		const combinedResults = appendedResults.reduce<
+			Record<string, CombinedResult>
+		>((acc, curr) => {
+			if (selectedCorpora.includes(curr.corpus as string)) {
+				const key = `${curr.v}-${curr.p}`; // Use both verb and particle as key
+				if (!acc[key]) {
+					acc[key] = {
+						n: searchTerm,
+						v: curr.v,
+						p: curr.p,
+						frequency: 0,
+						contributions: [],
+					};
 				}
-				return acc;
-			},
-			{},
-		);
+				acc[key].frequency +=
+					curr.frequency * (useNormalization ? corpusNorm[curr.corpus] : 1);
+				acc[key].contributions.push({
+					corpus: curr.corpus as string,
+					frequency: curr.frequency,
+				});
+			}
+			return acc;
+		}, {});
 
 		// Then separate by particle
 		derivedData = Object.fromEntries(
@@ -346,7 +355,7 @@ function computeDerivedData(
 		derivedData = Object.fromEntries(
 			particles.map((particle) => [
 				particle,
-				results
+				appendedResults
 					.filter(
 						(d: { p: string; corpus: string }) =>
 							d.p === particle && selectedCorpora.includes(d.corpus),

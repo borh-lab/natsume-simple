@@ -30,6 +30,11 @@ def load_database(model_name: str) -> pl.DataFrame:
     return db.group_by(db.columns).agg(pl.len().alias("frequency"))
 
 
+def load_sentences() -> list[str]:
+    with open("data/ted_corpus.txt", "r") as f:
+        return f.readlines()
+
+
 def calculate_corpus_norm(db: pl.DataFrame) -> Dict[str, float]:
     """Calculate normalization factors for different corpora.
 
@@ -62,6 +67,7 @@ def calculate_corpus_norm(db: pl.DataFrame) -> Dict[str, float]:
 model_name = "ja_ginza_bert_large"
 db = load_database(model_name)
 corpus_norm = calculate_corpus_norm(db)
+sentences = load_sentences()
 
 
 @app.get("/corpus/norm")
@@ -78,6 +84,13 @@ def read_npv_noun(noun: str) -> List[Dict[str, Any]]:
 @app.get("/npv/verb/{verb}")
 def read_npv_verb(verb: str) -> List[Dict[str, Any]]:
     matches = db.filter(pl.col("v") == verb).drop("v").to_dicts()
+    return matches
+
+
+@app.get("/sentences/{n}/{p}/{v}")
+def read_sentences(n: str, p: str, v: str) -> List[str]:
+    matches = [s for s in sentences if n + p in s]
+    print(f"matches: {matches}")
     return matches
 
 

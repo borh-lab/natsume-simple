@@ -1,7 +1,7 @@
 import argparse
 import re
 from collections.abc import Iterator
-from itertools import chain, takewhile, dropwhile, tee
+from itertools import chain, dropwhile, takewhile, tee
 from pathlib import Path
 from typing import Any, Iterable, List, Optional, Tuple
 
@@ -10,8 +10,8 @@ import polars as pl  # type: ignore
 import spacy  # type: ignore
 import torch  # type: ignore
 from spacy.symbols import (  # type: ignore
-    ADP,
     ADJ,
+    ADP,
     AUX,
     CCONJ,
     NOUN,
