@@ -102,10 +102,7 @@
                 ''
                   ${config.pre-commit.installationScript}
                   # Resetting tty settings prevents issues after exiting the shell
-                  ${pkgs.coreutils}/bin/stty sane
-                  # export TERM="xterm-256color"
-                  # export LANG="en_US.UTF-8"
-                  # export LC_ALL="en_US.UTF-8"
+                  # ${pkgs.coreutils}/bin/stty sane
                   # Set up shell and prompt
                   export SHELL=${pkgs.bashInteractive}/bin/bash
                   export PS1='(uv) \[\e[34m\]\w\[\e[0m\] $(if [[ $? == 0 ]]; then echo -e "\[\e[32m\]"; else echo -e "\[\e[31m\]"; fi)#\[\e[0m\] '
@@ -116,6 +113,17 @@
                   export PATH
 
                   eval "$(direnv hook bash)"
+
+                  if command -v nvidia-smi &> /dev/null && nvidia-smi &> /dev/null; then
+                      ACCELERATOR="cuda"
+                  elif [ ! -z "$${ROCM_PATH}" ] || [ ! -z "$${ROCM_HOME}" ]; then
+                      ACCELERATOR="rocm"
+                  else
+                      ACCELERATOR="cpu"
+                  fi
+
+                  export ACCELERATOR
+                  echo "Using accelerator: $ACCELERATOR"
 
                   # Set up Python and dependencies
                   ${config.packages.initial-setup}/bin/initial-setup
@@ -139,7 +147,7 @@
               export PYTHON_VERSION=3.12.7
               uv python install $PYTHON_VERSION
               uv python pin $PYTHON_VERSION
-              uv sync --dev --extra backend
+              uv sync --dev --extra backend --extra "$ACCELERATOR"
             '';
           };
           packages.run-tests = pkgs.writeShellApplication {
