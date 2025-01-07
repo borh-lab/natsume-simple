@@ -28,6 +28,7 @@ import type { CombinedResult, Result } from "$lib/query";
 
 const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:8000";
 const particles = ["が", "を", "に", "で", "から", "より", "と", "へ"];
+// TODO: Convert to runes
 const results = writable<Result[]>([]);
 
 let searchType: "verb" | "noun" = "noun";
@@ -48,6 +49,7 @@ let isLoading = false;
 let showMobileMenu = false;
 let mobileDropdownOption: "select" | "stats" | "options" | null = null;
 
+// TODO: Convert to runes
 const d: Writable<Record<string, Result[]>> = writable({});
 
 const filteredResultCount = derived(
