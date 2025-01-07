@@ -107,13 +107,14 @@ onMount(() => {
 
           >
 		  <button
+		  	class="w-full  text-left"
 		              onclick={() => {
               searchTerm = suggestion.word;
               showSuggestions.set(false);
               performSearch();
             }}
 		  >
-			      {suggestion.word}
+			      {suggestion.word}({suggestion.pos})
 		  </button>
 
           </li>
