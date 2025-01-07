@@ -90,6 +90,11 @@ onMount(() => {
 	id="search-input"
 	name="search-input"
 		bind:value={searchTerm}
+		onclick={() => {
+			if ($suggestions.length > 0) {
+			  showSuggestions.set(true);
+			}
+		  }}
 		onkeypress={(e) => {
 			if (e.key === 'Enter') {
 				performSearch();
