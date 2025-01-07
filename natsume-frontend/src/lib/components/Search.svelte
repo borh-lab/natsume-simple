@@ -85,6 +85,7 @@ onMount(() => {
 
 	<div class="relative inline-block">
 	<input
+	type="search"
 	class="text-lg p-1 border rounded mr-2 h-8 w-40 sm:w-auto dark:bg-gray-700 dark:text-white dark:border-gray-600"
 	id="search-input"
 	name="search-input"
