@@ -18,15 +18,6 @@ dependencies = [
     "torch>=2.5.0",
 ]
 
-[project.optional-dependencies]
-# rocm = ["torch==2.5.0+rocm6.2", "pytorch_triton_rocm==3.1.0", "cupy-rocm-5-0"]
-# apple = ["torch==2.5.0"]
-backend = [
-    "fastapi[standard]>=0.115.0",
-    "python-fasthtml>=0.8.0",
-]
-cuda = ["cupy-cuda12x>=13.3.0"]
-
 [tool.uv]
 dev-dependencies = [
     "ipykernel>=6.29.5",
@@ -38,26 +29,48 @@ dev-dependencies = [
     "pytest>=8.3.3",
     "ruff>=0.7.4",
 ]
+conflicts = [
+    [
+        { extra = "cpu" },
+        { extra = "cuda" },
+        { extra = "rocm" },
+    ],
+]
 
-# TODO Waiting for 0.5.4 to hit nixpkgs
-# https://docs.astral.sh/uv/configuration/indexes/
+[project.optional-dependencies]
+cpu = [
+    "torch>=2.5.1",
+]
+cuda = [
+    "torch>=2.5.1",
+    "cupy-cuda12x>=13.3.0",
+]
+rocm = [
+    "torch==2.5.1+rocm6.2",
+    "pytorch_triton_rocm==3.1.0",
+    "cupy-rocm-5-0",
+]
+backend = [
+    "fastapi[standard]>=0.115.0",
+    "python-fasthtml>=0.8.0",
+]
+
 [tool.uv.sources]
-# torch = [
-#     { index = "pytorch-cpu", marker = "sys_platform == 'Linux'" },
-#     { index = "pytorch-rocm", marker = "sys_platform != 'darwin' and os_name == 'unix'" },
-#     { index = "pytorch-cuda", marker = "sys_platform != 'darwin'" },
-# ]
-# torch = { index = "pytorch-cuda" }
-pytorch-triton-rocm = { index = "pytorch-rocm" }
-
-[[tool.uv.index]]
-name = "pytorch-rocm"
-url = "https://download.pytorch.org/whl/rocm6.2"
-explicit = true
+torch = [
+    { index = "pytorch-cpu", extra = "cpu" },
+    { index = "pytorch-cuda", extra = "cuda" },
+    { index = "pytorch-rocm", extra = "rocm" },
+]
+pytorch-triton-rocm = { index = "pytorch-rocm", extra = "rocm" }
 
 [[tool.uv.index]]
 name = "pytorch-cpu"
 url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-rocm"
+url = "https://download.pytorch.org/whl/rocm6.2"
 explicit = true
 
 [[tool.uv.index]]
