@@ -69,7 +69,7 @@ const {
 <ul class="list-none p-0 space-y-0 mt-2">
 	{#each collocates as collocate}
 		<li
-			class="flex items-center mb-0.5 justify-start p-0"
+			class="flex items-center justify-start p-0"
 			style="background-color: {$combinedSearch ? 'transparent' : getColor(collocate.corpus)}"
 			use:tooltipAction={{
 				getTooltipData: () => {
