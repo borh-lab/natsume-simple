@@ -15,7 +15,7 @@ dependencies = [
     "numpy>=1.24.3,<2.0.0",
     "spacy>=3.7.5",
     # "spacy-transformers>=1.2.5",
-    "torch>=2.5.0",
+    "torch>=2.5.1",
 ]
 
 [tool.uv]
@@ -45,11 +45,11 @@ cuda = [
     "torch>=2.5.1",
     "cupy-cuda12x>=13.3.0",
 ]
-rocm = [
-    "torch==2.5.1+rocm6.2",
-    "pytorch_triton_rocm==3.1.0",
-    "cupy-rocm-5-0",
-]
+# rocm = [
+#     "torch==2.5.1+rocm6.2",
+#     "pytorch_triton_rocm==3.1.0",
+#     "cupy-rocm-5-0",
+# ]
 backend = [
     "fastapi[standard]>=0.115.0",
     "python-fasthtml>=0.8.0",
@@ -59,9 +59,9 @@ backend = [
 torch = [
     { index = "pytorch-cpu", extra = "cpu" },
     { index = "pytorch-cuda", extra = "cuda" },
-    { index = "pytorch-rocm", extra = "rocm" },
+    # { index = "pytorch-rocm", extra = "rocm", marker = "platform_system == 'Linux'" },
 ]
-pytorch-triton-rocm = { index = "pytorch-rocm", extra = "rocm" }
+# pytorch-triton-rocm = { index = "pytorch-rocm", extra = "rocm", marker = "platform_system == 'Linux'" }
 
 [[tool.uv.index]]
 name = "pytorch-cpu"

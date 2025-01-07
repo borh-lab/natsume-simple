@@ -481,18 +481,6 @@ wheels = [
 ]
 
 [[package]]
-name = "cupy-rocm-5-0"
-version = "13.3.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "fastrlock" },
-    { name = "numpy" },
-]
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/d3/eb/23d44c8b42ac40c6ab61c10a36f72a2954812d4b58dd991868cc6cc00187/cupy_rocm_5_0-13.3.0-cp312-cp312-manylinux2014_x86_64.whl", hash = "sha256:0a120a9fdb4560c4d140c95cc7461899cffb6fc8ed4568d90c243c14c8a0aed6", size = 60329284 },
-]
-
-[[package]]
 name = "cymem"
 version = "2.0.10"
 source = { registry = "https://pypi.org/simple" }
@@ -1501,10 +1489,9 @@ dependencies = [
     { name = "polars" },
     { name = "spacy" },
     { name = "torch", version = "2.5.1", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform == 'darwin' and extra == 'extra-14-natsume-simple-cpu') or (extra == 'extra-14-natsume-simple-cpu' and extra == 'extra-14-natsume-simple-cuda') or (extra == 'extra-14-natsume-simple-cpu' and extra == 'extra-14-natsume-simple-rocm') or (extra == 'extra-14-natsume-simple-cuda' and extra == 'extra-14-natsume-simple-rocm')" },
-    { name = "torch", version = "2.5.1", source = { registry = "https://pypi.org/simple" }, marker = "(extra == 'extra-14-natsume-simple-cpu' and extra == 'extra-14-natsume-simple-cuda') or (extra == 'extra-14-natsume-simple-cpu' and extra == 'extra-14-natsume-simple-rocm') or (extra == 'extra-14-natsume-simple-cuda' and extra == 'extra-14-natsume-simple-rocm') or (extra != 'extra-14-natsume-simple-cpu' and extra != 'extra-14-natsume-simple-cuda' and extra != 'extra-14-natsume-simple-rocm')" },
+    { name = "torch", version = "2.5.1", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-14-natsume-simple-rocm' or (extra == 'extra-14-natsume-simple-cpu' and extra == 'extra-14-natsume-simple-cuda') or (extra != 'extra-14-natsume-simple-cpu' and extra != 'extra-14-natsume-simple-cuda')" },
     { name = "torch", version = "2.5.1+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform != 'darwin' and extra == 'extra-14-natsume-simple-cpu') or (extra == 'extra-14-natsume-simple-cpu' and extra == 'extra-14-natsume-simple-cuda') or (extra == 'extra-14-natsume-simple-cpu' and extra == 'extra-14-natsume-simple-rocm') or (extra == 'extra-14-natsume-simple-cuda' and extra == 'extra-14-natsume-simple-rocm')" },
     { name = "torch", version = "2.5.1+cu124", source = { registry = "https://download.pytorch.org/whl/cu124" }, marker = "extra == 'extra-14-natsume-simple-cuda' or (extra == 'extra-14-natsume-simple-cpu' and extra == 'extra-14-natsume-simple-rocm')" },
-    { name = "torch", version = "2.5.1+rocm6.2", source = { registry = "https://download.pytorch.org/whl/rocm6.2" }, marker = "(extra == 'extra-14-natsume-simple-cpu' and extra == 'extra-14-natsume-simple-cuda') or (extra != 'extra-14-natsume-simple-cuda' and extra == 'extra-14-natsume-simple-rocm') or (extra != 'extra-14-natsume-simple-cpu' and extra == 'extra-14-natsume-simple-rocm')" },
 ]
 
 [package.optional-dependencies]
@@ -1519,11 +1506,6 @@ cpu = [
 cuda = [
     { name = "cupy-cuda12x" },
     { name = "torch", version = "2.5.1+cu124", source = { registry = "https://download.pytorch.org/whl/cu124" } },
-]
-rocm = [
-    { name = "cupy-rocm-5-0" },
-    { name = "pytorch-triton-rocm" },
-    { name = "torch", version = "2.5.1+rocm6.2", source = { registry = "https://download.pytorch.org/whl/rocm6.2" } },
 ]
 
 [package.dev-dependencies]
@@ -1541,7 +1523,6 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "cupy-cuda12x", marker = "extra == 'cuda'", specifier = ">=13.3.0" },
-    { name = "cupy-rocm-5-0", marker = "extra == 'rocm'" },
     { name = "datasets", specifier = ">=3.0.1" },
     { name = "fastapi", extras = ["standard"], marker = "extra == 'backend'", specifier = ">=0.115.0" },
     { name = "ginza", specifier = ">=5.2.0" },
@@ -1549,12 +1530,10 @@ requires-dist = [
     { name = "numpy", specifier = ">=1.24.3,<2.0.0" },
     { name = "polars", specifier = ">=1.9.0" },
     { name = "python-fasthtml", marker = "extra == 'backend'", specifier = ">=0.8.0" },
-    { name = "pytorch-triton-rocm", marker = "extra == 'rocm'", specifier = "==3.1.0", index = "https://download.pytorch.org/whl/rocm6.2", conflict = { package = "natsume-simple", extra = "rocm" } },
     { name = "spacy", specifier = ">=3.7.5" },
-    { name = "torch", specifier = ">=2.5.0" },
+    { name = "torch", specifier = ">=2.5.1" },
     { name = "torch", marker = "extra == 'cpu'", specifier = ">=2.5.1", index = "https://download.pytorch.org/whl/cpu", conflict = { package = "natsume-simple", extra = "cpu" } },
     { name = "torch", marker = "extra == 'cuda'", specifier = ">=2.5.1", index = "https://download.pytorch.org/whl/cu124", conflict = { package = "natsume-simple", extra = "cuda" } },
-    { name = "torch", marker = "extra == 'rocm'", specifier = "==2.5.1+rocm6.2", index = "https://download.pytorch.org/whl/rocm6.2", conflict = { package = "natsume-simple", extra = "rocm" } },
 ]
 
 [package.metadata.requires-dev]
@@ -2261,17 +2240,6 @@ wheels = [
 ]
 
 [[package]]
-name = "pytorch-triton-rocm"
-version = "3.1.0"
-source = { registry = "https://download.pytorch.org/whl/rocm6.2" }
-dependencies = [
-    { name = "filelock" },
-]
-wheels = [
-    { url = "https://download.pytorch.org/whl/pytorch_triton_rocm-3.1.0-cp312-cp312-linux_x86_64.whl", hash = "sha256:3b56b87886d03dcf3aeb8f78f372f5da60b29ffdffcba5cd767b4bfdec47175b" },
-]
-
-[[package]]
 name = "pytz"
 version = "2024.2"
 source = { registry = "https://pypi.org/simple" }
@@ -2803,25 +2771,26 @@ name = "torch"
 version = "2.5.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "filelock", marker = "(extra == 'extra-14-natsume-simple-cpu' and extra == 'extra-14-natsume-simple-cuda') or (extra == 'extra-14-natsume-simple-cpu' and extra == 'extra-14-natsume-simple-rocm') or (extra == 'extra-14-natsume-simple-cuda' and extra == 'extra-14-natsume-simple-rocm') or (extra != 'extra-14-natsume-simple-cpu' and extra != 'extra-14-natsume-simple-cuda' and extra != 'extra-14-natsume-simple-rocm')" },
-    { name = "fsspec", marker = "(extra == 'extra-14-natsume-simple-cpu' and extra == 'extra-14-natsume-simple-cuda') or (extra == 'extra-14-natsume-simple-cpu' and extra == 'extra-14-natsume-simple-rocm') or (extra == 'extra-14-natsume-simple-cuda' and extra == 'extra-14-natsume-simple-rocm') or (extra != 'extra-14-natsume-simple-cpu' and extra != 'extra-14-natsume-simple-cuda' and extra != 'extra-14-natsume-simple-rocm')" },
-    { name = "jinja2", marker = "(extra == 'extra-14-natsume-simple-cpu' and extra == 'extra-14-natsume-simple-cuda') or (extra == 'extra-14-natsume-simple-cpu' and extra == 'extra-14-natsume-simple-rocm') or (extra == 'extra-14-natsume-simple-cuda' and extra == 'extra-14-natsume-simple-rocm') or (extra != 'extra-14-natsume-simple-cpu' and extra != 'extra-14-natsume-simple-cuda' and extra != 'extra-14-natsume-simple-rocm')" },
-    { name = "networkx", marker = "(extra == 'extra-14-natsume-simple-cpu' and extra == 'extra-14-natsume-simple-cuda') or (extra == 'extra-14-natsume-simple-cpu' and extra == 'extra-14-natsume-simple-rocm') or (extra == 'extra-14-natsume-simple-cuda' and extra == 'extra-14-natsume-simple-rocm') or (extra != 'extra-14-natsume-simple-cpu' and extra != 'extra-14-natsume-simple-cuda' and extra != 'extra-14-natsume-simple-rocm')" },
-    { name = "nvidia-cublas-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-14-natsume-simple-cpu' and extra != 'extra-14-natsume-simple-cuda' and extra != 'extra-14-natsume-simple-rocm') or (extra == 'extra-14-natsume-simple-cpu' and extra == 'extra-14-natsume-simple-cuda') or (extra == 'extra-14-natsume-simple-cpu' and extra == 'extra-14-natsume-simple-rocm') or (extra == 'extra-14-natsume-simple-cuda' and extra == 'extra-14-natsume-simple-rocm')" },
-    { name = "nvidia-cuda-cupti-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-14-natsume-simple-cpu' and extra != 'extra-14-natsume-simple-cuda' and extra != 'extra-14-natsume-simple-rocm') or (extra == 'extra-14-natsume-simple-cpu' and extra == 'extra-14-natsume-simple-cuda') or (extra == 'extra-14-natsume-simple-cpu' and extra == 'extra-14-natsume-simple-rocm') or (extra == 'extra-14-natsume-simple-cuda' and extra == 'extra-14-natsume-simple-rocm')" },
-    { name = "nvidia-cuda-nvrtc-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-14-natsume-simple-cpu' and extra != 'extra-14-natsume-simple-cuda' and extra != 'extra-14-natsume-simple-rocm') or (extra == 'extra-14-natsume-simple-cpu' and extra == 'extra-14-natsume-simple-cuda') or (extra == 'extra-14-natsume-simple-cpu' and extra == 'extra-14-natsume-simple-rocm') or (extra == 'extra-14-natsume-simple-cuda' and extra == 'extra-14-natsume-simple-rocm')" },
-    { name = "nvidia-cuda-runtime-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-14-natsume-simple-cpu' and extra != 'extra-14-natsume-simple-cuda' and extra != 'extra-14-natsume-simple-rocm') or (extra == 'extra-14-natsume-simple-cpu' and extra == 'extra-14-natsume-simple-cuda') or (extra == 'extra-14-natsume-simple-cpu' and extra == 'extra-14-natsume-simple-rocm') or (extra == 'extra-14-natsume-simple-cuda' and extra == 'extra-14-natsume-simple-rocm')" },
-    { name = "nvidia-cudnn-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-14-natsume-simple-cpu' and extra != 'extra-14-natsume-simple-cuda' and extra != 'extra-14-natsume-simple-rocm') or (extra == 'extra-14-natsume-simple-cpu' and extra == 'extra-14-natsume-simple-cuda') or (extra == 'extra-14-natsume-simple-cpu' and extra == 'extra-14-natsume-simple-rocm') or (extra == 'extra-14-natsume-simple-cuda' and extra == 'extra-14-natsume-simple-rocm')" },
-    { name = "nvidia-cufft-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-14-natsume-simple-cpu' and extra != 'extra-14-natsume-simple-cuda' and extra != 'extra-14-natsume-simple-rocm') or (extra == 'extra-14-natsume-simple-cpu' and extra == 'extra-14-natsume-simple-cuda') or (extra == 'extra-14-natsume-simple-cpu' and extra == 'extra-14-natsume-simple-rocm') or (extra == 'extra-14-natsume-simple-cuda' and extra == 'extra-14-natsume-simple-rocm')" },
-    { name = "nvidia-curand-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-14-natsume-simple-cpu' and extra != 'extra-14-natsume-simple-cuda' and extra != 'extra-14-natsume-simple-rocm') or (extra == 'extra-14-natsume-simple-cpu' and extra == 'extra-14-natsume-simple-cuda') or (extra == 'extra-14-natsume-simple-cpu' and extra == 'extra-14-natsume-simple-rocm') or (extra == 'extra-14-natsume-simple-cuda' and extra == 'extra-14-natsume-simple-rocm')" },
-    { name = "nvidia-cusolver-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-14-natsume-simple-cpu' and extra != 'extra-14-natsume-simple-cuda' and extra != 'extra-14-natsume-simple-rocm') or (extra == 'extra-14-natsume-simple-cpu' and extra == 'extra-14-natsume-simple-cuda') or (extra == 'extra-14-natsume-simple-cpu' and extra == 'extra-14-natsume-simple-rocm') or (extra == 'extra-14-natsume-simple-cuda' and extra == 'extra-14-natsume-simple-rocm')" },
-    { name = "nvidia-cusparse-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-14-natsume-simple-cpu' and extra != 'extra-14-natsume-simple-cuda' and extra != 'extra-14-natsume-simple-rocm') or (extra == 'extra-14-natsume-simple-cpu' and extra == 'extra-14-natsume-simple-cuda') or (extra == 'extra-14-natsume-simple-cpu' and extra == 'extra-14-natsume-simple-rocm') or (extra == 'extra-14-natsume-simple-cuda' and extra == 'extra-14-natsume-simple-rocm')" },
-    { name = "nvidia-nccl-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-14-natsume-simple-cpu' and extra != 'extra-14-natsume-simple-cuda' and extra != 'extra-14-natsume-simple-rocm') or (extra == 'extra-14-natsume-simple-cpu' and extra == 'extra-14-natsume-simple-cuda') or (extra == 'extra-14-natsume-simple-cpu' and extra == 'extra-14-natsume-simple-rocm') or (extra == 'extra-14-natsume-simple-cuda' and extra == 'extra-14-natsume-simple-rocm')" },
-    { name = "nvidia-nvjitlink-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-14-natsume-simple-cpu' and extra != 'extra-14-natsume-simple-cuda' and extra != 'extra-14-natsume-simple-rocm') or (extra == 'extra-14-natsume-simple-cpu' and extra == 'extra-14-natsume-simple-cuda') or (extra == 'extra-14-natsume-simple-cpu' and extra == 'extra-14-natsume-simple-rocm') or (extra == 'extra-14-natsume-simple-cuda' and extra == 'extra-14-natsume-simple-rocm')" },
-    { name = "nvidia-nvtx-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-14-natsume-simple-cpu' and extra != 'extra-14-natsume-simple-cuda' and extra != 'extra-14-natsume-simple-rocm') or (extra == 'extra-14-natsume-simple-cpu' and extra == 'extra-14-natsume-simple-cuda') or (extra == 'extra-14-natsume-simple-cpu' and extra == 'extra-14-natsume-simple-rocm') or (extra == 'extra-14-natsume-simple-cuda' and extra == 'extra-14-natsume-simple-rocm')" },
-    { name = "setuptools", marker = "(extra == 'extra-14-natsume-simple-cpu' and extra == 'extra-14-natsume-simple-cuda') or (extra == 'extra-14-natsume-simple-cpu' and extra == 'extra-14-natsume-simple-rocm') or (extra == 'extra-14-natsume-simple-cuda' and extra == 'extra-14-natsume-simple-rocm') or (extra != 'extra-14-natsume-simple-cpu' and extra != 'extra-14-natsume-simple-cuda' and extra != 'extra-14-natsume-simple-rocm')" },
-    { name = "sympy", marker = "(extra == 'extra-14-natsume-simple-cpu' and extra == 'extra-14-natsume-simple-cuda') or (extra == 'extra-14-natsume-simple-cpu' and extra == 'extra-14-natsume-simple-rocm') or (extra == 'extra-14-natsume-simple-cuda' and extra == 'extra-14-natsume-simple-rocm') or (extra != 'extra-14-natsume-simple-cpu' and extra != 'extra-14-natsume-simple-cuda' and extra != 'extra-14-natsume-simple-rocm')" },
-    { name = "typing-extensions", marker = "(extra == 'extra-14-natsume-simple-cpu' and extra == 'extra-14-natsume-simple-cuda') or (extra == 'extra-14-natsume-simple-cpu' and extra == 'extra-14-natsume-simple-rocm') or (extra == 'extra-14-natsume-simple-cuda' and extra == 'extra-14-natsume-simple-rocm') or (extra != 'extra-14-natsume-simple-cpu' and extra != 'extra-14-natsume-simple-cuda' and extra != 'extra-14-natsume-simple-rocm')" },
+    { name = "filelock", marker = "extra == 'extra-14-natsume-simple-rocm' or (extra == 'extra-14-natsume-simple-cpu' and extra == 'extra-14-natsume-simple-cuda') or (extra != 'extra-14-natsume-simple-cpu' and extra != 'extra-14-natsume-simple-cuda')" },
+    { name = "fsspec", marker = "extra == 'extra-14-natsume-simple-rocm' or (extra == 'extra-14-natsume-simple-cpu' and extra == 'extra-14-natsume-simple-cuda') or (extra != 'extra-14-natsume-simple-cpu' and extra != 'extra-14-natsume-simple-cuda')" },
+    { name = "jinja2", marker = "extra == 'extra-14-natsume-simple-rocm' or (extra == 'extra-14-natsume-simple-cpu' and extra == 'extra-14-natsume-simple-cuda') or (extra != 'extra-14-natsume-simple-cpu' and extra != 'extra-14-natsume-simple-cuda')" },
+    { name = "networkx", marker = "extra == 'extra-14-natsume-simple-rocm' or (extra == 'extra-14-natsume-simple-cpu' and extra == 'extra-14-natsume-simple-cuda') or (extra != 'extra-14-natsume-simple-cpu' and extra != 'extra-14-natsume-simple-cuda')" },
+    { name = "nvidia-cublas-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-14-natsume-simple-cpu' and extra != 'extra-14-natsume-simple-cuda') or (extra == 'extra-14-natsume-simple-cpu' and extra == 'extra-14-natsume-simple-cuda') or (extra == 'extra-14-natsume-simple-cpu' and extra == 'extra-14-natsume-simple-rocm') or (extra == 'extra-14-natsume-simple-cuda' and extra == 'extra-14-natsume-simple-rocm')" },
+    { name = "nvidia-cuda-cupti-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-14-natsume-simple-cpu' and extra != 'extra-14-natsume-simple-cuda') or (extra == 'extra-14-natsume-simple-cpu' and extra == 'extra-14-natsume-simple-cuda') or (extra == 'extra-14-natsume-simple-cpu' and extra == 'extra-14-natsume-simple-rocm') or (extra == 'extra-14-natsume-simple-cuda' and extra == 'extra-14-natsume-simple-rocm')" },
+    { name = "nvidia-cuda-nvrtc-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-14-natsume-simple-cpu' and extra != 'extra-14-natsume-simple-cuda') or (extra == 'extra-14-natsume-simple-cpu' and extra == 'extra-14-natsume-simple-cuda') or (extra == 'extra-14-natsume-simple-cpu' and extra == 'extra-14-natsume-simple-rocm') or (extra == 'extra-14-natsume-simple-cuda' and extra == 'extra-14-natsume-simple-rocm')" },
+    { name = "nvidia-cuda-runtime-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-14-natsume-simple-cpu' and extra != 'extra-14-natsume-simple-cuda') or (extra == 'extra-14-natsume-simple-cpu' and extra == 'extra-14-natsume-simple-cuda') or (extra == 'extra-14-natsume-simple-cpu' and extra == 'extra-14-natsume-simple-rocm') or (extra == 'extra-14-natsume-simple-cuda' and extra == 'extra-14-natsume-simple-rocm')" },
+    { name = "nvidia-cudnn-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-14-natsume-simple-cpu' and extra != 'extra-14-natsume-simple-cuda') or (extra == 'extra-14-natsume-simple-cpu' and extra == 'extra-14-natsume-simple-cuda') or (extra == 'extra-14-natsume-simple-cpu' and extra == 'extra-14-natsume-simple-rocm') or (extra == 'extra-14-natsume-simple-cuda' and extra == 'extra-14-natsume-simple-rocm')" },
+    { name = "nvidia-cufft-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-14-natsume-simple-cpu' and extra != 'extra-14-natsume-simple-cuda') or (extra == 'extra-14-natsume-simple-cpu' and extra == 'extra-14-natsume-simple-cuda') or (extra == 'extra-14-natsume-simple-cpu' and extra == 'extra-14-natsume-simple-rocm') or (extra == 'extra-14-natsume-simple-cuda' and extra == 'extra-14-natsume-simple-rocm')" },
+    { name = "nvidia-curand-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-14-natsume-simple-cpu' and extra != 'extra-14-natsume-simple-cuda') or (extra == 'extra-14-natsume-simple-cpu' and extra == 'extra-14-natsume-simple-cuda') or (extra == 'extra-14-natsume-simple-cpu' and extra == 'extra-14-natsume-simple-rocm') or (extra == 'extra-14-natsume-simple-cuda' and extra == 'extra-14-natsume-simple-rocm')" },
+    { name = "nvidia-cusolver-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-14-natsume-simple-cpu' and extra != 'extra-14-natsume-simple-cuda') or (extra == 'extra-14-natsume-simple-cpu' and extra == 'extra-14-natsume-simple-cuda') or (extra == 'extra-14-natsume-simple-cpu' and extra == 'extra-14-natsume-simple-rocm') or (extra == 'extra-14-natsume-simple-cuda' and extra == 'extra-14-natsume-simple-rocm')" },
+    { name = "nvidia-cusparse-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-14-natsume-simple-cpu' and extra != 'extra-14-natsume-simple-cuda') or (extra == 'extra-14-natsume-simple-cpu' and extra == 'extra-14-natsume-simple-cuda') or (extra == 'extra-14-natsume-simple-cpu' and extra == 'extra-14-natsume-simple-rocm') or (extra == 'extra-14-natsume-simple-cuda' and extra == 'extra-14-natsume-simple-rocm')" },
+    { name = "nvidia-nccl-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-14-natsume-simple-cpu' and extra != 'extra-14-natsume-simple-cuda') or (extra == 'extra-14-natsume-simple-cpu' and extra == 'extra-14-natsume-simple-cuda') or (extra == 'extra-14-natsume-simple-cpu' and extra == 'extra-14-natsume-simple-rocm') or (extra == 'extra-14-natsume-simple-cuda' and extra == 'extra-14-natsume-simple-rocm')" },
+    { name = "nvidia-nvjitlink-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-14-natsume-simple-cpu' and extra != 'extra-14-natsume-simple-cuda') or (extra == 'extra-14-natsume-simple-cpu' and extra == 'extra-14-natsume-simple-cuda') or (extra == 'extra-14-natsume-simple-cpu' and extra == 'extra-14-natsume-simple-rocm') or (extra == 'extra-14-natsume-simple-cuda' and extra == 'extra-14-natsume-simple-rocm')" },
+    { name = "nvidia-nvtx-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-14-natsume-simple-cpu' and extra != 'extra-14-natsume-simple-cuda') or (extra == 'extra-14-natsume-simple-cpu' and extra == 'extra-14-natsume-simple-cuda') or (extra == 'extra-14-natsume-simple-cpu' and extra == 'extra-14-natsume-simple-rocm') or (extra == 'extra-14-natsume-simple-cuda' and extra == 'extra-14-natsume-simple-rocm')" },
+    { name = "setuptools", marker = "extra == 'extra-14-natsume-simple-rocm' or (extra == 'extra-14-natsume-simple-cpu' and extra == 'extra-14-natsume-simple-cuda') or (extra != 'extra-14-natsume-simple-cpu' and extra != 'extra-14-natsume-simple-cuda')" },
+    { name = "sympy", marker = "extra == 'extra-14-natsume-simple-rocm' or (extra == 'extra-14-natsume-simple-cpu' and extra == 'extra-14-natsume-simple-cuda') or (extra != 'extra-14-natsume-simple-cpu' and extra != 'extra-14-natsume-simple-cuda')" },
+    { name = "triton", marker = "(python_full_version < '3.13' and platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-14-natsume-simple-cpu' and extra != 'extra-14-natsume-simple-cuda') or (extra == 'extra-14-natsume-simple-cpu' and extra == 'extra-14-natsume-simple-cuda') or (extra == 'extra-14-natsume-simple-cpu' and extra == 'extra-14-natsume-simple-rocm') or (extra == 'extra-14-natsume-simple-cuda' and extra == 'extra-14-natsume-simple-rocm')" },
+    { name = "typing-extensions", marker = "extra == 'extra-14-natsume-simple-rocm' or (extra == 'extra-14-natsume-simple-cpu' and extra == 'extra-14-natsume-simple-cuda') or (extra != 'extra-14-natsume-simple-cpu' and extra != 'extra-14-natsume-simple-cuda')" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/8b/5c/36c114d120bfe10f9323ed35061bc5878cc74f3f594003854b0ea298942f/torch-2.5.1-cp312-cp312-manylinux1_x86_64.whl", hash = "sha256:ed231a4b3a5952177fafb661213d690a72caaad97d5824dd4fc17ab9e15cec03", size = 906389343 },
@@ -2883,24 +2852,6 @@ wheels = [
     { url = "https://download.pytorch.org/whl/cu124/torch-2.5.1%2Bcu124-cp312-cp312-linux_x86_64.whl", hash = "sha256:bf6484bfe5bc4f92a4a1a1bf553041505e19a911f717065330eb061afe0e14d7" },
     { url = "https://download.pytorch.org/whl/cu124/torch-2.5.1%2Bcu124-cp312-cp312-win_amd64.whl", hash = "sha256:3c3f705fb125edbd77f9579fa11a138c56af8968a10fc95834cdd9fdf4f1f1a6" },
     { url = "https://download.pytorch.org/whl/cu124/torch-2.5.1%2Bcu124-cp313-cp313-linux_x86_64.whl", hash = "sha256:e9bebf91ede89267577911da4b0709ac6113a0cff6a1c2202c046b1ec2a51601" },
-]
-
-[[package]]
-name = "torch"
-version = "2.5.1+rocm6.2"
-source = { registry = "https://download.pytorch.org/whl/rocm6.2" }
-dependencies = [
-    { name = "filelock" },
-    { name = "fsspec" },
-    { name = "jinja2" },
-    { name = "networkx" },
-    { name = "pytorch-triton-rocm", marker = "python_full_version < '3.13' and platform_machine == 'x86_64' and sys_platform == 'linux'" },
-    { name = "setuptools" },
-    { name = "sympy" },
-    { name = "typing-extensions" },
-]
-wheels = [
-    { url = "https://download.pytorch.org/whl/rocm6.2/torch-2.5.1%2Brocm6.2-cp312-cp312-linux_x86_64.whl", hash = "sha256:80c7af931acb3941530a717aaa1d142985ae7f29b7660a72e47f1a890fc191fb" },
 ]
 
 [[package]]
