@@ -229,13 +229,11 @@ def get_ted_corpus() -> List[str]:
 
 
 def get_wiki_corpus() -> List[str]:
-    """Download and combine TED talk transcripts from multiple years.
+    """Download a subset of Wikipedia.
 
-    Downloads Japanese transcripts from TED talks using the datasets library,
-    combining data from 2014-2017.
 
     Returns:
-        List of Japanese sentences from TED talks, stripped of whitespace
+        List of Japanese sentences from Wikipedia, stripped of whitespace
     """
     logger.info("Downloading TED corpus...")
 
@@ -243,21 +241,12 @@ def get_wiki_corpus() -> List[str]:
         "wikimedia/wikipedia", "20231101.ja", streaming=True, split="train"
     )
 
-    wiki_corpus = []
-    count = 0
-
-    for article in ds:
-        count += 1
-
-        if count <= 30:
-            article_paragraphs = [
-                paragraph
-                for paragraph in article["text"].split("\n\n")
-                if is_japanese(paragraph)
-            ]
-            wiki_corpus.extend(article_paragraphs)
-        else:
-            break
+    wiki_corpus = [
+        paragraph
+        for article in ds.take(100)
+        for paragraph in article["text"].split("\n\n")
+        if is_japanese(paragraph)
+    ]
 
     return wiki_corpus
 
@@ -320,7 +309,7 @@ def prepare_wiki_corpus(data_dir: Path) -> int:
     return len(wiki_corpus)
 
 
-def prepare_corpora(data_dir: Path) -> Tuple[int, int]:
+def prepare_corpora(data_dir: Path) -> Tuple[int, int, int]:
     """Prepare both JNLP and TED corpora.
 
     Creates the data directory if needed and prepares both corpora.
@@ -371,7 +360,7 @@ def load_corpora(
     jnlp_sample_size: int = 3000,
     ted_sample_size: int = 30000,
     wiki_sample_size: int = 3000,
-) -> Tuple[List[str], List[str]]:
+) -> Tuple[List[str], List[str], List[str]]:
     """Load and sample from both JNLP and TED corpora.
 
     Args:
