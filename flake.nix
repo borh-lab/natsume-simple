@@ -213,6 +213,7 @@
               uv run python src/natsume_simple/data.py --prepare
               uv run python src/natsume_simple/data.py --load \
                   --jnlp-sample-size 3000 \
+                  --wiki-sample-size 3000 \
                   --ted-sample-size 30000
             '';
           };
@@ -232,6 +233,12 @@
                   --data-dir data \
                   --model ja_ginza \
                   --corpus-name "ted"
+
+               uv run python src/natsume_simple/pattern_extraction.py \
+                  --input-file data/wiki-corpus.txt \
+                  --data-dir data \
+                  --model ja_ginza \
+                  --corpus-name "wiki"
             '';
           };
           packages.run-all = pkgs.writeShellApplication {

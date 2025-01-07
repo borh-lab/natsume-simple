@@ -27,6 +27,7 @@ app.add_middleware(
 def load_database(model_name: str) -> pl.DataFrame:
     db = pl.read_csv(f"data/ted_npvs_{model_name}.csv")
     db = db.vstack(pl.read_csv(f"data/jnlp_npvs_{model_name}.csv"))
+    db = db.vstack(pl.read_csv(f"data/wiki_npvs_{model_name}.csv"))
     return db.group_by(db.columns).agg(pl.len().alias("frequency"))
 
 
@@ -64,7 +65,7 @@ def calculate_corpus_norm(db: pl.DataFrame) -> Dict[str, float]:
     return {corpus: min_count / frequency for corpus, frequency in corpus_freqs.items()}
 
 
-model_name = "ja_ginza_bert_large"
+model_name = "ja_ginza"
 db = load_database(model_name)
 corpus_norm = calculate_corpus_norm(db)
 sentences = load_sentences()

@@ -228,6 +228,40 @@ def get_ted_corpus() -> List[str]:
     return ted_corpus
 
 
+def get_wiki_corpus() -> List[str]:
+    """Download and combine TED talk transcripts from multiple years.
+
+    Downloads Japanese transcripts from TED talks using the datasets library,
+    combining data from 2014-2017.
+
+    Returns:
+        List of Japanese sentences from TED talks, stripped of whitespace
+    """
+    logger.info("Downloading TED corpus...")
+
+    ds = datasets.load_dataset(
+        "wikimedia/wikipedia", "20231101.ja", streaming=True, split="train"
+    )
+
+    wiki_corpus = []
+    count = 0
+
+    for article in ds:
+        count += 1
+
+        if count <= 30:
+            article_paragraphs = [
+                paragraph
+                for paragraph in article["text"].split("\n\n")
+                if is_japanese(paragraph)
+            ]
+            wiki_corpus.extend(article_paragraphs)
+        else:
+            break
+
+    return wiki_corpus
+
+
 def save_corpus(data_dir: Path, corpus_name: str, corpus: List[str]) -> None:
     """Save a corpus to a file using standard naming convention.
 
@@ -270,6 +304,22 @@ def prepare_ted_corpus(data_dir: Path) -> int:
     return len(ted_corpus)
 
 
+def prepare_wiki_corpus(data_dir: Path) -> int:
+    """Prepare the Wikipedia corpus by downloading and saving to file.
+
+    Downloads the Wikipedia corpus and saves it to a single text file.
+
+    Args:
+        data_dir: Directory where the corpus will be saved
+
+    Returns:
+        Number of sentences in the corpus
+    """
+    wiki_corpus = get_wiki_corpus()
+    save_corpus(data_dir, "wiki", wiki_corpus)
+    return len(wiki_corpus)
+
+
 def prepare_corpora(data_dir: Path) -> Tuple[int, int]:
     """Prepare both JNLP and TED corpora.
 
@@ -284,7 +334,8 @@ def prepare_corpora(data_dir: Path) -> Tuple[int, int]:
     data_dir.mkdir(parents=True, exist_ok=True)
     jnlp_count = prepare_jnlp_corpus(data_dir)
     ted_count = prepare_ted_corpus(data_dir)
-    return jnlp_count, ted_count
+    wiki_count = prepare_wiki_corpus(data_dir)
+    return jnlp_count, ted_count, wiki_count
 
 
 def load_corpus(data_dir: Path, corpus_name: str, sample_size: int) -> List[str]:
@@ -316,7 +367,10 @@ def load_corpus(data_dir: Path, corpus_name: str, sample_size: int) -> List[str]
 
 
 def load_corpora(
-    data_dir: Path, jnlp_sample_size: int = 3000, ted_sample_size: int = 30000
+    data_dir: Path,
+    jnlp_sample_size: int = 3000,
+    ted_sample_size: int = 30000,
+    wiki_sample_size: int = 3000,
 ) -> Tuple[List[str], List[str]]:
     """Load and sample from both JNLP and TED corpora.
 
@@ -330,7 +384,8 @@ def load_corpora(
     """
     jnlp_corpus = load_corpus(data_dir, "jnlp", jnlp_sample_size)
     ted_corpus = load_corpus(data_dir, "ted", ted_sample_size)
-    return jnlp_corpus, ted_corpus
+    wiki_corpus = load_corpus(data_dir, "wiki", wiki_sample_size)
+    return jnlp_corpus, ted_corpus, wiki_corpus
 
 
 if __name__ == "__main__":
@@ -361,6 +416,12 @@ if __name__ == "__main__":
         help="Sample size for the JNLP corpus (default: 3000). This determines how many sentences from the JNLP corpus will be randomly selected when loading.",
     )
     parser.add_argument(
+        "--wiki-sample-size",
+        type=int,
+        default=3000,
+        help="Sample size for the Wikipedia corpus (default: 3000). This determines how many sentences from the JNLP corpus will be randomly selected when loading.",
+    )
+    parser.add_argument(
         "--ted-sample-size",
         type=int,
         default=30000,
@@ -382,14 +443,18 @@ if __name__ == "__main__":
         print("\nNo action specified. Use --prepare or --load to perform operations.")
     else:
         if args.prepare:
-            jnlp_count, ted_count = prepare_corpora(args.data_dir)
+            jnlp_count, ted_count, wiki_count = prepare_corpora(args.data_dir)
             logger.info(f"Corpora prepared and saved in {args.data_dir}")
             logger.info(f"JNLP corpus: {jnlp_count} sentences/paragraphs prepared")
             logger.info(f"TED corpus: {ted_count} sentences/paragraphs prepared")
+            logger.info(f"Wikipedia corpus: {wiki_count} sentences/paragraphs prepared")
 
         if args.load:
-            jnlp_corpus, ted_corpus = load_corpora(
-                args.data_dir, args.jnlp_sample_size, args.ted_sample_size
+            jnlp_corpus, ted_corpus, wiki_corpus = load_corpora(
+                args.data_dir,
+                args.jnlp_sample_size,
+                args.ted_sample_size,
+                args.wiki_sample_size,
             )
             logger.info(
                 f"Loaded {len(jnlp_corpus)} sentences from JNLP corpus (sample size: {args.jnlp_sample_size})"
@@ -397,4 +462,10 @@ if __name__ == "__main__":
             logger.info(
                 f"Loaded {len(ted_corpus)} sentences from TED corpus (sample size: {args.ted_sample_size})"
             )
-            save_corpora(args.data_dir, {"jnlp": jnlp_corpus, "ted": ted_corpus})
+            logger.info(
+                f"Loaded {len(wiki_corpus)} sentences from Wikipedia corpus (sample size: {args.wiki_sample_size})"
+            )
+            save_corpora(
+                args.data_dir,
+                {"jnlp": jnlp_corpus, "ted": ted_corpus, "wiki": wiki_corpus},
+            )
