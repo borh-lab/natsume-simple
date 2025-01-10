@@ -50,7 +50,10 @@ def load_nlp_model(
 
     if torch.cuda.is_available():
         logger.info("GPU is available. Enabling GPU support for spaCy.")
-        spacy.require_gpu()
+        try:
+            spacy.require_gpu()
+        except ValueError as e:
+            logger.error(f"Error enabling GPU support: {e}, using CPU.")
     else:
         logger.info("CUDA is not available. Using whatever spaCy finds or the CPU.")
         spacy.prefer_gpu()
