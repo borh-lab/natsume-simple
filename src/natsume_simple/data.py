@@ -14,65 +14,6 @@ from natsume_simple.utils import set_random_seed
 logger = setup_logger(__name__)
 
 
-def download_jnlp_corpus(data_dir: Path) -> None:
-    """Download the JNLP corpus from the official website.
-
-    Downloads the NLP_LATEX_CORPUS.zip file and extracts it to the specified directory.
-
-    Args:
-        data_dir: Directory where the corpus will be downloaded and extracted
-    """
-    file = data_dir / "NLP_LATEX_CORPUS.zip"
-    if not file.is_file():
-        logger.info("Downloading JNLP corpus...")
-        urllib.request.urlretrieve(
-            "https://www.anlp.jp/resource/journal_latex/NLP_LATEX_CORPUS.zip",
-            file,
-        )
-
-    with zipfile.ZipFile(file, "r") as z:
-        z.extractall(data_dir)
-
-
-def convert_latex_to_text(corpus_dir: Path) -> None:
-    """Convert LaTeX files to plain text using pandoc.
-
-    Finds all .tex files in the directory (recursively) and converts them to .txt files.
-    Skips files that have already been converted.
-
-    Args:
-        corpus_dir: Directory containing LaTeX files to convert
-    """
-    latex_files = corpus_dir.rglob("*.tex")
-
-    for latex_file in latex_files:
-        text_file = latex_file.with_suffix(".txt")
-        logger.info(f"{latex_file} => {text_file}")
-        if text_file.is_file():
-            logger.info("File exists, skipping.")
-            continue
-
-        p = subprocess.run(
-            [
-                "pandoc",
-                "--quiet",
-                "-f",
-                "latex+east_asian_line_breaks",
-                "-t",
-                "plain",
-                "--wrap=none",
-                "--strip-comments",
-                "-N",
-                "-s",
-                latex_file,
-                "-o",
-                text_file,
-            ]
-        )
-        if p.returncode != 0:
-            logger.error("Failed to convert using pandoc, skipping!")
-
-
 def is_japanese(line: str, min_length: int = 200) -> bool:
     """Filter a single line to determine if it is likely Japanese text.
 
@@ -161,6 +102,65 @@ def filter_non_japanese(dir: Path, min_length: int = 200) -> Iterator[str]:
                 line = line.rstrip()
                 if is_japanese(line, min_length):
                     yield line
+
+
+def download_jnlp_corpus(data_dir: Path) -> None:
+    """Download the JNLP corpus from the official website.
+
+    Downloads the NLP_LATEX_CORPUS.zip file and extracts it to the specified directory.
+
+    Args:
+        data_dir: Directory where the corpus will be downloaded and extracted
+    """
+    file = data_dir / "NLP_LATEX_CORPUS.zip"
+    if not file.is_file():
+        logger.info("Downloading JNLP corpus...")
+        urllib.request.urlretrieve(
+            "https://www.anlp.jp/resource/journal_latex/NLP_LATEX_CORPUS.zip",
+            file,
+        )
+
+    with zipfile.ZipFile(file, "r") as z:
+        z.extractall(data_dir)
+
+
+def convert_latex_to_text(corpus_dir: Path) -> None:
+    """Convert LaTeX files to plain text using pandoc.
+
+    Finds all .tex files in the directory (recursively) and converts them to .txt files.
+    Skips files that have already been converted.
+
+    Args:
+        corpus_dir: Directory containing LaTeX files to convert
+    """
+    latex_files = corpus_dir.rglob("*.tex")
+
+    for latex_file in latex_files:
+        text_file = latex_file.with_suffix(".txt")
+        logger.info(f"{latex_file} => {text_file}")
+        if text_file.is_file():
+            logger.info("File exists, skipping.")
+            continue
+
+        p = subprocess.run(
+            [
+                "pandoc",
+                "--quiet",
+                "-f",
+                "latex+east_asian_line_breaks",
+                "-t",
+                "plain",
+                "--wrap=none",
+                "--strip-comments",
+                "-N",
+                "-s",
+                latex_file,
+                "-o",
+                text_file,
+            ]
+        )
+        if p.returncode != 0:
+            logger.error("Failed to convert using pandoc, skipping!")
 
 
 def prepare_jnlp_corpus(data_dir: Path) -> int:
@@ -310,15 +310,15 @@ def prepare_wiki_corpus(data_dir: Path) -> int:
 
 
 def prepare_corpora(data_dir: Path) -> Tuple[int, int, int]:
-    """Prepare both JNLP and TED corpora.
+    """Prepare both corpora.
 
-    Creates the data directory if needed and prepares both corpora.
+    Creates the data directory if needed and prepares the corpora.
 
     Args:
-        data_dir: Directory for storing both corpora
+        data_dir: Directory for storing corpora
 
     Returns:
-        Tuple of (JNLP corpus size, TED corpus size)
+        Tuple of (JNLP corpus size, TED corpus size, Wikipedia corpus size)
     """
     data_dir.mkdir(parents=True, exist_ok=True)
     jnlp_count = prepare_jnlp_corpus(data_dir)
@@ -367,6 +367,7 @@ def load_corpora(
         data_dir: Directory containing the corpus files
         jnlp_sample_size: Number of lines to sample from JNLP corpus
         ted_sample_size: Number of lines to sample from TED corpus
+        wiki_sample_size: Number of lines to sample from Wikipedia corpus
 
     Returns:
         Tuple of (JNLP corpus samples, TED corpus samples)
