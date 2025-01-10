@@ -62,6 +62,7 @@
             pkgs.pandoc
             pkgs.sqlite
           ];
+          uv-run = ''uv run --extra "$ACCELERATOR"'';
         in
         {
           # Per-system attributes can be defined here. The self' and inputs'
@@ -156,7 +157,7 @@
             text = ''
               ${config.packages.initial-setup}/bin/initial-setup
               mkdir -p natsume-frontend/build # Ensure directory exists to not fail test
-              uv run pytest
+              ${uv-run} pytest
             '';
           };
           packages.lint = pkgs.writeShellApplication {
@@ -165,8 +166,8 @@
             text = ''
               ${config.packages.initial-setup}/bin/initial-setup
               nix fmt flake.nix
-              uv run ruff format
-              uv run ruff check --fix --select I --output-format=github src notebooks tests
+              ${uv-run} ruff format
+              ${uv-run} ruff check --fix --select I --output-format=github src notebooks tests
               ${pkgs.mypy}/bin/mypy --ignore-missing-imports src
               ${pkgs.biome}/bin/biome check --write natsume-frontend
             '';
@@ -193,7 +194,7 @@
             text = ''
               ${config.packages.initial-setup}/bin/initial-setup
               ${config.packages.build-frontend}/bin/build-frontend
-              uv run --with fastapi --with polars fastapi dev --host localhost src/natsume_simple/server.py
+              ${uv-run} --with fastapi --with polars fastapi dev --host localhost src/natsume_simple/server.py
             '';
           };
           packages.server = pkgs.writeShellApplication {
@@ -202,7 +203,7 @@
             text = ''
               ${config.packages.initial-setup}/bin/initial-setup
               ${config.packages.build-frontend}/bin/build-frontend
-              uv run --with fastapi --with polars fastapi run --host localhost src/natsume_simple/server.py
+              ${uv-run} --with fastapi --with polars fastapi run --host localhost src/natsume_simple/server.py
             '';
           };
           packages.prepare-data = pkgs.writeShellApplication {
@@ -210,8 +211,8 @@
             runtimeInputs = runtime-packages;
             text = ''
               ${config.packages.initial-setup}/bin/initial-setup
-              uv run python src/natsume_simple/data.py --prepare
-              uv run python src/natsume_simple/data.py --load \
+              ${uv-run} python src/natsume_simple/data.py --prepare
+              ${uv-run} python src/natsume_simple/data.py --load \
                   --jnlp-sample-size 3000 \
                   --wiki-sample-size 3000 \
                   --ted-sample-size 30000
@@ -222,19 +223,19 @@
             runtimeInputs = runtime-packages;
             text = ''
               ${config.packages.initial-setup}/bin/initial-setup
-              uv run python src/natsume_simple/pattern_extraction.py \
+              ${uv-run} python src/natsume_simple/pattern_extraction.py \
                   --input-file data/jnlp-corpus.txt \
                   --data-dir data \
                   --model ja_ginza \
                   --corpus-name "jnlp"
 
-              uv run python src/natsume_simple/pattern_extraction.py \
+              ${uv-run} python src/natsume_simple/pattern_extraction.py \
                   --input-file data/ted-corpus.txt \
                   --data-dir data \
                   --model ja_ginza \
                   --corpus-name "ted"
 
-               uv run python src/natsume_simple/pattern_extraction.py \
+              ${uv-run} python src/natsume_simple/pattern_extraction.py \
                   --input-file data/wiki-corpus.txt \
                   --data-dir data \
                   --model ja_ginza \
