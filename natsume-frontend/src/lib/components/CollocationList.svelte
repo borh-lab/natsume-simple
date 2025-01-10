@@ -1,63 +1,64 @@
 <script lang="ts">
-import type { CombinedResult, Result } from "$lib/query";
-import { getContext, onMount } from "svelte";
-import type { Writable } from "svelte/store";
-const {
-	collocates,
-	combinedSearch,
-	getColor,
-	tooltipAction,
-	renderContributions,
-	renderContributionsCombined,
-	useNormalization,
-	selectedCorpora,
-	getSolidColor,
-	corpusNorm,
-}: {
-	collocates: Result[];
-	combinedSearch: Writable<boolean>;
-	getColor: (corpus: string) => string;
-	tooltipAction: (
-		node: HTMLLIElement,
-		{
-			getTooltipData,
-			useNormalization,
-		}: {
-			getTooltipData: () => Record<string, number>;
-			useNormalization: boolean;
-		},
-	) => void;
-	renderContributions: (
-		collocate: Result,
-		collocates: Result[],
-		selectedCorpora: string[],
-		useNormalization: boolean,
-	) => { corpus: string; width: number; xOffset: number; value: number }[];
-	renderContributionsCombined: (
-		collocate: CombinedResult,
-		collocates: Result[],
-		selectedCorpora: string[],
-		useNormalization: boolean,
-	) => { corpus: string; width: number; xOffset: number; value: number }[];
-	useNormalization: Writable<boolean>;
-	selectedCorpora: Writable<string[]>;
-	getSolidColor: (corpus: string) => string;
-	corpusNorm: Record<string, number>;
-} = $props();
+	import type { CombinedResult, Result } from '$lib/query';
+	import { getContext, onMount } from 'svelte';
+	import type { Writable } from 'svelte/store';
+	const {
+		collocates,
+		combinedSearch,
+		getColor,
+		tooltipAction,
+		renderContributions,
+		renderContributionsCombined,
+		useNormalization,
+		selectedCorpora,
+		getSolidColor,
+		corpusNorm
+	}: {
+		collocates: Result[];
+		combinedSearch: Writable<boolean>;
+		getColor: (corpus: string) => string;
+		tooltipAction: (
+			node: HTMLLIElement,
+			{
+				getTooltipData,
+				useNormalization
+			}: {
+				getTooltipData: () => Record<string, number>;
+				useNormalization: boolean;
+			}
+		) => void;
+		renderContributions: (
+			collocate: Result,
+			collocates: Result[],
+			selectedCorpora: string[],
+			useNormalization: boolean
+		) => { corpus: string; width: number; xOffset: number; value: number }[];
+		renderContributionsCombined: (
+			collocate: CombinedResult,
+			collocates: Result[],
+			selectedCorpora: string[],
+			useNormalization: boolean
+		) => { corpus: string; width: number; xOffset: number; value: number }[];
+		useNormalization: Writable<boolean>;
+		selectedCorpora: Writable<string[]>;
+		getSolidColor: (corpus: string) => string;
+		corpusNorm: Record<string, number>;
+	} = $props();
 
-const apiUrl = getContext<string>("apiUrl");
+	const apiUrl = getContext<string>('apiUrl');
 
-let sentences: string[] = $state([]);
+	let sentencesMap: Record<string, Array<{ corpus: string; sentence: string }>> = $state({});
 
-onMount(async () => {
-	for (const collocate of collocates) {
-		const response = await fetch(
-			`${apiUrl}/sentences/${collocate.n}/${collocate.p}/${collocate.v}`,
-		);
-		const data = await response.json();
-		sentences = data;
-	}
-});
+	onMount(async () => {
+		for (const collocate of collocates) {
+			const response = await fetch(
+				`${apiUrl}/sentences/${collocate.n}/${collocate.p}/${collocate.v}`
+			);
+			const data = await response.json();
+			const key = `${collocate.n}-${collocate.p}-${collocate.v}`;
+			sentencesMap[key] = data;
+		}
+	});
 </script>
 
 {#snippet frequencyBar(collocate: Result | CombinedResult)}
@@ -75,7 +76,7 @@ onMount(async () => {
 {/snippet}
 
 {#snippet collocationContent(collocate: Result)}
-	<span class="text-left font-medium">{collocate.n}{collocate.v}</span>
+	<span class="text-left font-medium">{collocate.v}</span>
 	{#if !$combinedSearch}
 		<span class="text-sm text-gray-600 dark:text-gray-200 ml-2 text-left">{collocate.corpus}</span>
 	{/if}
@@ -114,9 +115,14 @@ onMount(async () => {
 					{@render collocationContent(collocate)}
 				</summary>
 				<ul class="list-none p-0 space-y-0 mt-2">
-					{#each sentences as sentence}
-						<li>{sentence}</li>
-						<!-- TODO: Highlight the collocate -->
+					{#each sentencesMap[`${collocate.n}-${collocate.p}-${collocate.v}`] || [] as sentence}
+						<li>
+							{sentence.corpus}:{' '}
+							{@html sentence.sentence.replaceAll(
+								`${collocate.n}${collocate.p}`,
+								`<strong>${collocate.n}${collocate.p}</strong>`
+							)}
+						</li>
 					{/each}
 				</ul>
 			</details>

@@ -5,6 +5,7 @@
 # ]
 # ///
 
+import glob
 from collections import Counter
 from typing import Any, Dict, List
 
@@ -31,9 +32,17 @@ def load_database(model_name: str) -> pl.DataFrame:
     return db.group_by(db.columns).agg(pl.len().alias("frequency"))
 
 
-def load_sentences() -> list[str]:
-    with open("data/ted_corpus.txt", "r") as f:
-        return f.readlines()
+def load_sentences_db() -> pl.DataFrame:
+    db = pl.DataFrame(schema=[("sentence", pl.Utf8), ("corpus", pl.Utf8)])
+    for corpus in glob.glob("data/*-corpus.txt"):
+        print(corpus)
+        basename = corpus.split("/")[-1].split("-")[0]
+        with open(corpus) as f:
+            sentences = [
+                sentence.strip() for sentence in f.readlines() if sentence.strip()
+            ]
+            db = db.vstack(pl.DataFrame({"sentence": sentences, "corpus": basename}))
+    return db
 
 
 def calculate_corpus_norm(db: pl.DataFrame) -> Dict[str, float]:
@@ -68,7 +77,7 @@ def calculate_corpus_norm(db: pl.DataFrame) -> Dict[str, float]:
 model_name = "ja_ginza"
 db = load_database(model_name)
 corpus_norm = calculate_corpus_norm(db)
-sentences = load_sentences()
+sentences_db = load_sentences_db()
 
 
 @app.get("/corpus/norm")
@@ -89,23 +98,11 @@ def read_npv_verb(verb: str) -> List[Dict[str, Any]]:
 
 
 @app.get("/sentences/{n}/{p}/{v}")
-def read_sentences(n: str, p: str, v: str) -> List[str]:
-    matches = [s for s in sentences if n + p in s]
-    print(f"matches: {matches}")
+def read_sentences(n: str, p: str, v: str) -> List[dict[str, str]]:
+    matches = sentences_db.filter(
+        pl.col("sentence").str.contains(f"{n}{p}{v[0]}")  # Hacky way to match the verb
+    ).to_dicts()
     return matches
-
-
-# @app.get("/search/{query}")
-# def read_query(query:str) -> List[tuple[str, str]]:
-#     matches = db.select(
-#         pl.col('n').str.starts_with(query),
-#         pl.col('frequency')
-#     ).sort('frequency', descending=True).itertuples()
-
-#     return matches
-
-#     # str.startswith
-#     # [("aa", "v"), ("ab", "n"), (...)]
 
 
 @app.get("/search/{query}")
