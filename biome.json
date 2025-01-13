@@ -1,7 +1,11 @@
 {
 	"$schema": "https://biomejs.dev/schemas/1.9.4/schema.json",
 	"files": {
-		"ignore": ["natsume-frontend/build", "natsume-frontend/.svelte-kit"]
+		"ignore": [
+			"natsume-frontend/build",
+			"natsume-frontend/.svelte-kit",
+			"static"
+		]
 	},
 	"vcs": {
 		"enabled": true,
