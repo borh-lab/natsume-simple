@@ -48,14 +48,14 @@ def load_nlp_model(
         Tuple[spacy.language.Language, Token]: The loaded NLP model and a constant する token.
     """
 
-    if torch.cuda.is_available():
+    if torch.cuda.is_available() or torch.backends.mps.is_available():
         logger.info("GPU is available. Enabling GPU support for spaCy.")
         try:
             spacy.require_gpu()
         except ValueError as e:
             logger.error(f"Error enabling GPU support: {e}, using CPU.")
     else:
-        logger.info("CUDA is not available. Using whatever spaCy finds or the CPU.")
+        logger.info("GPU is not available. Using whatever spaCy finds or the CPU.")
         spacy.prefer_gpu()
 
     if model_name:
