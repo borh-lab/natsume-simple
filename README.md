@@ -105,25 +105,6 @@ nix build
 # 開発環境のシェル情報を表示
 nix develop --print-build-logs
 ```
-<!-- TODO
-### process-composeによるサービス管理
-
-複数のサービスを同時に実行する場合：
-
-```bash
-nix run .#process-compose-natsume-simple-services
-```
--->
-
-注意：
-- 各コマンドは自動的に必要な依存関係をインストールします
-- `nix develop`で入る開発環境には以下が含まれています：
-  - Python 3.12
-  - Node.js
-  - uv（Pythonパッケージマネージャー）
-  - pandoc
-  - その他開発に必要なツール
-
 
 ## CLI使用方法
 
@@ -230,41 +211,67 @@ uv run fastapi dev src/natsume_simple/server.py
 - 特定共起関係のジャンル間出現割合
 - 特定共起関係のコーパスにおける例文表示
 
-## Nixフレークのスクリプト
+### CLIコマンド
 
-このプロジェクトはNixフレークを使用して開発環境とビルドを管理しています。
+以下のコマンドが利用可能です：
 
-### 利用可能なコマンド
-
-開発環境では以下のコマンドが利用できます：
-
+#### プロジェクト外から実行する場合
 ```bash
-# データ準備
-prepare-data          # JNLPコーパスとTEDコーパスのダウンロードと前処理
-extract-patterns      # 準備されたコーパスからパターンを抽出
-
-# 開発用
-dev-server           # 開発サーバーの起動（ホットリロード有効）
-server               # プロダクションサーバーの起動
-build-frontend       # フロントエンドのビルド
-watch-frontend       # フロントエンド開発サーバーの起動
-
-# テストとリント
-run-tests           # テストスイートの実行
-lint                # リンターとフォーマッターの実行
-
-# 一括実行
-run-all             # 完全なパイプラインの実行（prepare-data, extract-patterns, server）
+nix run github:borh-lab/natsume-simple#コマンド名
 ```
 
-各コマンドは `nix run .#コマンド名` の形式で実行できます。例：
+#### プロジェクト内から実行する場合
+以下のコマンドを直接実行できます：
+
+#### 開発ワークフロー
+- `watch` - 開発サーバー（バックエンド＋フロントエンド）の起動
+
+#### フロントエンド
+- `build-frontend` - プロダクション用フロントエンドのビルド
+- `watch-frontend` - 開発モードでのフロントエンド起動（ホットリロード有効）
+
+#### サーバー
+- `watch-dev-server` - 開発モードでのバックエンドサーバー起動
+- `watch-prod-server` - プロダクションモードでのバックエンドサーバー起動
+
+#### データ管理
+- `prepare-data` - コーパスサンプルの準備と読み込み
+- `extract-patterns` - すべてのコーパスからのパターン抽出
+
+#### テストと品質管理
+- `lint` - すべてのリンターとフォーマッターの実行
+- `run-tests` - pytestによるテストスイートの実行
+
+#### メイン
+- `run-all` - データ準備、パターン抽出、サーバー起動の一括実行
+
+注意：
+- 各コマンドは自動的に必要な依存関係を設定しています
+- `nix develop`で入る開発環境には以下が含まれています：
+  - Python 3.12
+  - Node.js (Svelteのフロントエンド)
+  - uv（Pythonパッケージマネージャー）
+  - pandoc
+  - その他開発に必要なツール
+
+### 開発サーバー
+
+フロントエンドとバックエンドの開発サーバーを同時に起動するには：
 
 ```bash
-nix run .#prepare-data
-nix run .#dev-server
+nix run .#watch
 ```
 
-また、開発環境に入るには：
+これにより両サーバーがホットリロード機能付きで起動します。
+
+### 環境変数
+
+- `ACCELERATOR` - 現在のアクセラレータタイプ（cpu/cuda/rocm）
+- `PC_PORT_NUM` - プロセスコンポーズのポート番号（デフォルト：10011）
+
+### 開発環境
+
+開発環境に入るには：
 
 ```bash
 # 開発環境に入る
