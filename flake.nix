@@ -62,7 +62,7 @@
             pkgs.pandoc
             pkgs.sqlite
           ];
-          uv-run = ''uv run --extra "$ACCELERATOR"'';
+          uv-run = ''uv run -q --extra "$ACCELERATOR"'';
           help = import ./help.nix { inherit lib; };
         in
         {
@@ -164,9 +164,9 @@
             runtimeInputs = runtime-packages;
             text = ''
               export PYTHON_VERSION=3.12.7
-              uv python install $PYTHON_VERSION
-              uv python pin $PYTHON_VERSION
-              uv sync --dev --extra backend --extra "$ACCELERATOR"
+              uv -q python install $PYTHON_VERSION
+              uv -q python pin $PYTHON_VERSION
+              uv -q sync --dev --extra backend --extra "$ACCELERATOR"
             '';
             passthru.meta = {
               category = "Setup";
@@ -191,7 +191,7 @@
             runtimeInputs = runtime-packages;
             text = ''
               ${config.packages.initial-setup}/bin/initial-setup
-              nix fmt flake.nix
+              nix fmt {flake,help}.nix
               ${uv-run} ruff format
               ${uv-run} ruff check --fix --select I --output-format=github src notebooks tests
               ${pkgs.mypy}/bin/mypy --ignore-missing-imports src
