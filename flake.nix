@@ -117,7 +117,11 @@
                   if command -v nvidia-smi &> /dev/null && nvidia-smi &> /dev/null; then
                       ACCELERATOR="cuda"
                   elif [ ! -z "$${ROCM_PATH}" ] || [ ! -z "$${ROCM_HOME}" ]; then
-                      ACCELERATOR="rocm"
+                      if [[ "$(uname)" != "Darwin" ]]; then
+                          ACCELERATOR="rocm"
+                      else
+                          ACCELERATOR="cpu"
+                      fi
                   else
                       ACCELERATOR="cpu"
                   fi
