@@ -100,51 +100,35 @@
                     ]
                   );
                   path-string = (lib.concatStringsSep "/bin:" local-packages) + "/bin";
+                  shellInit = pkgs.writeTextFile {
+                    name = "shell-init";
+                    text = ''
+                      # Set up shell and prompt
+                      export SHELL=${pkgs.bashInteractive}/bin/bash
+                      export PS1='(uv) \[\e[34m\]\w\[\e[0m\] $(if [[ $? == 0 ]]; then echo -e "\[\e[32m\]"; else echo -e "\[\e[31m\]"; fi)#\[\e[0m\] '
+
+                      # Add local packages to PATH if not already present
+                      if [[ ":$PATH:" != *":${path-string}:"* ]]; then
+                        PATH="${path-string}:$PATH"
+                      fi
+
+                      eval "$(direnv hook bash)"
+
+                      export PC_PORT_NUM=10011
+
+                      source .venv/bin/activate
+                      echo "Entering natsume-simple venv..."
+
+                      help() {
+                        cat ${pkgs.writeText "help-text" (help.generateHelpText self'.packages)}
+                      }
+                    '';
+                  };
                 in
                 ''
                   ${config.pre-commit.installationScript}
-                  # Set up shell and prompt
-                  export SHELL=${pkgs.bashInteractive}/bin/bash
-                  export PS1='(uv) \[\e[34m\]\w\[\e[0m\] $(if [[ $? == 0 ]]; then echo -e "\[\e[32m\]"; else echo -e "\[\e[31m\]"; fi)#\[\e[0m\] '
-                  # Add local packages to PATH if not already present
-                  if [[ ":$PATH:" != *":${path-string}:"* ]]; then
-                    PATH="${path-string}:$PATH"
-                  fi
-                  export PATH
-
-                  eval "$(direnv hook bash)"
-
-                  if command -v nvidia-smi &> /dev/null && nvidia-smi &> /dev/null; then
-                      ACCELERATOR="cuda"
-                  elif [ ! -z "$${ROCM_PATH}" ] || [ ! -z "$${ROCM_HOME}" ]; then
-                      if [[ "$(uname)" != "Darwin" ]]; then
-                          ACCELERATOR="rocm"
-                      else
-                          ACCELERATOR="cpu"
-                      fi
-                  else
-                      ACCELERATOR="cpu"
-                  fi
-
-                  export ACCELERATOR
-
-                  # Set process-compose port number to hopefully avoid conflicts
-                  export PC_PORT_NUM=10011
-
-                  # Set up Python and dependencies
                   ${config.packages.initial-setup}/bin/initial-setup
-
-                  # Enter venv by default via bash (ignoring existing configs):
-                  # This is disabled as it conflicts with direnv and precludes possibilty of using other shells.
-                  # exec uv run ${pkgs.bashInteractive}/bin/bash --noprofile --norc
-                  echo "Entering natsume-simple venv..."
-                  source .venv/bin/activate
-
-                  echo -e "${help.generateHelpText self'.packages}"
-                  help() {
-                    echo -e "${help.generateHelpText self'.packages}"
-                  }
-                  export -f help
+                  source ${shellInit}
                 '';
             };
             # TODO: Make backend, data, and frontend-specific devShells as well
@@ -163,6 +147,20 @@
             name = "initial-setup";
             runtimeInputs = runtime-packages;
             text = ''
+              # Determine ACCELERATOR type
+              if command -v nvidia-smi &> /dev/null && nvidia-smi &> /dev/null; then
+                  ACCELERATOR="cuda"
+              elif [ -n "''${ROCM_PATH}" ] || [ -n "''${ROCM_HOME}" ]; then
+                  if [[ "$(uname)" != "Darwin" ]]; then
+                      ACCELERATOR="rocm"
+                  else
+                      ACCELERATOR="cpu"
+                  fi
+              else
+                  ACCELERATOR="cpu"
+              fi
+              export ACCELERATOR
+
               export PYTHON_VERSION=3.12.7
               uv -q python install $PYTHON_VERSION
               uv -q python pin $PYTHON_VERSION
