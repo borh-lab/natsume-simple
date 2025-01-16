@@ -48,8 +48,27 @@
           ...
         }:
         let
+          detect-accelerator = ''
+            # Set default value if not already set
+            : "''${ACCELERATOR:=cpu}"
+
+            # Override with detection if not explicitly set externally
+            if [ "$ACCELERATOR" = "cpu" ] && [ -z "''${ACCELERATOR_EXPLICIT:-}" ]; then
+              if command -v nvidia-smi &> /dev/null && nvidia-smi &> /dev/null; then
+                  ACCELERATOR="cuda"
+              elif [ -n "''${ROCM_PATH}" ] || [ -n "''${ROCM_HOME}" ]; then
+                  ACCELERATOR="rocm"
+              fi
+            fi
+            export ACCELERATOR
+          '';
+          uv-wrapped = pkgs.writeShellScriptBin "uv" ''
+            ${detect-accelerator}
+            exec ${pkgs.uv}/bin/uv "$@"
+          '';
+          uv-run = ''uv run -q --extra "''${ACCELERATOR:-cpu}"'';
           runtime-packages = [
-            pkgs.uv
+            uv-wrapped
             pkgs.nodejs
           ];
           development-packages = [
@@ -62,7 +81,6 @@
             pkgs.pandoc
             pkgs.sqlite
           ];
-          uv-run = ''uv run -q --extra "$ACCELERATOR"'';
           help = import ./help.nix { inherit lib; };
         in
         {
@@ -88,6 +106,7 @@
                   local-packages = map (pn: e pn) (
                     with p;
                     [
+                      uv-wrapped
                       run-tests
                       lint
                       prepare-data
@@ -103,6 +122,8 @@
                   shellInit = pkgs.writeTextFile {
                     name = "shell-init";
                     text = ''
+                      ${detect-accelerator}
+
                       # Set up shell and prompt
                       export SHELL=${pkgs.bashInteractive}/bin/bash
                       export PS1='(uv) \[\e[34m\]\w\[\e[0m\] $(if [[ $? == 0 ]]; then echo -e "\[\e[32m\]"; else echo -e "\[\e[31m\]"; fi)#\[\e[0m\] '
@@ -147,20 +168,7 @@
             name = "initial-setup";
             runtimeInputs = runtime-packages;
             text = ''
-              # Determine ACCELERATOR type
-              if command -v nvidia-smi &> /dev/null && nvidia-smi &> /dev/null; then
-                  ACCELERATOR="cuda"
-              elif [ -n "''${ROCM_PATH}" ] || [ -n "''${ROCM_HOME}" ]; then
-                  if [[ "$(uname)" != "Darwin" ]]; then
-                      ACCELERATOR="rocm"
-                  else
-                      ACCELERATOR="cpu"
-                  fi
-              else
-                  ACCELERATOR="cpu"
-              fi
-              export ACCELERATOR
-
+              ${detect-accelerator}
               export PYTHON_VERSION=3.12.7
               uv -q python install $PYTHON_VERSION
               uv -q python pin $PYTHON_VERSION
