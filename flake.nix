@@ -56,7 +56,7 @@
             if [ "$ACCELERATOR" = "cpu" ] && [ -z "''${ACCELERATOR_EXPLICIT:-}" ]; then
               if command -v nvidia-smi &> /dev/null && nvidia-smi &> /dev/null; then
                   ACCELERATOR="cuda"
-              elif [ -n "''${ROCM_PATH}" ] || [ -n "''${ROCM_HOME}" ]; then
+              elif [ -n "''${ROCM_PATH:-}" ] || [ -n "''${ROCM_HOME:-}" ]; then
                   ACCELERATOR="rocm"
               fi
             fi
