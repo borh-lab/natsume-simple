@@ -235,7 +235,7 @@ def get_wiki_corpus() -> List[str]:
     Returns:
         List of Japanese sentences from Wikipedia, stripped of whitespace
     """
-    logger.info("Downloading TED corpus...")
+    logger.info("Downloading Wikipedia corpus...")
 
     ds = datasets.load_dataset(
         "wikimedia/wikipedia", "20231101.ja", streaming=True, split="train"
@@ -243,7 +243,7 @@ def get_wiki_corpus() -> List[str]:
 
     wiki_corpus = [
         paragraph
-        for article in ds.take(100)
+        for article in ds.take(500)
         for paragraph in article["text"].split("\n\n")
         if is_japanese(paragraph)
     ]
@@ -259,7 +259,7 @@ def save_corpus(data_dir: Path, corpus_name: str, corpus: List[str]) -> None:
         corpus_name: Name of the corpus (e.g., 'jnlp', 'ted')
         corpus: List of corpus lines to save (assumed to not have newline at end)
     """
-    output_file = data_dir / f"{corpus_name}-corpus.txt"
+    output_file = data_dir / f"{corpus_name}-corpus-sample.txt"
     with open(output_file, "w", encoding="utf-8") as f:
         for line in corpus:
             f.write(f"{line}\n")
@@ -357,9 +357,9 @@ def load_corpus(data_dir: Path, corpus_name: str, sample_size: int) -> List[str]
 
 def load_corpora(
     data_dir: Path,
-    jnlp_sample_size: int = 3000,
+    jnlp_sample_size: int = 10000,
     ted_sample_size: int = 30000,
-    wiki_sample_size: int = 3000,
+    wiki_sample_size: int = 40000,
 ) -> Tuple[List[str], List[str], List[str]]:
     """Load and sample from both JNLP and TED corpora.
 
@@ -402,14 +402,14 @@ if __name__ == "__main__":
     parser.add_argument(
         "--jnlp-sample-size",
         type=int,
-        default=3000,
-        help="Sample size for the JNLP corpus (default: 3000). This determines how many sentences from the JNLP corpus will be randomly selected when loading.",
+        default=10000,
+        help="Sample size for the JNLP corpus (default: 10000). This determines how many sentences from the JNLP corpus will be randomly selected when loading.",
     )
     parser.add_argument(
         "--wiki-sample-size",
         type=int,
-        default=3000,
-        help="Sample size for the Wikipedia corpus (default: 3000). This determines how many sentences from the JNLP corpus will be randomly selected when loading.",
+        default=40000,
+        help="Sample size for the Wikipedia corpus (default: 40000). This determines how many sentences from the JNLP corpus will be randomly selected when loading.",
     )
     parser.add_argument(
         "--ted-sample-size",

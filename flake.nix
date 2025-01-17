@@ -264,10 +264,7 @@
             text = ''
               ${config.packages.initial-setup}/bin/initial-setup
               ${uv-run} python src/natsume_simple/data.py --prepare
-              ${uv-run} python src/natsume_simple/data.py --load \
-                  --jnlp-sample-size 3000 \
-                  --wiki-sample-size 3000 \
-                  --ted-sample-size 30000
+              ${uv-run} python src/natsume_simple/data.py --load
             '';
             passthru.meta = {
               category = "Data";
@@ -280,19 +277,19 @@
             text = ''
               ${config.packages.initial-setup}/bin/initial-setup
               ${uv-run} python src/natsume_simple/pattern_extraction.py \
-                  --input-file data/jnlp-corpus.txt \
+                  --input-file data/jnlp-corpus-sample.txt \
                   --data-dir data \
                   --model ja_ginza \
                   --corpus-name "jnlp"
 
               ${uv-run} python src/natsume_simple/pattern_extraction.py \
-                  --input-file data/ted-corpus.txt \
+                  --input-file data/ted-corpus-sample.txt \
                   --data-dir data \
                   --model ja_ginza \
                   --corpus-name "ted"
 
               ${uv-run} python src/natsume_simple/pattern_extraction.py \
-                  --input-file data/wiki-corpus.txt \
+                  --input-file data/wiki-corpus-sample.txt \
                   --data-dir data \
                   --model ja_ginza \
                   --corpus-name "wiki"
