@@ -279,6 +279,8 @@ package
 
 # End of https://www.toptal.com/developers/gitignore/api/python,visualstudiocode,jetbrains+all,svelte
 
+.DS_Store
+
 # Devenv
 .devenv*
 devenv.local.nix
