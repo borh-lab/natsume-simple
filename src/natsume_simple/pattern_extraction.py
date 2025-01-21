@@ -5,6 +5,8 @@ from itertools import chain, dropwhile, takewhile, tee
 from pathlib import Path
 from typing import Any, Iterable, List, Optional, Tuple
 
+from natsume_simple.database import save_collocations_to_db
+
 import ginza  # type: ignore
 import polars as pl  # type: ignore
 import spacy  # type: ignore
@@ -301,7 +303,7 @@ def save_results(
     model_name: str,
 ):
     """
-    Save results to a CSV file using the standard naming convention.
+    Save results to both CSV file and database.
 
     Args:
         results (List[Tuple[str, str, str]]): The NPV patterns to save.
@@ -309,10 +311,15 @@ def save_results(
         corpus_name (str): The name of the corpus ('ted' or 'jnlp').
         model_name (str): Name of the spaCy model used.
     """
+    # Save to CSV
     output_file = data_dir / f"{corpus_name}_npvs_{model_name}.csv"
     df = pl.DataFrame(results, schema=["n", "p", "v"], orient="row")
     df = df.with_columns(pl.lit(corpus_name).alias("corpus"))
     df.write_csv(output_file)
+
+    # Save to database
+    db_path = data_dir / "corpus.db"
+    save_collocations_to_db(db_path, results, corpus_name)
 
 
 nlp, suru_token = load_nlp_model()

@@ -8,6 +8,8 @@ from typing import Iterator, List, Tuple
 
 import datasets  # type: ignore
 
+from natsume_simple.database import init_database, save_corpus_to_db
+
 from natsume_simple.log import setup_logger
 from natsume_simple.utils import set_random_seed
 
@@ -267,14 +269,20 @@ def save_corpus(data_dir: Path, corpus_name: str, corpus: List[str]) -> None:
 
 
 def save_corpora(data_dir: Path, corpora: dict[str, List[str]]) -> None:
-    """Save multiple corpora to files.
+    """Save multiple corpora to database.
 
     Args:
-        data_dir: Directory to save the corpus files
+        data_dir: Directory containing the database
         corpora: Dictionary mapping corpus names to their content
     """
+    db_path = data_dir / "corpus.db"
+    conn = init_database(db_path)
+
     for corpus_name, corpus in corpora.items():
-        save_corpus(data_dir, corpus_name, corpus)
+        save_corpus_to_db(conn, corpus_name, corpus)
+
+    conn.close()
+    logger.info(f"All corpora saved to database at {db_path}")
 
 
 def prepare_ted_corpus(data_dir: Path) -> int:
@@ -347,7 +355,7 @@ def load_corpus(data_dir: Path, corpus_name: str, sample_size: int) -> List[str]
         ...     len(lines)
         3
     """
-    corpus_file = data_dir / f"{corpus_name}-corpus.txt"
+    corpus_file = data_dir / f"{corpus_name}-corpus-sample.txt"
     with open(corpus_file, "r", encoding="utf-8") as f:
         lines = f.readlines()
 

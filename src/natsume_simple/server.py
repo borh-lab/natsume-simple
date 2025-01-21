@@ -5,10 +5,11 @@
 # ]
 # ///
 
-import glob
 from collections import Counter
+from pathlib import Path
 from typing import Any, Dict, List
 
+import duckdb
 import polars as pl  # type: ignore
 from fastapi import FastAPI  # type: ignore
 from fastapi.middleware.cors import CORSMiddleware  # type: ignore
@@ -32,17 +33,9 @@ def load_database(model_name: str) -> pl.DataFrame:
     return db.group_by(db.columns).agg(pl.len().alias("frequency"))
 
 
-def load_sentences_db() -> pl.DataFrame:
-    db = pl.DataFrame(schema=[("sentence", pl.Utf8), ("corpus", pl.Utf8)])
-    for corpus in glob.glob("data/*-corpus.txt"):
-        print(corpus)
-        basename = corpus.split("/")[-1].split("-")[0]
-        with open(corpus) as f:
-            sentences = [
-                sentence.strip() for sentence in f.readlines() if sentence.strip()
-            ]
-            db = db.vstack(pl.DataFrame({"sentence": sentences, "corpus": basename}))
-    return db
+def load_sentences_db() -> duckdb.DuckDBPyConnection:
+    db_path = Path("data/corpus.db")
+    return duckdb.connect(str(db_path), read_only=True)
 
 
 def calculate_corpus_norm(db: pl.DataFrame) -> Dict[str, float]:
@@ -99,9 +92,36 @@ def read_npv_verb(verb: str) -> List[Dict[str, Any]]:
 
 @app.get("/sentences/{n}/{p}/{v}")
 def read_sentences(n: str, p: str, v: str) -> List[dict[str, str]]:
-    matches = sentences_db.filter(
-        pl.col("sentence").str.contains(f"{n}{p}{v[0]}")  # Hacky way to match the verb
-    ).to_dicts()
+    conn = load_sentences_db()
+    matches = (
+        conn.execute(
+            """
+        WITH colloc AS (
+            SELECT sw1.sentence_id
+            FROM collocation c
+            JOIN sentence_word sw1 ON c.word_1_sw_id = sw1.id
+            JOIN word w1 ON sw1.word_id = w1.id
+            JOIN lemma l1 ON w1.lemma_id = l1.id
+            JOIN sentence_word sw2 ON c.particle_sw_id = sw2.id
+            JOIN word w2 ON sw2.word_id = w2.id
+            JOIN lemma l2 ON w2.lemma_id = l2.id
+            JOIN sentence_word sw3 ON c.word_2_sw_id = sw3.id
+            JOIN word w3 ON sw3.word_id = w3.id
+            JOIN lemma l3 ON w3.lemma_id = l3.id
+            WHERE l1.string = ?
+            AND l2.string = ?
+            AND l3.string = ?
+        )
+        SELECT s.text, src.corpus 
+        FROM sentence s
+        JOIN source src ON s.source_id = src.id
+        JOIN colloc ON s.id = colloc.sentence_id
+    """,
+            [n, p, v],
+        )
+        .fetchdf()
+        .to_dict("records")
+    )
     return matches
 
 

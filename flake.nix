@@ -249,7 +249,7 @@
             text = ''
               ${config.packages.initial-setup}/bin/initial-setup
               ${config.packages.build-frontend}/bin/build-frontend
-              ${uv-run} --with fastapi --with polars fastapi dev --host localhost src/natsume_simple/server.py
+              ${uv-run} --with fastapi --with duckdb fastapi dev --host localhost src/natsume_simple/server.py
             '';
             passthru.meta = {
               category = "Server";
@@ -262,7 +262,7 @@
             text = ''
               ${config.packages.initial-setup}/bin/initial-setup
               ${config.packages.build-frontend}/bin/build-frontend
-              ${uv-run} --with fastapi --with polars fastapi run --host localhost src/natsume_simple/server.py
+              ${uv-run} --with fastapi --with duckdb fastapi run --host localhost src/natsume_simple/server.py
             '';
             passthru.meta = {
               category = "Server";
@@ -279,7 +279,7 @@
             '';
             passthru.meta = {
               category = "Data";
-              description = "Prepare and load corpus samples";
+              description = "Prepare corpus data and load into database";
             };
           };
           packages.extract-patterns = pkgs.writeShellApplication {
@@ -307,7 +307,7 @@
             '';
             passthru.meta = {
               category = "Data";
-              description = "Extract patterns from all corpora";
+              description = "Extract patterns from corpora and save to database";
             };
           };
           packages.run-all = pkgs.writeShellApplication {
@@ -321,7 +321,7 @@
             '';
             passthru.meta = {
               category = "Main";
-              description = "Prepare data, extract patterns and start server";
+              description = "Initialize database, prepare data, extract patterns and start server";
             };
           };
           packages.default = config.packages.watch-prod-server;
