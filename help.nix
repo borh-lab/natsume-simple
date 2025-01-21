@@ -105,7 +105,7 @@ let
 
   # Process compose commands
   processComposeCommands = {
-    "nix run .#watch" = "Start development servers (backend + frontend)";
+    "nix run .#watch-all" = "Start development servers (backend + frontend)";
   };
 
   # Format command section
@@ -139,6 +139,6 @@ in
         ${cyan "ACCELERATOR"}      - Current accelerator: $ACCELERATOR
         ${cyan "PC_PORT_NUM"}      - Process compose port: $PC_PORT_NUM
 
-      Type 'help' to see this overview again
+      Type 'h' to see this overview again
     '';
 }

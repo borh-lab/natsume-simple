@@ -107,6 +107,7 @@
                     with p;
                     [
                       uv-wrapped
+                      help-command
                       run-tests
                       lint
                       prepare-data
@@ -140,9 +141,7 @@
                       source .venv/bin/activate
                       echo "Entering natsume-simple venv..."
 
-                      help() {
-                        cat ${pkgs.writeText "help-text" (help.generateHelpText self'.packages)}
-                      }
+                      h
                     '';
                   };
                 in
@@ -156,11 +155,23 @@
           };
 
           process-compose = {
-            watch = {
+            watch-all = {
               settings.processes = {
                 backend-server.command = "${self'.packages.watch-dev-server}/bin/watch-dev-server";
                 frontend-server.command = "${self'.packages.watch-frontend}/bin/watch-frontend";
               };
+            };
+          };
+
+          packages.help-command = pkgs.writeShellApplication {
+            name = "h";
+            runtimeInputs = [ ];
+            text = ''
+              echo -e "${help.generateHelpText self'.packages}"
+            '';
+            passthru.meta = {
+              category = "Help";
+              description = "Show this help message";
             };
           };
 
