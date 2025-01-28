@@ -2,15 +2,14 @@
 # dependencies = [
 #   "fastapi",
 #   "polars",
+#   "duckdb",
 # ]
 # ///
 
-from collections import Counter
 from pathlib import Path
 from typing import Any, Dict, List
 
 import duckdb
-import polars as pl  # type: ignore
 from fastapi import FastAPI  # type: ignore
 from fastapi.middleware.cors import CORSMiddleware  # type: ignore
 from fastapi.staticfiles import StaticFiles  # type: ignore
@@ -26,51 +25,38 @@ app.add_middleware(
 )
 
 
-def load_database(model_name: str) -> pl.DataFrame:
-    db = pl.read_csv(f"data/ted_npvs_{model_name}.csv")
-    db = db.vstack(pl.read_csv(f"data/jnlp_npvs_{model_name}.csv"))
-    db = db.vstack(pl.read_csv(f"data/wiki_npvs_{model_name}.csv"))
-    return db.group_by(db.columns).agg(pl.len().alias("frequency"))
-
-
 def load_sentences_db() -> duckdb.DuckDBPyConnection:
     db_path = Path("data/corpus.db")
     return duckdb.connect(str(db_path), read_only=True)
 
 
-def calculate_corpus_norm(db: pl.DataFrame) -> Dict[str, float]:
+def calculate_corpus_norm(conn: duckdb.DuckDBPyConnection) -> Dict[str, float]:
     """Calculate normalization factors for different corpora.
 
     Args:
-        db: DataFrame containing corpus frequencies
+        conn: Database connection
 
     Returns:
         Dictionary mapping corpus names to their normalization factors
-
-    Examples:
-        >>> import polars as pl
-        >>> df = pl.DataFrame({
-        ...     "corpus": ["ted", "ted", "jnlp", "jnlp", "jnlp"],
-        ...     "frequency": [1, 2, 3, 2, 1]
-        ... })
-        >>> norms = calculate_corpus_norm(df)
-        >>> norms["ted"] == 1.0  # ted has lower total frequency
-        True
-        >>> norms["jnlp"] == 0.5  # jnlp has double the frequency
-        True
     """
-    corpus_freqs = {
-        corpus: db.filter(pl.col("corpus") == corpus)["frequency"].sum()
-        for corpus in db["corpus"].unique()
+    corpus_freqs = conn.execute("""
+        SELECT src.corpus, COUNT(*) as frequency
+        FROM collocation c
+        JOIN sentence_word sw ON c.word_1_sw_id = sw.id
+        JOIN sentence s ON sw.sentence_id = s.id
+        JOIN source src ON s.source_id = src.id
+        GROUP BY src.corpus
+    """).pl()
+
+    min_count = corpus_freqs["frequency"].min()
+    return {
+        corpus: min_count / frequency
+        for corpus, frequency in zip(corpus_freqs["corpus"], corpus_freqs["frequency"])
     }
-    min_count = min(corpus_freqs.values())
-    return {corpus: min_count / frequency for corpus, frequency in corpus_freqs.items()}
 
 
-model_name = "ja_ginza"
-db = load_database(model_name)
+db = load_sentences_db()
 corpus_norm = calculate_corpus_norm(db)
-sentences_db = load_sentences_db()
 
 
 @app.get("/corpus/norm")
@@ -80,13 +66,87 @@ def get_corpus_norm() -> Dict[str, float]:
 
 @app.get("/npv/noun/{noun}")
 def read_npv_noun(noun: str) -> List[Dict[str, Any]]:
-    matches = db.filter(pl.col("n") == noun).drop("n").to_dicts()
+    matches = (
+        db.execute(
+            """
+        WITH pattern_counts AS (
+            SELECT 
+                l1.string as n,
+                l2.string as p,
+                l3.string as v,
+                src.corpus,
+                COUNT(*) as frequency
+            FROM collocation c
+            JOIN sentence_word sw1 ON c.word_1_sw_id = sw1.id
+            JOIN word w1 ON sw1.word_id = w1.id
+            JOIN lemma l1 ON w1.lemma_id = l1.id
+            JOIN sentence_word sw2 ON c.particle_sw_id = sw2.id
+            JOIN word w2 ON sw2.word_id = w2.id
+            JOIN lemma l2 ON w2.lemma_id = l2.id
+            JOIN sentence_word sw3 ON c.word_2_sw_id = sw3.id
+            JOIN word w3 ON sw3.word_id = w3.id
+            JOIN lemma l3 ON w3.lemma_id = l3.id
+            JOIN sentence s ON sw1.sentence_id = s.id
+            JOIN source src ON s.source_id = src.id
+            WHERE l1.string = ?
+            GROUP BY l1.string, l2.string, l3.string, src.corpus
+        )
+        SELECT 
+            n, p, v,
+            SUM(frequency) as frequency,
+            ARRAY_AGG(STRUCT_PACK(corpus := corpus, frequency := frequency)) as contributions
+        FROM pattern_counts
+        GROUP BY n, p, v
+        ORDER BY frequency DESC
+    """,
+            [noun],
+        )
+        .pl()
+        .to_dicts()
+    )
     return matches
 
 
 @app.get("/npv/verb/{verb}")
 def read_npv_verb(verb: str) -> List[Dict[str, Any]]:
-    matches = db.filter(pl.col("v") == verb).drop("v").to_dicts()
+    matches = (
+        db.execute(
+            """
+        WITH pattern_counts AS (
+            SELECT 
+                l1.string as n,
+                l2.string as p,
+                l3.string as v,
+                src.corpus,
+                COUNT(*) as frequency
+            FROM collocation c
+            JOIN sentence_word sw1 ON c.word_1_sw_id = sw1.id
+            JOIN word w1 ON sw1.word_id = w1.id
+            JOIN lemma l1 ON w1.lemma_id = l1.id
+            JOIN sentence_word sw2 ON c.particle_sw_id = sw2.id
+            JOIN word w2 ON sw2.word_id = w2.id
+            JOIN lemma l2 ON w2.lemma_id = l2.id
+            JOIN sentence_word sw3 ON c.word_2_sw_id = sw3.id
+            JOIN word w3 ON sw3.word_id = w3.id
+            JOIN lemma l3 ON w3.lemma_id = l3.id
+            JOIN sentence s ON sw1.sentence_id = s.id
+            JOIN source src ON s.source_id = src.id
+            WHERE l3.string = ?
+            GROUP BY l1.string, l2.string, l3.string, src.corpus
+        )
+        SELECT 
+            n, p, v,
+            SUM(frequency) as frequency,
+            ARRAY_AGG(STRUCT_PACK(corpus := corpus, frequency := frequency)) as contributions
+        FROM pattern_counts
+        GROUP BY n, p, v
+        ORDER BY frequency DESC
+    """,
+            [verb],
+        )
+        .pl()
+        .to_dicts()
+    )
     return matches
 
 
@@ -119,39 +179,41 @@ def read_sentences(n: str, p: str, v: str) -> List[dict[str, str]]:
     """,
             [n, p, v],
         )
-        .fetchdf()
-        .to_dict("records")
+        .pl()
+        .to_dicts()
     )
     return matches
 
 
 @app.get("/search/{query}")
 def read_query(query: str) -> List[tuple[str, str]]:
-    # Filter rows containing the query
-    matches = (
-        db.filter(pl.col("n").str.contains(query) | pl.col("v").str.contains(query))
-        .select(["n", "v"])
-        .to_dicts()
-    )
+    matches = db.execute(
+        """
+        WITH lemma_matches AS (
+            SELECT DISTINCT l.string, 'n' as type, COUNT(*) as frequency
+            FROM lemma l
+            JOIN word w ON l.id = w.lemma_id
+            JOIN sentence_word sw ON w.id = sw.word_id
+            WHERE l.string LIKE ?
+            AND l.pos IN ('NOUN', 'PROPN')
+            GROUP BY l.string
+            UNION ALL
+            SELECT DISTINCT l.string, 'v' as type, COUNT(*) as frequency
+            FROM lemma l
+            JOIN word w ON l.id = w.lemma_id
+            JOIN sentence_word sw ON w.id = sw.word_id
+            WHERE l.string LIKE ?
+            AND l.pos = 'VERB'
+            GROUP BY l.string
+        )
+        SELECT string, type
+        FROM lemma_matches
+        ORDER BY frequency DESC
+    """,
+        ["%" + query + "%", "%" + query + "%"],
+    ).fetchall()
 
-    result = []
-
-    # Iterate through the filtered results
-    for row in matches:
-        # If the query exists in the `n` column, add it to the result list
-        if query in row["n"]:
-            result.append((row["n"], "n"))
-        # If the query exists in the `v` column, add it to the result list
-        if query in row["v"]:
-            result.append((row["v"], "v"))
-
-    tuple_counts = Counter(result)
-
-    sorted_unique_result = sorted(
-        tuple_counts.keys(), key=lambda x: tuple_counts[x], reverse=True
-    )
-
-    return sorted_unique_result
+    return [(str(m[0]), str(m[1])) for m in matches]
 
 
 app.mount("/", StaticFiles(directory="natsume-frontend/build", html=True), name="app")

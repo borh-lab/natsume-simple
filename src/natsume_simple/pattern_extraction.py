@@ -3,12 +3,10 @@ import re
 from collections.abc import Iterator
 from itertools import chain, dropwhile, takewhile, tee
 from pathlib import Path
-from typing import Any, Iterable, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
-from natsume_simple.database import save_collocations_to_db
-
+import duckdb
 import ginza  # type: ignore
-import polars as pl  # type: ignore
 import spacy  # type: ignore
 import torch  # type: ignore
 from spacy.symbols import (  # type: ignore
@@ -30,7 +28,14 @@ from spacy.symbols import (  # type: ignore
     obl,
 )
 from spacy.tokens import Doc, Span, Token  # type: ignore
+from tqdm import tqdm
 
+from natsume_simple.database import (
+    get_or_create_lemma,
+    get_or_create_sentence_word,
+    get_or_create_word,
+    save_collocations,
+)
 from natsume_simple.log import setup_logger
 from natsume_simple.utils import set_random_seed
 
@@ -210,9 +215,7 @@ def normalize_verb_span(tokens: Doc | Span, suru_token: Token) -> Optional[str]:
         }:
             # Stop here and don't include the stopword token
             break
-        elif (
-            i == len(clean_tokens) - 2
-        ):  # Changed from -1 to -2 to handle final pair correctly
+        elif i == len(clean_tokens) - 2:
             normalized_tokens.append(next_token)
 
     logger.debug(f"Normalized tokens: {[t.text for t in normalized_tokens]}")
@@ -235,17 +238,19 @@ def normalize_verb_span(tokens: Doc | Span, suru_token: Token) -> Optional[str]:
     )
 
 
-def npv_matcher(doc: Doc, suru_token: Token) -> List[Tuple[str, str, str]]:
+def npv_matcher(
+    doc: Doc, suru_token: Token
+) -> List[Tuple[str, str, str, int, int, int, int, int, int]]:
     """
-    Extract NPV (Noun-Particle-Verb) patterns from a document.
+    Extract NPV (Noun-Particle-Verb) patterns from a document with character positions.
 
     Args:
         doc (Doc): The input spaCy document.
 
     Returns:
-        List[Tuple[str, str, str]]: A list of NPV patterns.
+        List[Tuple[str, str, str, int, int, int, int, int, int]]: A list of NPV patterns with positions.
     """
-    matches: List[Tuple[str, str, str]] = []
+    matches: List[Tuple[str, str, str, int, int, int, int, int, int]] = []
     for token in doc[:-2]:
         noun = token
         case_particle = noun.nbor(1)
@@ -267,109 +272,236 @@ def npv_matcher(doc: Doc, suru_token: Token) -> List[Tuple[str, str, str]]:
                     f"Error normalizing verb phrase: {verb_bunsetu_span} in document {doc}"
                 )
                 continue
+
+            # Get positions
+            n_begin = noun.idx
+            n_end = noun.idx + len(noun.text)
+            p_begin = case_particle.idx
+            p_end = case_particle.idx + len(case_particle.text)
+            # Note that this is not the whole verb, just the head token
+            # TODO: normalize_verb_span should return the a token span instead of a string
+            v_begin = verb.idx
+            v_end = verb.idx + len(verb.text)
+
             matches.append(
                 (
                     noun.norm_,
                     case_particle.norm_,
                     vp_string,
+                    n_begin,
+                    n_end,
+                    p_begin,
+                    p_end,
+                    v_begin,
+                    v_end,
                 )
             )
     return matches
 
 
-def process_corpus(
-    corpus: List[str], nlp: spacy.language.Language, suru_token: Token
-) -> List[Tuple[str, str, str]]:
-    """
-    Process the entire corpus and extract NPV patterns.
-
-    Args:
-        corpus (List[str]): The input corpus as a list of strings.
-        nlp (spacy.language.Language): The loaded NLP model.
-        suru_token (Token): The constant する token.
+def process_sentence(
+    doc: Doc,
+    sentence_id: int,
+    suru_token: Token,
+) -> Tuple[
+    List[Tuple[int, int, str, str, str, Optional[str], str]],
+    List[Tuple[int, str, str, str, int, int, int, int, int, int]],
+]:
+    """Process a single sentence, extracting both word info and patterns.
 
     Returns:
-        List[Tuple[str, str, str]]: A list of NPV patterns extracted from the corpus.
+        Tuple of (word_entries, npv_patterns) where:
+        - word_entries is List of (begin, end, lemma, pos, pron, inf, dep)
+        - npv_patterns is List of (sentence_id, noun, particle, verb, n_begin, n_end, p_begin, p_end, v_begin, v_end)
     """
-    return list(
-        chain.from_iterable(npv_matcher(doc, suru_token) for doc in nlp.pipe(corpus))
-    )
+    # Extract word information with morphological features
+    word_entries = []
+    for token in doc:
+        # Get pronunciation from morph features
+        pron = token.morph.get("Reading") or token.text
+        # Get inflection type from morph features
+        inf = token.morph.get("Inflection") or None
+        # Get dependency relation
+        dep = token.dep_
+
+        word_entries.append(
+            (
+                token.idx,
+                token.idx + len(token.text),
+                token.lemma_,
+                token.pos_,
+                pron[0]
+                if isinstance(pron, list)
+                else pron,  # Take first reading if multiple
+                inf[0]
+                if isinstance(inf, list)
+                else inf,  # Take first inflection if multiple
+                dep,
+            )
+        )
+
+    # Extract NPV patterns
+    patterns = npv_matcher(doc, suru_token)
+
+    return word_entries, [(sentence_id, *p) for p in patterns]
 
 
-def save_results(
-    results: List[Tuple[str, str, str]],
-    data_dir: Path,
-    corpus_name: str,
-    model_name: str,
-):
-    """
-    Save results to both CSV file and database.
+def save_sentence_processing_results(
+    conn: duckdb.DuckDBPyConnection,
+    word_entries: List[Tuple[int, int, str, str, str, Optional[str], str]],
+    sentence_id: int,
+) -> Dict[Tuple[int, int], int]:
+    """Save word information and return mapping of spans to sentence_word IDs."""
+    span_to_id = {}
+
+    for begin, end, lemma, pos, pron, inf, dep in word_entries:
+        # Get/create lemma
+        lemma_id = get_or_create_lemma(conn, lemma, pos)
+
+        # Create word entry with all morphological features
+        word_id = get_or_create_word(
+            conn,
+            lemma,
+            pron,
+            inf,
+            dep,
+            lemma_id,
+        )
+
+        # Link word to sentence
+        sw_id = get_or_create_sentence_word(
+            conn,
+            sentence_id,
+            word_id,
+            begin,
+            end,
+        )
+
+        span_to_id[(begin, end)] = sw_id
+
+    return span_to_id
+
+
+def process_corpus(
+    sentences: List[Tuple[int, str]],
+    nlp: spacy.language.Language,
+    suru_token: Token,
+    conn: duckdb.DuckDBPyConnection,
+) -> None:
+    """Process sentences and save results in one pass.
 
     Args:
-        results (List[Tuple[str, str, str]]): The NPV patterns to save.
-        data_dir (Path): Directory to save the output file.
-        corpus_name (str): The name of the corpus ('ted' or 'jnlp').
-        model_name (str): Name of the spaCy model used.
+        sentences: List of (sentence_id, text) pairs
+        nlp: The loaded NLP model
+        suru_token: The constant する token
+        conn: Database connection
     """
-    # Save to CSV
-    output_file = data_dir / f"{corpus_name}_npvs_{model_name}.csv"
-    df = pl.DataFrame(results, schema=["n", "p", "v"], orient="row")
-    df = df.with_columns(pl.lit(corpus_name).alias("corpus"))
-    df.write_csv(output_file)
+    all_patterns = []
 
-    # Save to database
-    db_path = data_dir / "corpus.db"
-    save_collocations_to_db(db_path, results, corpus_name)
+    # Add progress bar
+    pbar = tqdm(
+        zip(nlp.pipe(t[1] for t in sentences), sentences),
+        total=len(sentences),
+        desc="Processing sentences",
+    )
+
+    for doc, (sentence_id, text) in pbar:
+        # Process sentence
+        word_entries, patterns = process_sentence(doc, sentence_id, suru_token)
+
+        # Save word information and get span mapping
+        span_to_id = save_sentence_processing_results(conn, word_entries, sentence_id)
+
+        # Convert patterns to use sentence_word IDs
+        for pattern in patterns:
+            _, noun, particle, verb, n_begin, n_end, p_begin, p_end, v_begin, v_end = (
+                pattern
+            )
+
+            word_1_id = span_to_id.get((n_begin, n_end))
+            particle_id = span_to_id.get((p_begin, p_end))
+            word_2_id = span_to_id.get((v_begin, v_end))
+
+            if None not in (word_1_id, particle_id, word_2_id):
+                all_patterns.append((word_1_id, particle_id, word_2_id))
+
+        # Update progress bar description with pattern count
+        pbar.set_postfix({"patterns": len(all_patterns)})
+
+    logger.info(f"Saving {len(all_patterns)} patterns to database...")
+    # Bulk save patterns
+    save_collocations(conn, all_patterns)
 
 
 nlp, suru_token = load_nlp_model()
 
 
 def main(
-    input_file: Path,
     data_dir: Path,
     model_name: Optional[str] = None,
-    corpus_name: str = "Unknown",
+    corpus_name: Optional[str] = None,
 ) -> None:
-    """
-    Main function to process a corpus file and save results.
+    """Process sentences and extract collocations.
 
     Args:
-        input_file (Path): The path to the input corpus file.
-        data_dir (Path): Directory to save the output file.
-        model_name (Optional[str]): The name of the spaCy model to use.
-        corpus_name (str): The name of the corpus ('ted' or 'jnlp').
+        data_dir: Directory containing the database
+        model_name: Optional name of the spaCy model to use
+        corpus_name: Optional corpus name to process (if None, process all)
     """
     global nlp, suru_token
-    used_model = model_name if model_name else nlp.meta["name"]
     if model_name:
         nlp, suru_token = load_nlp_model(model_name)
 
-    with open(input_file, "r", encoding="utf-8") as f:
-        corpus = f.readlines()
+    conn = duckdb.connect(str(data_dir / "corpus.db"))
 
-    results = process_corpus(corpus, nlp, suru_token)
-    save_results(results, data_dir, corpus_name, used_model)
+    try:
+        # Build query based on whether corpus_name is specified
+        query = """
+            SELECT s.id, s.text
+            FROM sentence s
+            JOIN source src ON s.source_id = src.id
+        """
+        params = []
 
-    logger.info(f"Processed {len(corpus)} lines.")
-    logger.info(f"Extracted {len(results)} NPV patterns.")
-    logger.info(f"Results saved to {data_dir}/{corpus_name}_npvs_{used_model}.csv")
+        if corpus_name:
+            query += " WHERE src.corpus = ?"
+            params.append(corpus_name)
+            logger.info(f"Processing corpus: {corpus_name}")
+        else:
+            logger.info("Processing all corpora")
+
+        # Get sentences with their database IDs
+        sentences = conn.execute(query, params).fetchall()
+        if not sentences:
+            logger.warning("No sentences found to process")
+            return
+
+        # Process everything in one pass
+        process_corpus(sentences, nlp, suru_token, conn)
+        conn.commit()
+
+        logger.info(f"Processed {len(sentences)} sentences")
+    finally:
+        conn.close()
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Extract NPV patterns from a corpus.")
-    parser.add_argument(
-        "--input-file", type=Path, required=True, help="Path to the input corpus file"
-    )
+    parser = argparse.ArgumentParser(description="Extract NPV patterns from corpora.")
     parser.add_argument(
         "--data-dir",
         type=Path,
         required=True,
-        help="Directory to save the output CSV file",
+        help="Directory containing the database",
     )
-    parser.add_argument("--model", type=str, help="Name of the spaCy model to use")
     parser.add_argument(
-        "--corpus-name", type=str, default="Unknown", help="Name of the corpus"
+        "--model",
+        type=str,
+        help="Name of the spaCy model to use",
+    )
+    parser.add_argument(
+        "--corpus",
+        type=str,
+        help="Name of specific corpus to process (default: process all)",
     )
     parser.add_argument(
         "--seed",
@@ -383,4 +515,4 @@ if __name__ == "__main__":
     set_random_seed(args.seed)
     logger.info(f"Random seed set to {args.seed}")
 
-    main(args.input_file, args.data_dir, args.model, args.corpus_name)
+    main(args.data_dir, args.model, args.corpus)

@@ -1,6 +1,8 @@
-import duckdb
 from pathlib import Path
 from typing import List, Optional, Tuple
+
+import duckdb
+import polars as pl
 
 from natsume_simple.log import setup_logger
 
@@ -13,8 +15,9 @@ def init_database(db_path: Path) -> duckdb.DuckDBPyConnection:
 
     # Create schema
     conn.execute("""
+        CREATE SEQUENCE IF NOT EXISTS id_seq_source START 1;
         CREATE TABLE IF NOT EXISTS source (
-            id INTEGER PRIMARY KEY,
+            id INTEGER PRIMARY KEY DEFAULT NEXTVAL('id_seq_source'),
             year INTEGER NOT NULL,
             title TEXT NOT NULL,
             author TEXT,
@@ -22,41 +25,50 @@ def init_database(db_path: Path) -> duckdb.DuckDBPyConnection:
             corpus TEXT
         );
 
+        CREATE SEQUENCE IF NOT EXISTS id_seq_sentence START 1;
         CREATE TABLE IF NOT EXISTS sentence (
-            id INTEGER PRIMARY KEY,
+            id INTEGER PRIMARY KEY DEFAULT NEXTVAL('id_seq_sentence'),
             text TEXT NOT NULL,
             source_id INTEGER NOT NULL REFERENCES source(id)
         );
 
+        CREATE SEQUENCE IF NOT EXISTS id_seq_lemma START 1;
         CREATE TABLE IF NOT EXISTS lemma (
-            id INTEGER PRIMARY KEY,
+            id INTEGER PRIMARY KEY DEFAULT NEXTVAL('id_seq_lemma'),
             string TEXT NOT NULL,
             pos TEXT NOT NULL,
             UNIQUE(string, pos)
         );
 
+        CREATE SEQUENCE IF NOT EXISTS id_seq_word START 1;
         CREATE TABLE IF NOT EXISTS word (
-            id INTEGER PRIMARY KEY,
+            id INTEGER PRIMARY KEY DEFAULT NEXTVAL('id_seq_word'),
             string TEXT NOT NULL,
-            pron TEXT NOT NULL,
-            inf TEXT,
-            dep TEXT NOT NULL,
+            pron TEXT NOT NULL,      -- Pronunciation ("Reading" field from GiNZA)
+            inf TEXT,                -- Inflection type (can be NULL)
+            dep TEXT NOT NULL,       -- UD dependency relation
             lemma_id INTEGER NOT NULL REFERENCES lemma(id)
         );
 
+        CREATE SEQUENCE IF NOT EXISTS id_seq_sentence_word START 1;
         CREATE TABLE IF NOT EXISTS sentence_word (
-            id INTEGER PRIMARY KEY,
+            id INTEGER PRIMARY KEY DEFAULT NEXTVAL('id_seq_sentence_word'),
             sentence_id INTEGER NOT NULL REFERENCES sentence(id),
             word_id INTEGER NOT NULL REFERENCES word(id),
             begin INTEGER NOT NULL,
-            end INTEGER NOT NULL
+            "end" INTEGER NOT NULL,
+            UNIQUE(sentence_id, begin, "end")
         );
+        CREATE INDEX IF NOT EXISTS idx_sentence_word_pos ON sentence_word(begin, "end");
 
         CREATE TABLE IF NOT EXISTS collocation (
             word_1_sw_id INTEGER NOT NULL REFERENCES sentence_word(id),
             particle_sw_id INTEGER NOT NULL REFERENCES sentence_word(id),
-            word_2_sw_id INTEGER NOT NULL REFERENCES sentence_word(id)
+            word_2_sw_id INTEGER NOT NULL REFERENCES sentence_word(id),
+            UNIQUE(word_1_sw_id, particle_sw_id, word_2_sw_id) -- Not strictly necessary, just data validation
         );
+        
+        CREATE INDEX IF NOT EXISTS idx_colloc_words ON collocation(word_1_sw_id, word_2_sw_id);
     """)
 
     return conn
@@ -73,26 +85,39 @@ def insert_source(
     """Insert a source and return its ID."""
     conn.execute(
         """
-        INSERT INTO source (year, title, author, publisher, corpus)
+        INSERT INTO source (corpus, year, title, author, publisher)
         VALUES (?, ?, ?, ?, ?)
         RETURNING id
     """,
-        [year, title, author, publisher, corpus],
+        [corpus, year, title, author, publisher],
     )
     return conn.fetchone()[0]
 
 
 def insert_sentences(
-    conn: duckdb.DuckDBPyConnection, sentences: List[str], source_id: int
-) -> None:
-    """Insert sentences for a given source."""
+    conn: duckdb.DuckDBPyConnection,
+    sentences: List[str],
+    source_id: int,
+) -> int:
+    """Insert sentences and return their IDs.
+
+    Args:
+        conn: Database connection
+        sentences: List of sentence texts
+        source_id: ID of the source document
+
+    Returns:
+        ID of the first inserted sentence
+    """
     conn.execute(
         """
-        INSERT INTO sentence (text, source_id)
-        SELECT text, ? FROM (SELECT UNNEST(?) as text)
-    """,
-        [source_id, sentences],
+        INSERT INTO sentence (text, source_id) 
+        SELECT unnest(?::VARCHAR[]), ? 
+        RETURNING id
+        """,
+        [sentences, source_id],
     )
+    return conn.fetchone()[0]
 
 
 def get_or_create_lemma(conn: duckdb.DuckDBPyConnection, string: str, pos: str) -> int:
@@ -145,7 +170,7 @@ def get_or_create_sentence_word(
     """Get sentence_word ID or create if not exists."""
     conn.execute(
         """
-        INSERT INTO sentence_word (sentence_id, word_id, begin, end)
+        INSERT INTO sentence_word (sentence_id, word_id, begin, "end")
         VALUES (?, ?, ?, ?)
         """,
         [sentence_id, word_id, begin, end],
@@ -153,7 +178,7 @@ def get_or_create_sentence_word(
     result = conn.execute(
         """
         SELECT id FROM sentence_word 
-        WHERE sentence_id = ? AND word_id = ? AND begin = ? AND end = ?
+        WHERE sentence_id = ? AND word_id = ? AND begin = ? AND "end" = ?
         """,
         [sentence_id, word_id, begin, end],
     ).fetchone()
@@ -164,105 +189,75 @@ def save_corpus_to_db(
     conn: duckdb.DuckDBPyConnection,
     corpus_name: str,
     sentences: List[str],
-    year: Optional[int] = None,
-) -> None:
-    """Save a corpus to the database."""
+    year: int,
+    title: str,
+    author: Optional[str] = None,
+    publisher: Optional[str] = None,
+) -> int:
+    """Save a corpus to the database and return sentence IDs."""
     source_id = insert_source(
-        conn, corpus=corpus_name, title=f"{corpus_name} corpus", year=year
+        conn,
+        corpus=corpus_name,
+        title=title,
+        year=year,
+        author=author,
+        publisher=publisher,
     )
-    insert_sentences(conn, sentences, source_id)
-    logger.info(f"Saved {len(sentences)} sentences from {corpus_name} corpus")
+    return insert_sentences(conn, sentences, source_id)
 
 
-def save_collocations_to_db(
-    db_path: Path, collocations: List[Tuple[str, str, str]], corpus_name: str
+def get_sentence_word_id(
+    conn: duckdb.DuckDBPyConnection, sentence_id: int, begin: int, end: int
+) -> Optional[int]:
+    """Get sentence_word ID for a given span."""
+    result = conn.execute(
+        """
+        SELECT id FROM sentence_word 
+        WHERE sentence_id = ? 
+        AND begin = ? 
+        AND "end" = ?
+        """,
+        [sentence_id, begin, end],
+    ).fetchone()
+    return result[0] if result else None
+
+
+def save_collocations(
+    conn: duckdb.DuckDBPyConnection,
+    collocations: List[Tuple[int, int, int]],
 ) -> None:
-    """
-    Save collocations to database, linking to existing sentences.
+    """Save collocations to database in bulk.
 
     Args:
-        db_path: Path to database file
-        collocations: List of (noun, particle, verb) tuples
-        corpus_name: Name of the corpus
+        conn: Database connection
+        collocations: List of (word_1_sw_id, particle_sw_id, word_2_sw_id) tuples
     """
-    conn = duckdb.connect(str(db_path))
+    # Convert list of tuples to list of dicts for easier processing
+    data = [
+        {
+            "word_1_sw_id": c[0],
+            "particle_sw_id": c[1],
+            "word_2_sw_id": c[2],
+        }
+        for c in collocations
+    ]
 
-    try:
-        # Get source ID for this corpus
-        source_id = conn.execute(
-            "SELECT id FROM source WHERE corpus = ?", [corpus_name]
-        ).fetchone()[0]
-
-        # Get all sentences for this source
-        sentences = conn.execute(
-            "SELECT id, text FROM sentence WHERE source_id = ?", [source_id]
-        ).fetchdf()
-
-        for noun, particle, verb in collocations:
-            # Find sentences containing this collocation pattern
-            pattern = f"{noun}{particle}.*{verb}"
-            matching_sentences = sentences[sentences["text"].str.contains(pattern)]
-
-            if matching_sentences.empty:
-                logger.debug(f"No matching sentences found for pattern: {pattern}")
-                continue
-
-            # Get or create lemmas
-            noun_lemma_id = get_or_create_lemma(conn, noun, "NOUN")
-            particle_lemma_id = get_or_create_lemma(conn, particle, "ADP")
-            verb_lemma_id = get_or_create_lemma(conn, verb, "VERB")
-
-            # Get or create words
-            noun_word_id = get_or_create_word(
-                conn, noun, noun, None, "nsubj", noun_lemma_id
-            )
-            particle_word_id = get_or_create_word(
-                conn, particle, particle, None, "case", particle_lemma_id
-            )
-            verb_word_id = get_or_create_word(
-                conn, verb, verb, None, "ROOT", verb_lemma_id
-            )
-
-            for _, sentence in matching_sentences.iterrows():
-                # Find positions of words in the sentence
-                text = sentence["text"]
-                noun_pos = text.find(noun)
-                if noun_pos == -1:
-                    continue
-
-                particle_pos = text.find(particle, noun_pos + len(noun))
-                if particle_pos == -1:
-                    continue
-
-                verb_pos = text.find(verb, particle_pos + len(particle))
-                if verb_pos == -1:
-                    continue
-
-                # Create sentence_word entries
-                noun_sw_id = get_or_create_sentence_word(
-                    conn, sentence["id"], noun_word_id, noun_pos, noun_pos + len(noun)
-                )
-                particle_sw_id = get_or_create_sentence_word(
-                    conn,
-                    sentence["id"],
-                    particle_word_id,
-                    particle_pos,
-                    particle_pos + len(particle),
-                )
-                verb_sw_id = get_or_create_sentence_word(
-                    conn, sentence["id"], verb_word_id, verb_pos, verb_pos + len(verb)
-                )
-
-                # Create collocation entry
-                conn.execute(
-                    """
-                    INSERT INTO collocation (word_1_sw_id, particle_sw_id, word_2_sw_id)
-                    VALUES (?, ?, ?)
-                    ON CONFLICT DO NOTHING
-                    """,
-                    [noun_sw_id, particle_sw_id, verb_sw_id],
-                )
-
-        conn.commit()
-    finally:
-        conn.close()
+    # Use DuckDB's from_arrow for efficient bulk insert
+    conn.execute(
+        """
+        INSERT INTO collocation 
+        (word_1_sw_id, particle_sw_id, word_2_sw_id)
+        SELECT 
+            word_1_sw_id, 
+            particle_sw_id, 
+            word_2_sw_id
+        FROM __data
+        WHERE NOT EXISTS (
+            SELECT 1 FROM collocation 
+            WHERE word_1_sw_id = __data.word_1_sw_id
+            AND particle_sw_id = __data.particle_sw_id
+            AND word_2_sw_id = __data.word_2_sw_id
+        )
+    """,
+        {"__data": pl.DataFrame(data)},
+    )

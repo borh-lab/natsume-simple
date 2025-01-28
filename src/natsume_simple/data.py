@@ -1,19 +1,66 @@
 import argparse
-import random
 import subprocess
 import urllib.request
 import zipfile
 from pathlib import Path
-from typing import Iterator, List, Tuple
+from typing import ClassVar, Dict, Iterator, List, Optional, Tuple
 
 import datasets  # type: ignore
+import polars as pl  # type: ignore
+from pydantic import BaseModel, Field
+from tqdm import tqdm
 
 from natsume_simple.database import init_database, save_corpus_to_db
-
 from natsume_simple.log import setup_logger
 from natsume_simple.utils import set_random_seed
 
 logger = setup_logger(__name__)
+
+
+class CorpusEntry(BaseModel):
+    """Standard metadata format for all corpus entries."""
+
+    corpus: str
+    title: str
+    year: int
+    author: Optional[str] = None
+    publisher: Optional[str] = None
+    sentences: List[str]
+    url: Optional[str] = None
+
+
+class BaseCorpusLoader(BaseModel):
+    """Base class for all corpus loaders."""
+
+    data_dir: Path
+    corpus_dir: Path = Field(default_factory=Path)
+    corpus_name: ClassVar[str]
+
+    def setup_corpus_dir(self) -> Path:
+        """Set up and return the corpus directory."""
+        return self.data_dir / f"{self.corpus_name}_corpus"
+
+    def _load_sentences(self, file_path: Path) -> List[str]:
+        """Load and filter sentences from a text file."""
+        txt_path = self.corpus_dir / file_path
+        try:
+            with open(txt_path, "r", encoding="utf-8") as f:
+                return [
+                    line.strip()
+                    for line in f
+                    if is_japanese(line.strip(), min_length=5)
+                ]
+        except (UnicodeDecodeError, IOError) as e:
+            logger.warning(f"Error loading {txt_path}: {e}")
+            return []
+
+    def download(self) -> None:
+        """Download corpus data if needed."""
+        self.corpus_dir.mkdir(parents=True, exist_ok=True)
+
+    def load_metadata(self) -> Iterator[CorpusEntry]:
+        """Load metadata from standard metadata.csv if it exists."""
+        raise NotImplementedError
 
 
 def is_japanese(line: str, min_length: int = 200) -> bool:
@@ -106,290 +153,328 @@ def filter_non_japanese(dir: Path, min_length: int = 200) -> Iterator[str]:
                     yield line
 
 
-def download_jnlp_corpus(data_dir: Path) -> None:
-    """Download the JNLP corpus from the official website.
+class JNLPCorpusLoader(BaseCorpusLoader):
+    corpus_name: ClassVar[str] = "jnlp"
 
-    Downloads the NLP_LATEX_CORPUS.zip file and extracts it to the specified directory.
+    def model_post_init(self, _context) -> None:
+        base_dir = self.setup_corpus_dir()
+        self.corpus_dir = base_dir / "NLP_LATEX_CORPUS"
 
-    Args:
-        data_dir: Directory where the corpus will be downloaded and extracted
-    """
-    file = data_dir / "NLP_LATEX_CORPUS.zip"
-    if not file.is_file():
-        logger.info("Downloading JNLP corpus...")
-        urllib.request.urlretrieve(
-            "https://www.anlp.jp/resource/journal_latex/NLP_LATEX_CORPUS.zip",
-            file,
+    def download(self) -> None:
+        """Download the JNLP corpus."""
+        file = self.data_dir / "NLP_LATEX_CORPUS.zip"
+        if not file.is_file():
+            logger.info("Downloading JNLP corpus...")
+            urllib.request.urlretrieve(
+                "https://www.anlp.jp/resource/journal_latex/NLP_LATEX_CORPUS.zip",
+                file,
+            )
+
+        # Extract to the base corpus directory
+        base_dir = self.setup_corpus_dir()
+        with zipfile.ZipFile(file, "r") as z:
+            z.extractall(base_dir)
+
+    def load_metadata(self) -> Iterator[CorpusEntry]:
+        """Load JNLP-specific metadata."""
+        xls_path = self.corpus_dir / "file_DB.xls"
+        if not xls_path.exists():
+            logger.error(f"JNLP metadata Excel not found at {xls_path}")
+            return
+
+        df = pl.read_excel(xls_path)
+        volume_year_map = dict(zip(range(1, 31), range(1994, 2024)))
+
+        for row in df.iter_rows(named=True):
+            if row["ファイル名"] == "*NA*":
+                continue
+            if "/" not in row["ファイル名"]:
+                # Fix missing directory in some file paths
+                fixed_path = f"V{row['Vol']}/{row['ファイル名']}"
+                logger.info(f"Fixing file path for {row['ファイル名']} -> {fixed_path}")
+                row["ファイル名"] = fixed_path
+
+            tex_path = self.corpus_dir / Path(row["ファイル名"])
+            if not tex_path.exists():
+                logger.warning(f"File not found: {tex_path}, skipping...")
+                continue
+            txt_path = tex_path.with_suffix(".txt")
+
+            # Convert if needed
+            if not txt_path.exists():
+                if not self._convert_latex_file(tex_path, txt_path):
+                    continue
+
+            sentences = self._load_sentences(
+                Path(row["ファイル名"]).with_suffix(".txt")
+            )
+            if not sentences:
+                continue
+
+            year = volume_year_map.get(row["Vol"])
+            if not year:
+                continue
+
+            yield CorpusEntry(
+                corpus=self.corpus_name,
+                title=row["タイトル"],
+                year=year,
+                author=row["著者"] if row["著者"] else "Unknown",
+                publisher="自然言語処理",
+                sentences=sentences,
+                url=row["J-Stageにおける論文URL"] or "",
+            )
+
+    def _convert_latex_file(self, tex_path: Path, txt_path: Path) -> bool:
+        """Convert LaTeX to text."""
+        logger.info(f"Converting {tex_path} => {txt_path}")
+        if not convert_encoding(tex_path):
+            return False
+        if not convert_latex_to_plaintext(tex_path, txt_path):
+            return False
+        return True
+
+
+def convert_encoding(file_path: Path) -> bool:
+    """Convert file encoding to UTF-8 using nkf."""
+    try:
+        subprocess.run(
+            ["nkf", "-w", "--overwrite", "--in-place", str(file_path)], check=True
         )
+        return True
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Encoding conversion failed for {file_path}: {e}")
+        return False
 
-    with zipfile.ZipFile(file, "r") as z:
-        z.extractall(data_dir)
 
-
-def convert_latex_to_text(corpus_dir: Path) -> None:
-    """Convert LaTeX files to plain text using pandoc.
-
-    Finds all .tex files in the directory (recursively) and converts them to .txt files.
-    Skips files that have already been converted.
-
-    Args:
-        corpus_dir: Directory containing LaTeX files to convert
-    """
-    latex_files = corpus_dir.rglob("*.tex")
-
-    for latex_file in latex_files:
-        text_file = latex_file.with_suffix(".txt")
-        logger.info(f"{latex_file} => {text_file}")
-        if text_file.is_file():
-            logger.info("File exists, skipping.")
-            continue
-
-        p = subprocess.run(
+def convert_latex_to_plaintext(source: Path, dest: Path) -> bool:
+    """Convert LaTeX file to plain text using pandoc."""
+    try:
+        subprocess.run(
             [
                 "pandoc",
-                "--quiet",
-                "-f",
+                "--from",
                 "latex+east_asian_line_breaks",
-                "-t",
+                "--to",
                 "plain",
                 "--wrap=none",
                 "--strip-comments",
                 "-N",
                 "-s",
-                latex_file,
+                str(source),
                 "-o",
-                text_file,
-            ]
+                str(dest),
+            ],
+            check=True,
         )
-        if p.returncode != 0:
-            logger.error("Failed to convert using pandoc, skipping!")
+        return True
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Pandoc conversion failed for {source}: {e}")
+        return False
 
 
-def prepare_jnlp_corpus(data_dir: Path) -> int:
-    """Prepare the JNLP corpus by downloading, converting, and filtering.
+class WikipediaCorpusLoader(BaseCorpusLoader):
+    corpus_name: ClassVar[str] = "wiki"
 
-    Downloads the corpus, converts LaTeX to text, filters non-Japanese content,
-    and saves the result to a single text file.
+    def model_post_init(self, _context) -> None:
+        self.corpus_dir = self.setup_corpus_dir()
 
-    Args:
-        data_dir: Directory for storing the corpus data
+    def load_metadata(self) -> Iterator[CorpusEntry]:
+        """Load Wikipedia-specific metadata."""
+        logger.info("Downloading Wikipedia corpus...")
+        ds = datasets.load_dataset(
+            "wikimedia/wikipedia", "20231101.ja", streaming=True, split="train"
+        )
 
-    Returns:
-        Number of lines in the prepared corpus
-    """
-    corpus_dir = data_dir / "NLP_LATEX_CORPUS"
-    download_jnlp_corpus(data_dir)
-    convert_latex_to_text(corpus_dir)
-
-    logger.info("Filtering and writing JNLP corpus...")
-    lines = list(filter_non_japanese(dir=corpus_dir))
-
-    output_file = data_dir / "jnlp-corpus.txt"
-    with open(output_file, "w", encoding="utf-8") as f:
-        for line in lines:
-            f.write(f"{line}\n")
-
-    logger.info(f"JNLP corpus saved to {output_file}")
-    return len(lines)
-
-
-def get_ted_corpus() -> List[str]:
-    """Download and combine TED talk transcripts from multiple years.
-
-    Downloads Japanese transcripts from TED talks using the datasets library,
-    combining data from 2014-2017.
-
-    Returns:
-        List of Japanese sentences from TED talks, stripped of whitespace
-    """
-    logger.info("Downloading TED corpus...")
-
-    ted_dataset_2014 = datasets.load_dataset(
-        "ted_talks_iwslt",
-        language_pair=("en", "ja"),
-        year="2014",
-        trust_remote_code=True,
-    )
-    ted_dataset_2015 = datasets.load_dataset(
-        "ted_talks_iwslt", language_pair=("en", "ja"), year="2015"
-    )
-    ted_dataset_2016 = datasets.load_dataset(
-        "ted_talks_iwslt", language_pair=("en", "ja"), year="2016"
-    )
-    ted_dataset_2017jaen = datasets.load_dataset(
-        "iwslt2017", "iwslt2017-ja-en", trust_remote_code=True
-    )
-
-    ted_corpus: List[str] = (
-        [d["ja"].rstrip() for d in ted_dataset_2014["train"]["translation"]]
-        + [d["ja"].rstrip() for d in ted_dataset_2015["train"]["translation"]]
-        + [d["ja"].rstrip() for d in ted_dataset_2016["train"]["translation"]]
-        + [d["ja"].rstrip() for d in ted_dataset_2017jaen["train"]["translation"]]
-    )
-
-    return ted_corpus
+        # Add progress bar for Wikipedia articles
+        for article in tqdm(ds.take(500), desc="Loading Wikipedia articles", total=500):
+            title = article["title"]
+            text = article["text"]
+            paragraphs = [p.strip() for p in text.split("\n\n") if is_japanese(p)]
+            if paragraphs:
+                yield CorpusEntry(
+                    corpus=self.corpus_name,
+                    title=title,
+                    year=2023,
+                    author="Wikipedia Contributors",
+                    publisher="Wikimedia Foundation",
+                    sentences=paragraphs,
+                )
 
 
-def get_wiki_corpus() -> List[str]:
-    """Download a subset of Wikipedia.
+class GenericCorpusLoader(BaseCorpusLoader):
+    """Generic loader for any corpus with a metadata.csv file."""
+
+    corpus_name: str = ""  # type: ignore  # Override the ClassVar with instance variable
+
+    def __init__(self, data_dir: Path, corpus_name: str):
+        self._corpus_name = corpus_name
+        super().__init__(data_dir=data_dir)
+
+    def model_post_init(self, _context) -> None:
+        self.corpus_name = self._corpus_name  # Set the instance variable
+        self.corpus_dir = self.setup_corpus_dir()
+        if not (self.corpus_dir / "metadata.csv").exists():
+            logger.warning(
+                f"No metadata.csv found in {self.corpus_dir}. "
+                "Please ensure it contains:\n"
+                "- title: str\n"
+                "- year: int\n"
+                "- file_path: str\n"
+                "Optional:\n"
+                "- author: str\n"
+                "- publisher: str\n"
+                "- url: str"
+            )
+
+    def load_metadata(self) -> Iterator[CorpusEntry]:
+        """Load metadata from standard metadata.csv if it exists."""
+        metadata_path = self.corpus_dir / "metadata.csv"
+        if metadata_path.exists():
+            df = pl.read_csv(metadata_path)
+            for row in df.iter_rows(named=True):
+                yield CorpusEntry(
+                    corpus=self.corpus_name,
+                    title=row["title"],
+                    year=row["year"],
+                    author=row.get("author"),
+                    publisher=row.get("publisher"),
+                    sentences=self._load_sentences(row["file_path"]),
+                    url=row.get("url"),
+                )
 
 
-    Returns:
-        List of Japanese sentences from Wikipedia, stripped of whitespace
-    """
+class TEDCorpusLoader(BaseCorpusLoader):
+    corpus_name: ClassVar[str] = "ted"
+
+    def model_post_init(self, _context) -> None:
+        self.corpus_dir = self.setup_corpus_dir()
+
+    def load_metadata(self) -> Iterator[CorpusEntry]:
+        """Load TED-specific metadata."""
+        ted_talks: dict[str | int, Tuple[str, int, List[str]]] = {}
+
+        datasets_to_load = [
+            ("ted_talks_iwslt", "iwslt2014", 2014),
+            ("ted_talks_iwslt", "iwslt2015", 2015),
+            ("ted_talks_iwslt", "iwslt2016", 2016),
+            ("iwslt2017", "iwslt2017-ja-en", 2017),
+        ]
+
+        # Add progress bar for TED datasets
+        for year_dataset in tqdm(datasets_to_load, desc="Loading TED datasets"):
+            dataset = self._load_dataset(year_dataset)
+            # Add progress bar for processing talks
+            for example in tqdm(
+                dataset, desc=f"Processing {year_dataset[1]} talks", leave=False
+            ):
+                talk_id = example.get("id", hash(example["translation"]["en"]))
+                title = example.get("talk_name", f"TED Talk {talk_id}")
+                year = year_dataset[2]
+                text = example["translation"]["ja"].rstrip()
+
+                if talk_id not in ted_talks:
+                    ted_talks[talk_id] = (title, year, [])
+                ted_talks[talk_id][2].append(text)
+
+        for title, year, sentences in ted_talks.values():
+            yield CorpusEntry(
+                corpus=self.corpus_name,
+                title=title,
+                year=year,
+                author="Various Speakers",
+                publisher="TED Conference LLC",
+                sentences=sentences,
+            )
+
+    def _load_dataset(self, year_dataset: Tuple[str, str, int]):
+        if year_dataset[0] == "iwslt2017":
+            return datasets.load_dataset(
+                "iwslt2017", "iwslt2017-ja-en", trust_remote_code=True
+            )["train"]
+        return datasets.load_dataset(
+            year_dataset[0],
+            language_pair=("en", "ja"),
+            year=str(year_dataset[2]),
+            trust_remote_code=True,
+        )["train"]
+
+
+def get_wiki_corpus() -> list[tuple[str, list[str]]]:
+    """Return structured wiki data with (title, sentences) tuples"""
     logger.info("Downloading Wikipedia corpus...")
 
+    wiki_data = []
     ds = datasets.load_dataset(
         "wikimedia/wikipedia", "20231101.ja", streaming=True, split="train"
     )
 
-    wiki_corpus = [
-        paragraph
-        for article in ds.take(500)
-        for paragraph in article["text"].split("\n\n")
-        if is_japanese(paragraph)
-    ]
+    for article in ds.take(500):
+        title = article["title"]
+        text = article["text"]
+        paragraphs = [p.strip() for p in text.split("\n\n") if is_japanese(p)]
+        if paragraphs:
+            wiki_data.append((title, paragraphs))
 
-    return wiki_corpus
-
-
-def save_corpus(data_dir: Path, corpus_name: str, corpus: List[str]) -> None:
-    """Save a corpus to a file using standard naming convention.
-
-    Args:
-        data_dir: Directory to save the corpus file
-        corpus_name: Name of the corpus (e.g., 'jnlp', 'ted')
-        corpus: List of corpus lines to save (assumed to not have newline at end)
-    """
-    output_file = data_dir / f"{corpus_name}-corpus-sample.txt"
-    with open(output_file, "w", encoding="utf-8") as f:
-        for line in corpus:
-            f.write(f"{line}\n")
-    logger.info(f"Sampled {corpus_name} corpus saved to {output_file}")
+    return wiki_data
 
 
-def save_corpora(data_dir: Path, corpora: dict[str, List[str]]) -> None:
-    """Save multiple corpora to database.
+def prepare_corpus(loader: BaseCorpusLoader) -> int:
+    """Prepare a corpus using its loader.
 
     Args:
-        data_dir: Directory containing the database
-        corpora: Dictionary mapping corpus names to their content
+        loader: The corpus loader to use
+
+    Returns:
+        Number of sentences processed
     """
-    db_path = data_dir / "corpus.db"
+    loader.download()
+
+    db_path = loader.data_dir / "corpus.db"
     conn = init_database(db_path)
+    total = 0
 
-    for corpus_name, corpus in corpora.items():
-        save_corpus_to_db(conn, corpus_name, corpus)
+    try:
+        for entry in loader.load_metadata():
+            save_corpus_to_db(
+                conn,
+                corpus_name=entry.corpus,
+                title=entry.title,
+                year=entry.year,
+                author=entry.author,
+                publisher=entry.publisher,
+                sentences=entry.sentences,
+            )
+            total += len(entry.sentences)
+    finally:
+        conn.close()
 
-    conn.close()
-    logger.info(f"All corpora saved to database at {db_path}")
-
-
-def prepare_ted_corpus(data_dir: Path) -> int:
-    """Prepare the TED corpus by downloading and saving to file.
-
-    Downloads the TED corpus and saves it to a single text file.
-
-    Args:
-        data_dir: Directory where the corpus will be saved
-
-    Returns:
-        Number of sentences in the corpus
-    """
-    ted_corpus = get_ted_corpus()
-    save_corpus(data_dir, "ted", ted_corpus)
-    return len(ted_corpus)
+    return total
 
 
-def prepare_wiki_corpus(data_dir: Path) -> int:
-    """Prepare the Wikipedia corpus by downloading and saving to file.
-
-    Downloads the Wikipedia corpus and saves it to a single text file.
+def prepare_corpora(data_dir: Path) -> Dict[str, int]:
+    """Prepare all corpora.
 
     Args:
-        data_dir: Directory where the corpus will be saved
+        data_dir: Base directory for data
 
     Returns:
-        Number of sentences in the corpus
-    """
-    wiki_corpus = get_wiki_corpus()
-    save_corpus(data_dir, "wiki", wiki_corpus)
-    return len(wiki_corpus)
-
-
-def prepare_corpora(data_dir: Path) -> Tuple[int, int, int]:
-    """Prepare both corpora.
-
-    Creates the data directory if needed and prepares the corpora.
-
-    Args:
-        data_dir: Directory for storing corpora
-
-    Returns:
-        Tuple of (JNLP corpus size, TED corpus size, Wikipedia corpus size)
+        Dictionary mapping corpus names to number of sentences processed
     """
     data_dir.mkdir(parents=True, exist_ok=True)
-    jnlp_count = prepare_jnlp_corpus(data_dir)
-    ted_count = prepare_ted_corpus(data_dir)
-    wiki_count = prepare_wiki_corpus(data_dir)
-    return jnlp_count, ted_count, wiki_count
 
+    loaders = [
+        JNLPCorpusLoader(data_dir=data_dir),
+        TEDCorpusLoader(data_dir=data_dir),
+        WikipediaCorpusLoader(data_dir=data_dir),
+    ]
 
-def load_corpus(data_dir: Path, corpus_name: str, sample_size: int) -> List[str]:
-    """Load and sample from a prepared corpus.
-
-    Args:
-        data_dir: Directory containing the corpus files
-        corpus_name: Name of the corpus ('jnlp' or 'ted')
-        sample_size: Number of lines to randomly sample
-
-    Returns:
-        List of sampled lines from the corpus
-
-    Examples:
-        >>> from io import StringIO
-        >>> from unittest.mock import patch
-        >>> test_data = StringIO("line1\\nline2\\nline3\\nline4\\nline5")
-        >>> with patch('builtins.open', return_value=test_data):
-        ...     lines = load_corpus(Path("."), "test", 3)
-        ...     len(lines)
-        3
-    """
-    corpus_file = data_dir / f"{corpus_name}-corpus-sample.txt"
-    with open(corpus_file, "r", encoding="utf-8") as f:
-        lines = f.readlines()
-
-    random.shuffle(lines)
-    return lines[:sample_size]
-
-
-def load_corpora(
-    data_dir: Path,
-    jnlp_sample_size: int = 10000,
-    ted_sample_size: int = 30000,
-    wiki_sample_size: int = 40000,
-) -> Tuple[List[str], List[str], List[str]]:
-    """Load and sample from both JNLP and TED corpora.
-
-    Args:
-        data_dir: Directory containing the corpus files
-        jnlp_sample_size: Number of lines to sample from JNLP corpus
-        ted_sample_size: Number of lines to sample from TED corpus
-        wiki_sample_size: Number of lines to sample from Wikipedia corpus
-
-    Returns:
-        Tuple of (JNLP corpus samples, TED corpus samples)
-    """
-    jnlp_corpus = load_corpus(data_dir, "jnlp", jnlp_sample_size)
-    ted_corpus = load_corpus(data_dir, "ted", ted_sample_size)
-    wiki_corpus = load_corpus(data_dir, "wiki", wiki_sample_size)
-    return jnlp_corpus, ted_corpus, wiki_corpus
+    return {loader.corpus_name: prepare_corpus(loader) for loader in loaders}
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Prepare and load JNLP and TED corpora for use in NLP tasks.",
-        epilog="This script can download, process, prepare, and load the JNLP and TED corpora for further use in natural language processing tasks.",
+        description="Prepare and load corpora for use in NLP tasks.",
     )
     parser.add_argument(
         "--seed",
@@ -398,72 +483,71 @@ if __name__ == "__main__":
         help="Random seed for reproducibility (default: 42)",
     )
     parser.add_argument(
-        "--prepare",
-        action="store_true",
-        help="Prepare the corpora by downloading and processing the data.",
-    )
-    parser.add_argument(
-        "--load",
-        action="store_true",
-        help="Load the prepared corpora.",
-    )
-    parser.add_argument(
-        "--jnlp-sample-size",
-        type=int,
-        default=10000,
-        help="Sample size for the JNLP corpus (default: 10000). This determines how many sentences from the JNLP corpus will be randomly selected when loading.",
-    )
-    parser.add_argument(
-        "--wiki-sample-size",
-        type=int,
-        default=40000,
-        help="Sample size for the Wikipedia corpus (default: 40000). This determines how many sentences from the JNLP corpus will be randomly selected when loading.",
-    )
-    parser.add_argument(
-        "--ted-sample-size",
-        type=int,
-        default=30000,
-        help="Sample size for the TED corpus (default: 30000). This determines how many sentences from the TED corpus will be randomly selected when loading.",
-    )
-    parser.add_argument(
         "--data-dir",
         type=Path,
         default=Path("data"),
         help="Directory to store or load the prepared corpora (default: './data').",
     )
+
+    # Create subparsers for different commands
+    subparsers = parser.add_subparsers(dest="command", help="Command to execute")
+
+    # Standard corpus command
+    corpus_parser = subparsers.add_parser("corpus", help="Process a standard corpus")
+    corpus_parser.add_argument(
+        "--name",
+        choices=["all", "jnlp", "ted", "wiki"],
+        default="all",
+        help="Which standard corpus to prepare (default: all)",
+    )
+
+    # Generic corpus command
+    generic_parser = subparsers.add_parser("generic", help="Process a generic corpus")
+    generic_parser.add_argument(
+        "--name",
+        type=str,
+        required=True,
+        help="Name of the corpus (will be used as directory name)",
+    )
+    generic_parser.add_argument(
+        "--dir",
+        type=Path,
+        help="Directory containing metadata.csv and corpus files (defaults to <data-dir>/<name>_corpus)",
+    )
+
     args = parser.parse_args()
 
     set_random_seed(args.seed)
     logger.info(f"Random seed set to {args.seed}")
 
-    if not (args.prepare or args.load):
-        parser.print_help()
-        print("\nNo action specified. Use --prepare or --load to perform operations.")
-    else:
-        if args.prepare:
-            jnlp_count, ted_count, wiki_count = prepare_corpora(args.data_dir)
-            logger.info(f"Corpora prepared and saved in {args.data_dir}")
-            logger.info(f"JNLP corpus: {jnlp_count} sentences/paragraphs prepared")
-            logger.info(f"TED corpus: {ted_count} sentences/paragraphs prepared")
-            logger.info(f"Wikipedia corpus: {wiki_count} sentences/paragraphs prepared")
+    # Create data directory if it doesn't exist
+    args.data_dir.mkdir(parents=True, exist_ok=True)
 
-        if args.load:
-            jnlp_corpus, ted_corpus, wiki_corpus = load_corpora(
-                args.data_dir,
-                args.jnlp_sample_size,
-                args.ted_sample_size,
-                args.wiki_sample_size,
-            )
-            logger.info(
-                f"Loaded {len(jnlp_corpus)} sentences from JNLP corpus (sample size: {args.jnlp_sample_size})"
-            )
-            logger.info(
-                f"Loaded {len(ted_corpus)} sentences from TED corpus (sample size: {args.ted_sample_size})"
-            )
-            logger.info(
-                f"Loaded {len(wiki_corpus)} sentences from Wikipedia corpus (sample size: {args.wiki_sample_size})"
-            )
-            save_corpora(
-                args.data_dir,
-                {"jnlp": jnlp_corpus, "ted": ted_corpus, "wiki": wiki_corpus},
-            )
+    if args.command == "corpus":
+        loader_map = {
+            "jnlp": JNLPCorpusLoader,
+            "ted": TEDCorpusLoader,
+            "wiki": WikipediaCorpusLoader,
+        }
+
+        if args.name == "all":
+            results = prepare_corpora(args.data_dir)
+            for corpus_name, count in results.items():
+                logger.info(f"{corpus_name.upper()} corpus: {count} sentences prepared")
+        else:
+            loader_class = loader_map[args.name]
+            loader = loader_class(args.data_dir)
+            count = prepare_corpus(loader)
+            logger.info(f"{args.name.upper()} corpus: {count} sentences prepared")
+
+    elif args.command == "generic":
+        corpus_dir = args.dir if args.dir else args.data_dir / f"{args.name}_corpus"
+        loader = GenericCorpusLoader(args.data_dir, args.name)
+        if args.dir:
+            # If custom directory specified, ensure metadata.csv exists there
+            loader.corpus_dir = args.dir
+        count = prepare_corpus(loader)
+        logger.info(f"{args.name.upper()} corpus: {count} sentences prepared")
+
+    else:
+        parser.print_help()

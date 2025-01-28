@@ -73,6 +73,7 @@
           ];
           development-packages = [
             pkgs.bashInteractive
+            pkgs.nkf
             pkgs.git
             pkgs.git-cliff # Changelog generator
             pkgs.bun
@@ -274,8 +275,9 @@
             runtimeInputs = runtime-packages;
             text = ''
               ${config.packages.initial-setup}/bin/initial-setup
-              ${uv-run} python src/natsume_simple/data.py --prepare
-              ${uv-run} python src/natsume_simple/data.py --load
+
+              # Process standard corpora
+              ${uv-run} python src/natsume_simple/data.py corpus --name all
             '';
             passthru.meta = {
               category = "Data";
@@ -287,27 +289,21 @@
             runtimeInputs = runtime-packages;
             text = ''
               ${config.packages.initial-setup}/bin/initial-setup
-              ${uv-run} python src/natsume_simple/pattern_extraction.py \
-                  --input-file data/jnlp-corpus-sample.txt \
-                  --data-dir data \
-                  --model ja_ginza \
-                  --corpus-name "jnlp"
 
+              # Extract patterns from all corpora at once
               ${uv-run} python src/natsume_simple/pattern_extraction.py \
-                  --input-file data/ted-corpus-sample.txt \
                   --data-dir data \
-                  --model ja_ginza \
-                  --corpus-name "ted"
+                  --model ja_ginza
 
-              ${uv-run} python src/natsume_simple/pattern_extraction.py \
-                  --input-file data/wiki-corpus-sample.txt \
-                  --data-dir data \
-                  --model ja_ginza \
-                  --corpus-name "wiki"
+              # Process individual corpora
+              # ${uv-run} python src/natsume_simple/pattern_extraction.py \
+              #     --data-dir data \
+              #     --model ja_ginza \
+              #     --corpus "my_new_corpus"
             '';
             passthru.meta = {
               category = "Data";
-              description = "Extract patterns from corpora and save to database";
+              description = "Extract patterns (collocations)";
             };
           };
           packages.run-all = pkgs.writeShellApplication {
@@ -316,7 +312,6 @@
             text = ''
               ${config.packages.initial-setup}/bin/initial-setup
               ${config.packages.prepare-data}/bin/prepare-data
-              ${config.packages.extract-patterns}/bin/extract-patterns
               ${config.packages.watch-prod-server}/bin/watch-prod-server
             '';
             passthru.meta = {
