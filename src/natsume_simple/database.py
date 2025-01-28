@@ -80,6 +80,10 @@ def insert_sources_batch(
     Returns:
         Dictionary mapping (corpus, title) tuples to source IDs
     """
+    if not sources:
+        logger.warning("No sources to insert")
+        return {}
+
     # Convert to DataFrame
     df = pl.DataFrame(sources)
     conn.register("__temp_sources", df)
@@ -119,43 +123,25 @@ def insert_source(
     return conn.fetchone()[0]
 
 
-def insert_sentences(
+def bulk_insert_sentences(
     conn: duckdb.DuckDBPyConnection,
-    sentences: List[str],
-    source_id: int,
-) -> int:
-    """Insert sentences and return their IDs.
+    sentences_df: pl.DataFrame,
+) -> None:
+    """Bulk insert sentences from a DataFrame.
 
     Args:
         conn: Database connection
-        sentences: List of sentence texts
-        source_id: ID of the source document
-
-    Returns:
-        ID of the first inserted sentence
+        sentences_df: DataFrame with 'text' and 'source_id' columns
     """
-    # Convert sentences to DataFrame format
-    logger.info(f"Inserting {len(sentences)} sentences")
-    data = [{"text": text, "source_id": source_id} for text in sentences]
-    df = pl.DataFrame(data)
-
-    # Register temporary view
-    conn.register("__temp_sentences", df)
-
-    # Use the registered view for insert
-    conn.execute(
-        """
+    logger.info(f"Inserting {len(sentences_df)} sentences...")
+    conn.register("__temp_sentences", sentences_df)
+    conn.execute("""
         INSERT INTO sentence (text, source_id)
         SELECT text, source_id
         FROM __temp_sentences
-        RETURNING id
-        """
-    )
-
-    # Unregister the temporary view
+    """)
     conn.unregister("__temp_sentences")
-
-    return conn.fetchone()[0]
+    conn.commit()
 
 
 def get_or_create_lemma(conn: duckdb.DuckDBPyConnection, string: str, pos: str) -> int:
@@ -274,7 +260,12 @@ def save_corpus_to_db(
             publisher=publisher,
         )
 
-    return insert_sentences(conn, sentences, source_id)
+    # Convert sentences to DataFrame format
+    sentences_df = pl.DataFrame(
+        [{"text": text, "source_id": source_id} for text in sentences]
+    )
+    bulk_insert_sentences(conn, sentences_df)
+    return len(sentences)
 
 
 def get_sentence_word_id(

@@ -1,20 +1,22 @@
 import argparse
+import re
 import subprocess
 import urllib.request
 import zipfile
 from pathlib import Path
-from typing import Any, ClassVar, Dict, Iterator, List, Optional, Tuple
+from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 import datasets  # type: ignore
 import polars as pl  # type: ignore
+import torch
 from pydantic import BaseModel, Field
 from tqdm import tqdm
 from wtpsplit import SaT  # type: ignore
 
 from natsume_simple.database import (
+    bulk_insert_sentences,
     init_database,
     insert_sources_batch,
-    save_corpus_to_db,
 )
 from natsume_simple.log import setup_logger
 from natsume_simple.utils import set_random_seed
@@ -39,61 +41,103 @@ class BaseCorpusLoader(BaseModel):
 
     data_dir: Path
     corpus_dir: Path = Field(default_factory=Path)
-    corpus_name: ClassVar[str]
+    corpus_name: str
 
     def setup_corpus_dir(self) -> Path:
         """Set up and return the corpus directory."""
         return self.data_dir / f"{self.corpus_name}_corpus"
 
-    def split_into_sentences(self, text: str, splitter: SaT) -> List[str]:
-        """Split text into sentences using wtpsplit.
+    def split_into_sentences(self, texts: List[str], splitter: SaT) -> List[str]:
+        """Split texts into sentences using wtpsplit.
 
         Args:
-            text: Text to split
+            texts: List of texts to split
             splitter: WTP sentence splitter model
 
         Returns:
-            List of sentences
+            List of sentences from all input texts
         """
-        # First split on newlines and filter empty lines
-        paragraphs = [p.strip() for p in text.split("\n") if p.strip()]
+        # First split on newlines and filter empty lines for each text
+        paragraphs_per_text = [
+            [p.strip() for p in re.split(r"\n+", text) if p.strip()] for text in texts
+        ]
 
-        # Then use wtpsplit on each paragraph
-        sentences = []
-        for paragraph in paragraphs:
-            sentences.extend(
-                [s.strip() for s in splitter.split(paragraph) if s.strip()]
-            )
+        # Flatten paragraphs for batch processing
+        all_paragraphs = [p for paragraphs in paragraphs_per_text for p in paragraphs]
 
-        return sentences
+        # Process all paragraphs at once with wtpsplit and flatten results
+        return [
+            sentence.strip()
+            for sentences in splitter.split(all_paragraphs)
+            for sentence in sentences
+            if sentence.strip()
+        ]
 
-    def _load_sentences(self, file_path: Path) -> List[str]:
-        """Load and filter sentences from a text file."""
-        txt_path = self.corpus_dir / file_path
-        try:
-            with open(txt_path, "r", encoding="utf-8") as f:
-                text = f.read()
+    def _load_sentences(self, file_paths: List[Path]) -> List[str]:
+        """Load and filter sentences from text files.
 
-            # Initialize sentence splitter (do this once and store as class attribute)
-            if not hasattr(self, "_splitter"):
-                self._splitter = SaT(
-                    "sat-3l-sm",
-                    ort_providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
-                )
+        Args:
+            file_paths: List of paths to text files
 
-            # Split text into sentences and filter
-            return [
-                sent
-                for sent in self.split_into_sentences(text, self._splitter)
-                if is_japanese(sent, min_length=5)
-            ]
-        except (UnicodeDecodeError, IOError) as e:
-            logger.warning(f"Error loading {txt_path}: {e}")
-            return []
+        Returns:
+            List of sentences from all files
+        """
+        texts = []
+        for txt_path in file_paths:
+            full_path = self.corpus_dir / txt_path
+            try:
+                with open(full_path, "r", encoding="utf-8") as f:
+                    texts.append(f.read())
+            except (UnicodeDecodeError, IOError) as e:
+                logger.warning(f"Error loading {full_path}: {e}")
+                texts.append("")  # Add empty text to maintain alignment
+
+        # Initialize sentence splitter (do this once and store as class attribute)
+        if not hasattr(self, "_splitter"):
+            self._splitter = SaT("sat-3l-sm")
+            if torch.cuda.is_available():
+                self._splitter.half().to("cuda")
+
+        # Split all texts at once and filter Japanese sentences
+        all_sentences = self.split_into_sentences(texts, self._splitter)
+
+        # Filter Japanese sentences
+        return [sent for sent in all_sentences if is_japanese(sent, min_length=5)]
 
     def download(self) -> None:
         """Download corpus data if needed."""
         self.corpus_dir.mkdir(parents=True, exist_ok=True)
+
+    def prepare_batch(
+        self,
+    ) -> Tuple[List[Dict[str, Any]], Dict[Tuple[str, str], List[str]]]:
+        """Prepare batch of sources and sentences for database insertion.
+
+        Returns:
+            Tuple containing:
+            - List of source dictionaries (corpus, title, year, author, publisher)
+            - Dictionary mapping (corpus, title) to list of sentences
+        """
+        sources = []
+        source_map: Dict[Tuple[str, str], List[str]] = {}
+
+        for entry in self.load_metadata():
+            sources.append(
+                {
+                    "corpus": entry.corpus,
+                    "title": entry.title,
+                    "year": entry.year,
+                    "author": entry.author,
+                    "publisher": entry.publisher,
+                }
+            )
+            # Group sentences by source
+            key = (entry.corpus, entry.title)
+            if key not in source_map:
+                source_map[key] = []
+            source_map[key].extend(entry.sentences)
+
+        return sources, source_map
 
     def load_metadata(self) -> Iterator[CorpusEntry]:
         """Load metadata from standard metadata.csv if it exists."""
@@ -191,7 +235,7 @@ def filter_non_japanese(dir: Path, min_length: int = 200) -> Iterator[str]:
 
 
 class JNLPCorpusLoader(BaseCorpusLoader):
-    corpus_name: ClassVar[str] = "jnlp"
+    corpus_name: str = "jnlp"
 
     def model_post_init(self, _context) -> None:
         base_dir = self.setup_corpus_dir()
@@ -222,45 +266,61 @@ class JNLPCorpusLoader(BaseCorpusLoader):
         df = pl.read_excel(xls_path)
         volume_year_map = dict(zip(range(1, 31), range(1994, 2024)))
 
-        for row in df.iter_rows(named=True):
-            if row["ファイル名"] == "*NA*":
-                continue
-            if "/" not in row["ファイル名"]:
-                # Fix missing directory in some file paths
-                fixed_path = f"V{row['Vol']}/{row['ファイル名']}"
-                logger.info(f"Fixing file path for {row['ファイル名']} -> {fixed_path}")
-                row["ファイル名"] = fixed_path
+        # Group files by batch for processing
+        batch_size = 100  # Adjust based on memory constraints
+        file_batches = [
+            list(batch) for batch in zip(*[iter(df.iter_rows(named=True))] * batch_size)
+        ]
 
-            tex_path = self.corpus_dir / Path(row["ファイル名"])
-            if not tex_path.exists():
-                logger.warning(f"File not found: {tex_path}, skipping...")
-                continue
-            txt_path = tex_path.with_suffix(".txt")
-
-            # Convert if needed
-            if not txt_path.exists():
-                if not self._convert_latex_file(tex_path, txt_path):
+        for batch in file_batches:
+            # Process batch of files
+            valid_paths = []
+            batch_map = {}  # Map file paths to their metadata
+            for row in batch:
+                if row["ファイル名"] == "*NA*":
                     continue
+                if "/" not in row["ファイル名"]:
+                    # Fix missing directory in some file paths
+                    fixed_path = f"V{row['Vol']}/{row['ファイル名']}"
+                    logger.info(
+                        f"Fixing file path for {row['ファイル名']} -> {fixed_path}"
+                    )
+                    row["ファイル名"] = fixed_path
 
-            sentences = self._load_sentences(
-                Path(row["ファイル名"]).with_suffix(".txt")
-            )
-            if not sentences:
-                continue
+                # Use relative path for tex_path
+                tex_path = Path(
+                    row["ファイル名"]
+                )  # Don't combine with self.corpus_dir yet
+                full_tex_path = self.corpus_dir / tex_path
+                if not full_tex_path.exists():
+                    logger.warning(f"File not found: {full_tex_path}, skipping...")
+                    continue
+                txt_path = tex_path.with_suffix(".txt")
+                full_txt_path = self.corpus_dir / txt_path
+                if not full_txt_path.exists():
+                    if not self._convert_latex_file(full_tex_path, full_txt_path):
+                        continue
 
-            year = volume_year_map.get(row["Vol"])
-            if not year:
-                continue
+                valid_paths.append(txt_path)  # Store relative path
+                batch_map[txt_path] = row
 
-            yield CorpusEntry(
-                corpus=self.corpus_name,
-                title=row["タイトル"],
-                year=year,
-                author=row["著者"] if row["著者"] else "Unknown",
-                publisher="自然言語処理",
-                sentences=sentences,
-                url=row["J-Stageにおける論文URL"] or "",
-            )
+            # Load all sentences for the batch
+            if valid_paths:
+                sentences = self._load_sentences(valid_paths)
+                if sentences:  # Only yield if we have sentences
+                    # Take first valid row for metadata since we can't map sentences back
+                    row = batch_map[valid_paths[0]]
+                    year = volume_year_map.get(row["Vol"])
+                    if year:
+                        yield CorpusEntry(
+                            corpus=self.corpus_name,
+                            title=row["タイトル"],
+                            year=year,
+                            author=row["著者"] if row["著者"] else "Unknown",
+                            publisher="自然言語処理",
+                            sentences=sentences,
+                            url=row["J-Stageにおける論文URL"] or "",
+                        )
 
     def _convert_latex_file(self, tex_path: Path, txt_path: Path) -> bool:
         """Convert LaTeX to text."""
@@ -311,7 +371,7 @@ def convert_latex_to_plaintext(source: Path, dest: Path) -> bool:
 
 
 class WikipediaCorpusLoader(BaseCorpusLoader):
-    corpus_name: ClassVar[str] = "wiki"
+    corpus_name: str = "wiki"
 
     def model_post_init(self, _context) -> None:
         self.corpus_dir = self.setup_corpus_dir()
@@ -342,14 +402,11 @@ class WikipediaCorpusLoader(BaseCorpusLoader):
 class GenericCorpusLoader(BaseCorpusLoader):
     """Generic loader for any corpus with a metadata.csv file."""
 
-    corpus_name: str = ""  # type: ignore  # Override the ClassVar with instance variable
-
     def __init__(self, data_dir: Path, corpus_name: str):
-        self._corpus_name = corpus_name
-        super().__init__(data_dir=data_dir)
+        self.corpus_name = corpus_name
+        super().__init__(data_dir=data_dir, corpus_name=corpus_name)
 
     def model_post_init(self, _context) -> None:
-        self.corpus_name = self._corpus_name  # Set the instance variable
         self.corpus_dir = self.setup_corpus_dir()
         if not (self.corpus_dir / "metadata.csv").exists():
             logger.warning(
@@ -382,7 +439,7 @@ class GenericCorpusLoader(BaseCorpusLoader):
 
 
 class TEDCorpusLoader(BaseCorpusLoader):
-    corpus_name: ClassVar[str] = "ted"
+    corpus_name: str = "TED"
 
     def model_post_init(self, _context) -> None:
         self.corpus_dir = self.setup_corpus_dir()
@@ -472,68 +529,32 @@ def prepare_corpus(loader: BaseCorpusLoader) -> int:
     total = 0
 
     try:
-        # For TED corpus, batch process sources and sentences
-        if isinstance(loader, TEDCorpusLoader):
-            # Collect all metadata and sentences first
-            sources = []
-            all_sentences: list[dict[str, Any]] = []
-            source_map: dict[
-                tuple[str, str], list[str]
-            ] = {}  # Map (corpus, title) to list of sentences
+        # Get batched sources and sentences
+        sources, source_map = loader.prepare_batch()
 
-            for entry in loader.load_metadata():
-                sources.append(
-                    {
-                        "corpus": entry.corpus,
-                        "title": entry.title,
-                        "year": entry.year,
-                        "author": entry.author,
-                        "publisher": entry.publisher,
-                    }
+        if not sources:
+            logger.warning(f"No sources found for corpus {loader.corpus_name}")
+            return 0
+
+        logger.info(f"Inserting {len(sources)} sources...")
+        source_id_map = insert_sources_batch(conn, sources)
+
+        # Prepare all sentences for bulk insert
+        all_sentences = []
+        for (corpus, title), sentences in source_map.items():
+            if source_id := source_id_map.get((corpus, title)):
+                all_sentences.extend(
+                    [{"text": text, "source_id": source_id} for text in sentences]
                 )
-                # Group sentences by source
-                key = (entry.corpus, entry.title)
-                if key not in source_map:
-                    source_map[key] = []
-                source_map[key].extend(entry.sentences)
-                total += len(entry.sentences)
+                total += len(sentences)
+            else:
+                logger.warning(f"Source {title} not found in ID map")
 
-            # Batch insert sources
-            source_id_map = insert_sources_batch(conn, sources)
+        # Bulk insert all sentences
+        if all_sentences:
+            sentences_df = pl.DataFrame(all_sentences)
+            bulk_insert_sentences(conn, sentences_df)
 
-            # Batch insert sentences for each source
-            for (corpus, title), sentences in source_map.items():
-                if source_id := source_id_map.get((corpus, title)):
-                    all_sentences.extend(
-                        [{"text": text, "source_id": source_id} for text in sentences]
-                    )
-                else:
-                    logger.warning(f"Source {title} not found in ID map")
-
-            # Bulk insert all sentences
-            if all_sentences:
-                df = pl.DataFrame(all_sentences)
-                conn.register("__temp_sentences", df)
-                conn.execute("""
-                    INSERT INTO sentence (text, source_id)
-                    SELECT text, source_id
-                    FROM __temp_sentences
-                """)
-                conn.unregister("__temp_sentences")
-
-        else:
-            # Process other corpora normally
-            for entry in loader.load_metadata():
-                save_corpus_to_db(
-                    conn,
-                    corpus_name=entry.corpus,
-                    title=entry.title,
-                    year=entry.year,
-                    author=entry.author,
-                    publisher=entry.publisher,
-                    sentences=entry.sentences,
-                )
-                total += len(entry.sentences)
     finally:
         conn.close()
 
