@@ -31,6 +31,7 @@ from spacy.tokens import Doc, Span, Token  # type: ignore
 from tqdm import tqdm
 
 from natsume_simple.database import (
+    create_indices,
     get_or_create_lemma,
     get_or_create_sentence_word,
     get_or_create_word,
@@ -383,53 +384,88 @@ def save_sentence_processing_results(
 
 
 def process_corpus(
-    sentences: List[Tuple[int, str]],
+    sentences: List[Tuple[str, int]],
     nlp: spacy.language.Language,
     suru_token: Token,
     conn: duckdb.DuckDBPyConnection,
+    batch_size: int = 4000,
 ) -> None:
     """Process sentences and save results in one pass.
 
     Args:
-        sentences: List of (sentence_id, text) pairs
+        sentences: List of (text, sentence_id) pairs
         nlp: The loaded NLP model
         suru_token: The constant する token
         conn: Database connection
+        batch_size: Number of sentences to process in each batch
     """
+    # First phase: Process all sentences with spaCy in batches
+    logger.info("Processing sentences with spaCy...")
+    processed_batches = []
+
+    # Create a single progress bar for all batches
+    pbar = tqdm(total=len(sentences) // batch_size + 1, desc="Processing sentences")
+
+    for i in range(0, len(sentences), batch_size):
+        batch = sentences[i : i + batch_size]
+
+        # Process batch with spaCy
+        docs = list(nlp.pipe(batch, as_tuples=True, batch_size=batch_size))
+
+        # Process each document in the batch
+        batch_results = []
+        for doc, sentence_id in docs:
+            # Process sentence
+            word_entries, patterns = process_sentence(doc, sentence_id, suru_token)
+            batch_results.append((word_entries, patterns, sentence_id))
+
+        processed_batches.append(batch_results)
+        pbar.update(1)  # Update progress after each batch
+        pbar.set_postfix(
+            {"sentences": i + len(batch)}
+        )  # Show total sentences processed
+
+    pbar.close()
+
+    # Second phase: Save all results to database
+    logger.info("Saving results to database...")
     all_patterns = []
 
-    # Add progress bar
-    pbar = tqdm(
-        zip(nlp.pipe(t[1] for t in sentences), sentences),
-        total=len(sentences),
-        desc="Processing sentences",
-    )
-
-    for doc, (sentence_id, text) in pbar:
-        # Process sentence
-        word_entries, patterns = process_sentence(doc, sentence_id, suru_token)
-
-        # Save word information and get span mapping
-        span_to_id = save_sentence_processing_results(conn, word_entries, sentence_id)
-
-        # Convert patterns to use sentence_word IDs
-        for pattern in patterns:
-            _, noun, particle, verb, n_begin, n_end, p_begin, p_end, v_begin, v_end = (
-                pattern
+    for batch in tqdm(processed_batches, desc="Saving batches"):
+        # Process each sentence in the batch
+        for word_entries, patterns, sentence_id in batch:
+            # Save word information and get span mapping
+            span_to_id = save_sentence_processing_results(
+                conn, word_entries, sentence_id
             )
 
-            word_1_id = span_to_id.get((n_begin, n_end))
-            particle_id = span_to_id.get((p_begin, p_end))
-            word_2_id = span_to_id.get((v_begin, v_end))
+            # Convert patterns to use sentence_word IDs
+            for pattern in patterns:
+                (
+                    sentence_id,
+                    _noun,
+                    _particle,
+                    _verb,
+                    n_begin,
+                    n_end,
+                    p_begin,
+                    p_end,
+                    v_begin,
+                    v_end,
+                ) = pattern
 
-            if None not in (word_1_id, particle_id, word_2_id):
-                all_patterns.append((word_1_id, particle_id, word_2_id))
+                word_1_id = span_to_id.get((n_begin, n_end))
+                particle_id = span_to_id.get((p_begin, p_end))
+                word_2_id = span_to_id.get((v_begin, v_end))
 
-        # Update progress bar description with pattern count
-        pbar.set_postfix({"patterns": len(all_patterns)})
+                if None not in (word_1_id, particle_id, word_2_id):
+                    all_patterns.append((word_1_id, particle_id, word_2_id))
+
+        # Commit after each batch to avoid huge transactions
+        conn.commit()
 
     logger.info(f"Saving {len(all_patterns)} patterns to database...")
-    # Bulk save patterns
+    # Bulk save all patterns at once
     save_collocations(conn, all_patterns)
 
 
@@ -440,6 +476,9 @@ def main(
     data_dir: Path,
     model_name: Optional[str] = None,
     corpus_name: Optional[str] = None,
+    unprocessed_only: bool = False,
+    sample_ratio: Optional[float] = None,
+    batch_size: int = 3000,
 ) -> None:
     """Process sentences and extract collocations.
 
@@ -447,6 +486,9 @@ def main(
         data_dir: Directory containing the database
         model_name: Optional name of the spaCy model to use
         corpus_name: Optional corpus name to process (if None, process all)
+        unprocessed_only: Only process sentences without existing collocations
+        sample_ratio: If set, process only this ratio of sentences (0.0-1.0)
+        batch_size: Number of sentences to process in each batch (default: 3000)
     """
     global nlp, suru_token
     if model_name:
@@ -455,20 +497,43 @@ def main(
     conn = duckdb.connect(str(data_dir / "corpus.db"))
 
     try:
-        # Build query based on whether corpus_name is specified
-        query = """
-            SELECT s.id, s.text
-            FROM sentence s
-            JOIN source src ON s.source_id = src.id
-        """
+        # Build query based on options - note the SELECT order is now (text, id)
+        if unprocessed_only:
+            query = """
+                SELECT DISTINCT s.text, s.id
+                FROM sentence s
+                JOIN source src ON s.source_id = src.id
+                LEFT JOIN sentence_word sw ON s.id = sw.sentence_id
+                LEFT JOIN collocation c ON 
+                    sw.id = c.word_1_sw_id OR 
+                    sw.id = c.particle_sw_id OR 
+                    sw.id = c.word_2_sw_id
+                WHERE c.word_1_sw_id IS NULL
+            """
+        else:
+            query = """
+                SELECT s.text, s.id
+                FROM sentence s
+                JOIN source src ON s.source_id = src.id
+            """
+
         params = []
 
         if corpus_name:
-            query += " WHERE src.corpus = ?"
+            query += (
+                " AND src.corpus = ?" if unprocessed_only else " WHERE src.corpus = ?"
+            )
             params.append(corpus_name)
             logger.info(f"Processing corpus: {corpus_name}")
         else:
             logger.info("Processing all corpora")
+
+        # Add random sampling if requested
+        if sample_ratio is not None:
+            if not (0.0 < sample_ratio <= 1.0):
+                raise ValueError("Sample ratio must be between 0.0 and 1.0")
+            query += f" USING SAMPLE {sample_ratio * 100}%"
+            logger.info(f"Using {sample_ratio * 100}% sample of sentences")
 
         # Get sentences with their database IDs
         sentences = conn.execute(query, params).fetchall()
@@ -476,8 +541,14 @@ def main(
             logger.warning("No sentences found to process")
             return
 
+        logger.info(f"Found {len(sentences)} sentences to process")
+
         # Process everything in one pass
-        process_corpus(sentences, nlp, suru_token, conn)
+        process_corpus(sentences, nlp, suru_token, conn, batch_size)
+
+        # Create indices after all data is loaded
+        create_indices(conn)
+
         conn.commit()
 
         logger.info(f"Processed {len(sentences)} sentences")
@@ -504,6 +575,22 @@ if __name__ == "__main__":
         help="Name of specific corpus to process (default: process all)",
     )
     parser.add_argument(
+        "--unprocessed-only",
+        action="store_true",
+        help="Only process sentences that haven't been processed for collocations yet",
+    )
+    parser.add_argument(
+        "--sample",
+        type=float,
+        help="Process only a random sample of sentences (0.0-1.0)",
+    )
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=3000,
+        help="Number of sentences to process in each batch (default: 3000)",
+    )
+    parser.add_argument(
         "--seed",
         type=int,
         default=42,
@@ -515,4 +602,11 @@ if __name__ == "__main__":
     set_random_seed(args.seed)
     logger.info(f"Random seed set to {args.seed}")
 
-    main(args.data_dir, args.model, args.corpus)
+    main(
+        args.data_dir,
+        args.model,
+        args.corpus,
+        args.unprocessed_only,
+        args.sample,
+        args.batch_size,
+    )

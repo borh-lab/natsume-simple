@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import duckdb
 import polars as pl
@@ -36,8 +36,7 @@ def init_database(db_path: Path) -> duckdb.DuckDBPyConnection:
         CREATE TABLE IF NOT EXISTS lemma (
             id INTEGER PRIMARY KEY DEFAULT NEXTVAL('id_seq_lemma'),
             string TEXT NOT NULL,
-            pos TEXT NOT NULL,
-            UNIQUE(string, pos)
+            pos TEXT NOT NULL
         );
 
         CREATE SEQUENCE IF NOT EXISTS id_seq_word START 1;
@@ -56,22 +55,48 @@ def init_database(db_path: Path) -> duckdb.DuckDBPyConnection:
             sentence_id INTEGER NOT NULL REFERENCES sentence(id),
             word_id INTEGER NOT NULL REFERENCES word(id),
             begin INTEGER NOT NULL,
-            "end" INTEGER NOT NULL,
-            UNIQUE(sentence_id, begin, "end")
+            "end" INTEGER NOT NULL
         );
-        CREATE INDEX IF NOT EXISTS idx_sentence_word_pos ON sentence_word(begin, "end");
 
         CREATE TABLE IF NOT EXISTS collocation (
             word_1_sw_id INTEGER NOT NULL REFERENCES sentence_word(id),
             particle_sw_id INTEGER NOT NULL REFERENCES sentence_word(id),
-            word_2_sw_id INTEGER NOT NULL REFERENCES sentence_word(id),
-            UNIQUE(word_1_sw_id, particle_sw_id, word_2_sw_id) -- Not strictly necessary, just data validation
+            word_2_sw_id INTEGER NOT NULL REFERENCES sentence_word(id)
         );
-        
-        CREATE INDEX IF NOT EXISTS idx_colloc_words ON collocation(word_1_sw_id, word_2_sw_id);
     """)
 
     return conn
+
+
+def insert_sources_batch(
+    conn: duckdb.DuckDBPyConnection, sources: List[Dict[str, Any]]
+) -> Dict[Tuple[str, str], int]:
+    """Insert multiple sources in batch and return mapping of (corpus, title) to IDs.
+
+    Args:
+        conn: Database connection
+        sources: List of source dictionaries with corpus, title, year, author, publisher
+
+    Returns:
+        Dictionary mapping (corpus, title) tuples to source IDs
+    """
+    # Convert to DataFrame
+    df = pl.DataFrame(sources)
+    conn.register("__temp_sources", df)
+
+    # Bulk insert and get IDs
+    conn.execute("""
+        INSERT INTO source (corpus, year, title, author, publisher)
+        SELECT corpus, year, title, author, publisher
+        FROM __temp_sources
+        RETURNING id, corpus, title
+    """)
+    results = conn.fetchall()
+
+    conn.unregister("__temp_sources")
+
+    # Create mapping of (corpus, title) to ID
+    return {(r[1], r[2]): r[0] for r in results}
 
 
 def insert_source(
@@ -109,14 +134,27 @@ def insert_sentences(
     Returns:
         ID of the first inserted sentence
     """
+    # Convert sentences to DataFrame format
+    logger.info(f"Inserting {len(sentences)} sentences")
+    data = [{"text": text, "source_id": source_id} for text in sentences]
+    df = pl.DataFrame(data)
+
+    # Register temporary view
+    conn.register("__temp_sentences", df)
+
+    # Use the registered view for insert
     conn.execute(
         """
-        INSERT INTO sentence (text, source_id) 
-        SELECT unnest(?::VARCHAR[]), ? 
+        INSERT INTO sentence (text, source_id)
+        SELECT text, source_id
+        FROM __temp_sentences
         RETURNING id
-        """,
-        [sentences, source_id],
+        """
     )
+
+    # Unregister the temporary view
+    conn.unregister("__temp_sentences")
+
     return conn.fetchone()[0]
 
 
@@ -193,16 +231,49 @@ def save_corpus_to_db(
     title: str,
     author: Optional[str] = None,
     publisher: Optional[str] = None,
+    source_id_map: Optional[Dict[Tuple[str, str], int]] = None,
 ) -> int:
-    """Save a corpus to the database and return sentence IDs."""
-    source_id = insert_source(
-        conn,
-        corpus=corpus_name,
-        title=title,
-        year=year,
-        author=author,
-        publisher=publisher,
+    """Save a corpus to the database and return sentence IDs.
+
+    Args:
+        conn: Database connection
+        corpus_name: Name of the corpus
+        sentences: List of sentences
+        year: Year of publication
+        title: Title of the source
+        author: Optional author name
+        publisher: Optional publisher name
+        source_id_map: Optional mapping of (corpus, title) to source IDs
+    """
+    logger.info(
+        f"Saving corpus {corpus_name} and {len(sentences)} sentences to database"
     )
+
+    # Get source ID from map or insert new
+    if source_id_map is not None:
+        source_id = source_id_map.get((corpus_name, title))
+        if source_id is None:
+            logger.warning(
+                f"Source {title} not found in ID map, inserting individually"
+            )
+            source_id = insert_source(
+                conn,
+                corpus=corpus_name,
+                title=title,
+                year=year,
+                author=author,
+                publisher=publisher,
+            )
+    else:
+        source_id = insert_source(
+            conn,
+            corpus=corpus_name,
+            title=title,
+            year=year,
+            author=author,
+            publisher=publisher,
+        )
+
     return insert_sentences(conn, sentences, source_id)
 
 
@@ -220,6 +291,22 @@ def get_sentence_word_id(
         [sentence_id, begin, end],
     ).fetchone()
     return result[0] if result else None
+
+
+def create_indices(conn: duckdb.DuckDBPyConnection) -> None:
+    """Create all database indices.
+
+    Args:
+        conn: Database connection
+    """
+    logger.info("Creating database indices...")
+    conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_lemma_string ON lemma(string);
+        CREATE INDEX IF NOT EXISTS idx_word_string ON word(string);
+        CREATE INDEX IF NOT EXISTS idx_sentence_word_pos ON sentence_word(begin, "end");
+        CREATE INDEX IF NOT EXISTS idx_colloc_word_1 ON collocation(word_1_sw_id);
+        CREATE INDEX IF NOT EXISTS idx_colloc_word_2 ON collocation(word_2_sw_id);
+    """)
 
 
 def save_collocations(
@@ -242,7 +329,11 @@ def save_collocations(
         for c in collocations
     ]
 
-    # Use DuckDB's from_arrow for efficient bulk insert
+    # Create DataFrame and register temporary view
+    df = pl.DataFrame(data)
+    conn.register("__temp_collocations", df)
+
+    # Use the registered view for insert
     conn.execute(
         """
         INSERT INTO collocation 
@@ -251,13 +342,15 @@ def save_collocations(
             word_1_sw_id, 
             particle_sw_id, 
             word_2_sw_id
-        FROM __data
+        FROM __temp_collocations
         WHERE NOT EXISTS (
             SELECT 1 FROM collocation 
-            WHERE word_1_sw_id = __data.word_1_sw_id
-            AND particle_sw_id = __data.particle_sw_id
-            AND word_2_sw_id = __data.word_2_sw_id
+            WHERE word_1_sw_id = __temp_collocations.word_1_sw_id
+            AND particle_sw_id = __temp_collocations.particle_sw_id
+            AND word_2_sw_id = __temp_collocations.word_2_sw_id
         )
-    """,
-        {"__data": pl.DataFrame(data)},
+        """
     )
+
+    # Unregister the temporary view
+    conn.unregister("__temp_collocations")

@@ -3,14 +3,19 @@ import subprocess
 import urllib.request
 import zipfile
 from pathlib import Path
-from typing import ClassVar, Dict, Iterator, List, Optional, Tuple
+from typing import Any, ClassVar, Dict, Iterator, List, Optional, Tuple
 
 import datasets  # type: ignore
 import polars as pl  # type: ignore
 from pydantic import BaseModel, Field
 from tqdm import tqdm
+from wtpsplit import SaT  # type: ignore
 
-from natsume_simple.database import init_database, save_corpus_to_db
+from natsume_simple.database import (
+    init_database,
+    insert_sources_batch,
+    save_corpus_to_db,
+)
 from natsume_simple.log import setup_logger
 from natsume_simple.utils import set_random_seed
 
@@ -40,16 +45,48 @@ class BaseCorpusLoader(BaseModel):
         """Set up and return the corpus directory."""
         return self.data_dir / f"{self.corpus_name}_corpus"
 
+    def split_into_sentences(self, text: str, splitter: SaT) -> List[str]:
+        """Split text into sentences using wtpsplit.
+
+        Args:
+            text: Text to split
+            splitter: WTP sentence splitter model
+
+        Returns:
+            List of sentences
+        """
+        # First split on newlines and filter empty lines
+        paragraphs = [p.strip() for p in text.split("\n") if p.strip()]
+
+        # Then use wtpsplit on each paragraph
+        sentences = []
+        for paragraph in paragraphs:
+            sentences.extend(
+                [s.strip() for s in splitter.split(paragraph) if s.strip()]
+            )
+
+        return sentences
+
     def _load_sentences(self, file_path: Path) -> List[str]:
         """Load and filter sentences from a text file."""
         txt_path = self.corpus_dir / file_path
         try:
             with open(txt_path, "r", encoding="utf-8") as f:
-                return [
-                    line.strip()
-                    for line in f
-                    if is_japanese(line.strip(), min_length=5)
-                ]
+                text = f.read()
+
+            # Initialize sentence splitter (do this once and store as class attribute)
+            if not hasattr(self, "_splitter"):
+                self._splitter = SaT(
+                    "sat-3l-sm",
+                    ort_providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
+                )
+
+            # Split text into sentences and filter
+            return [
+                sent
+                for sent in self.split_into_sentences(text, self._splitter)
+                if is_japanese(sent, min_length=5)
+            ]
         except (UnicodeDecodeError, IOError) as e:
             logger.warning(f"Error loading {txt_path}: {e}")
             return []
@@ -435,17 +472,68 @@ def prepare_corpus(loader: BaseCorpusLoader) -> int:
     total = 0
 
     try:
-        for entry in loader.load_metadata():
-            save_corpus_to_db(
-                conn,
-                corpus_name=entry.corpus,
-                title=entry.title,
-                year=entry.year,
-                author=entry.author,
-                publisher=entry.publisher,
-                sentences=entry.sentences,
-            )
-            total += len(entry.sentences)
+        # For TED corpus, batch process sources and sentences
+        if isinstance(loader, TEDCorpusLoader):
+            # Collect all metadata and sentences first
+            sources = []
+            all_sentences: list[dict[str, Any]] = []
+            source_map: dict[
+                tuple[str, str], list[str]
+            ] = {}  # Map (corpus, title) to list of sentences
+
+            for entry in loader.load_metadata():
+                sources.append(
+                    {
+                        "corpus": entry.corpus,
+                        "title": entry.title,
+                        "year": entry.year,
+                        "author": entry.author,
+                        "publisher": entry.publisher,
+                    }
+                )
+                # Group sentences by source
+                key = (entry.corpus, entry.title)
+                if key not in source_map:
+                    source_map[key] = []
+                source_map[key].extend(entry.sentences)
+                total += len(entry.sentences)
+
+            # Batch insert sources
+            source_id_map = insert_sources_batch(conn, sources)
+
+            # Batch insert sentences for each source
+            for (corpus, title), sentences in source_map.items():
+                if source_id := source_id_map.get((corpus, title)):
+                    all_sentences.extend(
+                        [{"text": text, "source_id": source_id} for text in sentences]
+                    )
+                else:
+                    logger.warning(f"Source {title} not found in ID map")
+
+            # Bulk insert all sentences
+            if all_sentences:
+                df = pl.DataFrame(all_sentences)
+                conn.register("__temp_sentences", df)
+                conn.execute("""
+                    INSERT INTO sentence (text, source_id)
+                    SELECT text, source_id
+                    FROM __temp_sentences
+                """)
+                conn.unregister("__temp_sentences")
+
+        else:
+            # Process other corpora normally
+            for entry in loader.load_metadata():
+                save_corpus_to_db(
+                    conn,
+                    corpus_name=entry.corpus,
+                    title=entry.title,
+                    year=entry.year,
+                    author=entry.author,
+                    publisher=entry.publisher,
+                    sentences=entry.sentences,
+                )
+                total += len(entry.sentences)
     finally:
         conn.close()
 

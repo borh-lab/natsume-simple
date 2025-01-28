@@ -47,6 +47,7 @@ cpu = [
 ]
 cuda = [
     "torch>=2.5.1",
+    "onnxruntime-gpu>=1.20.1",
     "cupy-cuda12x>=13.3.0",
 ]
 rocm = [
