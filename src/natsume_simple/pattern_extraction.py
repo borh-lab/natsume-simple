@@ -31,10 +31,10 @@ from spacy.tokens import Doc, Span, Token  # type: ignore
 from tqdm import tqdm
 
 from natsume_simple.database import (
+    bulk_insert_lemmas,
+    bulk_insert_sentence_words,
+    bulk_insert_words,
     create_indices,
-    get_or_create_lemma,
-    get_or_create_sentence_word,
-    get_or_create_word,
     save_collocations,
 )
 from natsume_simple.log import setup_logger
@@ -331,12 +331,8 @@ def process_sentence(
                 token.idx + len(token.text),
                 token.lemma_,
                 token.pos_,
-                pron[0]
-                if isinstance(pron, list)
-                else pron,  # Take first reading if multiple
-                inf[0]
-                if isinstance(inf, list)
-                else inf,  # Take first inflection if multiple
+                pron[0] if isinstance(pron, list) else pron,  # Take first reading
+                inf[0] if isinstance(inf, list) else inf,  # Take first inflection
                 dep,
             )
         )
@@ -353,34 +349,50 @@ def save_sentence_processing_results(
     sentence_id: int,
 ) -> Dict[Tuple[int, int], int]:
     """Save word information and return mapping of spans to sentence_word IDs."""
-    span_to_id = {}
+    # Prepare data for bulk inserts
+    lemmas = [
+        {"string": lemma, "pos": pos} for _, _, lemma, pos, _, _, _ in word_entries
+    ]
 
-    for begin, end, lemma, pos, pron, inf, dep in word_entries:
-        # Get/create lemma
-        lemma_id = get_or_create_lemma(conn, lemma, pos)
+    # Get lemma IDs in bulk
+    lemma_id_map = bulk_insert_lemmas(conn, lemmas)
 
-        # Create word entry with all morphological features
-        word_id = get_or_create_word(
-            conn,
-            lemma,
-            pron,
-            inf,
-            dep,
-            lemma_id,
-        )
+    # Prepare word data with lemma IDs
+    words = [
+        {
+            "string": lemma,
+            "pron": pron,
+            "inf": inf,
+            "dep": dep,
+            "lemma_id": lemma_id_map[(lemma, pos)],
+        }
+        for _, _, lemma, pos, pron, inf, dep in word_entries
+    ]
 
-        # Link word to sentence
-        sw_id = get_or_create_sentence_word(
-            conn,
-            sentence_id,
-            word_id,
-            begin,
-            end,
-        )
+    # Get word IDs in bulk
+    word_id_map = bulk_insert_words(conn, words)
 
-        span_to_id[(begin, end)] = sw_id
+    # Prepare sentence_word data
+    sentence_words = [
+        {
+            "sentence_id": sentence_id,
+            "word_id": word_id_map[(lemma, lemma_id_map[(lemma, pos)])],
+            "begin": begin,
+            "end": end,
+        }
+        for begin, end, lemma, pos, _, _, _ in word_entries
+    ]
 
-    return span_to_id
+    # Get sentence_word IDs in bulk
+    sw_id_map = bulk_insert_sentence_words(conn, sentence_words)
+
+    # Create span to ID mapping
+    return {
+        (begin, end): sw_id_map[
+            (sentence_id, word_id_map[(lemma, lemma_id_map[(lemma, pos)])], begin, end)
+        ]
+        for begin, end, lemma, pos, _, _, _ in word_entries
+    }
 
 
 def process_corpus(
@@ -388,7 +400,7 @@ def process_corpus(
     nlp: spacy.language.Language,
     suru_token: Token,
     conn: duckdb.DuckDBPyConnection,
-    batch_size: int = 4000,
+    batch_size: int = 1000,
 ) -> None:
     """Process sentences and save results in one pass.
 
@@ -478,7 +490,7 @@ def main(
     corpus_name: Optional[str] = None,
     unprocessed_only: bool = False,
     sample_ratio: Optional[float] = None,
-    batch_size: int = 3000,
+    batch_size: int = 1000,
 ) -> None:
     """Process sentences and extract collocations.
 
@@ -488,7 +500,7 @@ def main(
         corpus_name: Optional corpus name to process (if None, process all)
         unprocessed_only: Only process sentences without existing collocations
         sample_ratio: If set, process only this ratio of sentences (0.0-1.0)
-        batch_size: Number of sentences to process in each batch (default: 3000)
+        batch_size: Number of sentences to process in each batch (default: 1000)
     """
     global nlp, suru_token
     if model_name:
@@ -587,8 +599,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--batch-size",
         type=int,
-        default=3000,
-        help="Number of sentences to process in each batch (default: 3000)",
+        default=1000,
+        help="Number of sentences to process in each batch (default: 1000)",
     )
     parser.add_argument(
         "--seed",

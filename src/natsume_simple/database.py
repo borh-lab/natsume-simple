@@ -300,6 +300,79 @@ def create_indices(conn: duckdb.DuckDBPyConnection) -> None:
     """)
 
 
+def bulk_insert_lemmas(
+    conn: duckdb.DuckDBPyConnection,
+    lemmas: List[Dict[str, Any]],
+) -> Dict[Tuple[str, str], int]:
+    """Bulk insert lemmas and return mapping of (string, pos) to IDs."""
+    if not lemmas:
+        return {}
+
+    df = pl.DataFrame(lemmas)
+    conn.register("__temp_lemmas", df)
+
+    # Insert new lemmas and get all IDs (both new and existing)
+    conn.execute("""
+        INSERT OR IGNORE INTO lemma (string, pos)
+        SELECT DISTINCT string, pos FROM __temp_lemmas;
+        
+        SELECT id, string, pos FROM lemma
+        WHERE (string, pos) IN (
+            SELECT string, pos FROM __temp_lemmas
+        );
+    """)
+    results = conn.fetchall()
+
+    conn.unregister("__temp_lemmas")
+    return {(r[1], r[2]): r[0] for r in results}
+
+
+def bulk_insert_words(
+    conn: duckdb.DuckDBPyConnection,
+    words: List[Dict[str, Any]],
+) -> Dict[Tuple[str, int], int]:
+    """Bulk insert words and return mapping of (string, lemma_id) to IDs."""
+    if not words:
+        return {}
+
+    df = pl.DataFrame(words)
+    conn.register("__temp_words", df)
+
+    conn.execute("""
+        INSERT INTO word (string, pron, inf, dep, lemma_id)
+        SELECT string, pron, inf, dep, lemma_id
+        FROM __temp_words
+        RETURNING id, string, lemma_id;
+    """)
+    results = conn.fetchall()
+
+    conn.unregister("__temp_words")
+    return {(r[1], r[2]): r[0] for r in results}
+
+
+def bulk_insert_sentence_words(
+    conn: duckdb.DuckDBPyConnection,
+    sentence_words: List[Dict[str, Any]],
+) -> Dict[Tuple[int, int, int, int], int]:
+    """Bulk insert sentence_words and return mapping of (sentence_id, word_id, begin, end) to IDs."""
+    if not sentence_words:
+        return {}
+
+    df = pl.DataFrame(sentence_words)
+    conn.register("__temp_sentence_words", df)
+
+    conn.execute("""
+        INSERT INTO sentence_word (sentence_id, word_id, begin, "end")
+        SELECT sentence_id, word_id, begin, "end"
+        FROM __temp_sentence_words
+        RETURNING id, sentence_id, word_id, begin, "end";
+    """)
+    results = conn.fetchall()
+
+    conn.unregister("__temp_sentence_words")
+    return {(r[1], r[2], r[3], r[4]): r[0] for r in results}
+
+
 def save_collocations(
     conn: duckdb.DuckDBPyConnection,
     collocations: List[Tuple[int, int, int]],

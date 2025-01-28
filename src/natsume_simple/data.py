@@ -383,19 +383,59 @@ class WikipediaCorpusLoader(BaseCorpusLoader):
             "wikimedia/wikipedia", "20231101.ja", streaming=True, split="train"
         )
 
-        # Add progress bar for Wikipedia articles
+        # Process articles in batches for efficient sentence splitting
+        batch_size = 10  # Process 10 articles at a time
+        current_batch: List[Tuple[str, str]] = []  # (title, text) pairs
+
+        # Initialize sentence splitter once
+        if not hasattr(self, "_splitter"):
+            self._splitter = SaT("sat-3l-sm")
+            if torch.cuda.is_available():
+                self._splitter.half().to("cuda")
+
         for article in tqdm(ds.take(500), desc="Loading Wikipedia articles", total=500):
             title = article["title"]
             text = article["text"]
-            paragraphs = [p.strip() for p in text.split("\n\n") if is_japanese(p)]
-            if paragraphs:
+            if is_japanese(text):  # Basic filter before more expensive processing
+                current_batch.append((title, text))
+
+                if len(current_batch) >= batch_size:
+                    # Process batch
+                    texts = [text for _, text in current_batch]
+                    sentences = self.split_into_sentences(texts, self._splitter)
+
+                    # Filter Japanese sentences
+                    sentences = [
+                        sent for sent in sentences if is_japanese(sent, min_length=5)
+                    ]
+
+                    # Yield entries with sentences
+                    if sentences:
+                        yield CorpusEntry(
+                            corpus=self.corpus_name,
+                            title=current_batch[0][0],  # Use first article's title
+                            year=2023,
+                            author="Wikipedia Contributors",
+                            publisher="Wikimedia Foundation",
+                            sentences=sentences,
+                        )
+
+                    current_batch = []
+
+        # Process any remaining articles
+        if current_batch:
+            texts = [text for _, text in current_batch]
+            sentences = self.split_into_sentences(texts, self._splitter)
+            sentences = [sent for sent in sentences if is_japanese(sent, min_length=5)]
+
+            if sentences:
                 yield CorpusEntry(
                     corpus=self.corpus_name,
-                    title=title,
+                    title=current_batch[0][0],
                     year=2023,
                     author="Wikipedia Contributors",
                     publisher="Wikimedia Foundation",
-                    sentences=paragraphs,
+                    sentences=sentences,
                 )
 
 
@@ -403,7 +443,6 @@ class GenericCorpusLoader(BaseCorpusLoader):
     """Generic loader for any corpus with a metadata.csv file."""
 
     def __init__(self, data_dir: Path, corpus_name: str):
-        self.corpus_name = corpus_name
         super().__init__(data_dir=data_dir, corpus_name=corpus_name)
 
     def model_post_init(self, _context) -> None:
@@ -455,10 +494,8 @@ class TEDCorpusLoader(BaseCorpusLoader):
             ("iwslt2017", "iwslt2017-ja-en", 2017),
         ]
 
-        # Add progress bar for TED datasets
         for year_dataset in tqdm(datasets_to_load, desc="Loading TED datasets"):
             dataset = self._load_dataset(year_dataset)
-            # Add progress bar for processing talks
             for example in tqdm(
                 dataset, desc=f"Processing {year_dataset[1]} talks", leave=False
             ):
