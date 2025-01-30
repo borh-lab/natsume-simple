@@ -212,7 +212,7 @@
               nix fmt {flake,help}.nix
               ${uv-run} ruff format
               ${uv-run} ruff check --fix --select I --output-format=github src notebooks tests
-              ${pkgs.mypy}/bin/mypy --ignore-missing-imports src
+              ${pkgs.mypy}/bin/mypy --ignore-missing-imports --show-error-context src
               ${pkgs.biome}/bin/biome check --write natsume-frontend
             '';
             passthru.meta = {
@@ -276,8 +276,8 @@
             text = ''
               ${config.packages.initial-setup}/bin/initial-setup
 
-              # Process standard corpora
-              ${uv-run} python src/natsume_simple/data.py corpus --name all
+              # Process all standard corpora
+              ${uv-run} python src/natsume_simple/data.py --corpus-type all
             '';
             passthru.meta = {
               category = "Data";
@@ -290,16 +290,18 @@
             text = ''
               ${config.packages.initial-setup}/bin/initial-setup
 
-              # Extract patterns from all corpora at once
+              # Extract patterns from all unprocessed sentences and save to database
               ${uv-run} python src/natsume_simple/pattern_extraction.py \
                   --data-dir data \
-                  --model ja_ginza
+                  --model ja_ginza \
+                  --unprocessed-only
 
-              # Process individual corpora
+              # Example for processing specific corpus or sample:
               # ${uv-run} python src/natsume_simple/pattern_extraction.py \
               #     --data-dir data \
               #     --model ja_ginza \
-              #     --corpus "my_new_corpus"
+              #     --corpus ted \
+              #     --sample 0.1
             '';
             passthru.meta = {
               category = "Data";
