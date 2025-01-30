@@ -235,7 +235,7 @@ def filter_non_japanese(dir: Path, min_length: int = 200) -> Iterator[str]:
 
 
 class JNLPCorpusLoader(BaseCorpusLoader):
-    corpus_name: str = "jnlp"
+    corpus_name: str = "自然言語処理"
 
     def model_post_init(self, _context) -> None:
         base_dir = self.setup_corpus_dir()
@@ -266,61 +266,41 @@ class JNLPCorpusLoader(BaseCorpusLoader):
         df = pl.read_excel(xls_path)
         volume_year_map = dict(zip(range(1, 31), range(1994, 2024)))
 
-        # Group files by batch for processing
-        batch_size = 100  # Adjust based on memory constraints
-        file_batches = [
-            list(batch) for batch in zip(*[iter(df.iter_rows(named=True))] * batch_size)
-        ]
+        for row in df.iter_rows(named=True):
+            if row["ファイル名"] == "*NA*":
+                continue
 
-        for batch in file_batches:
-            # Process batch of files
-            valid_paths = []
-            batch_map = {}  # Map file paths to their metadata
-            for row in batch:
-                if row["ファイル名"] == "*NA*":
+            if "/" not in row["ファイル名"]:
+                # Fix missing directory in some file paths
+                fixed_path = f"V{row['Vol']}/{row['ファイル名']}"
+                logger.info(f"Fixing file path for {row['ファイル名']} -> {fixed_path}")
+                row["ファイル名"] = fixed_path
+
+            # Use relative path for tex_path
+            tex_path = Path(row["ファイル名"])
+            full_tex_path = self.corpus_dir / tex_path
+            if not full_tex_path.exists():
+                logger.error(f"File not found: {full_tex_path}, skipping...")
+                continue
+
+            txt_path = tex_path.with_suffix(".txt")
+            full_txt_path = self.corpus_dir / txt_path
+            if not full_txt_path.exists():
+                if not self._convert_latex_file(full_tex_path, full_txt_path):
                     continue
-                if "/" not in row["ファイル名"]:
-                    # Fix missing directory in some file paths
-                    fixed_path = f"V{row['Vol']}/{row['ファイル名']}"
-                    logger.info(
-                        f"Fixing file path for {row['ファイル名']} -> {fixed_path}"
-                    )
-                    row["ファイル名"] = fixed_path
 
-                # Use relative path for tex_path
-                tex_path = Path(
-                    row["ファイル名"]
-                )  # Don't combine with self.corpus_dir yet
-                full_tex_path = self.corpus_dir / tex_path
-                if not full_tex_path.exists():
-                    logger.warning(f"File not found: {full_tex_path}, skipping...")
-                    continue
-                txt_path = tex_path.with_suffix(".txt")
-                full_txt_path = self.corpus_dir / txt_path
-                if not full_txt_path.exists():
-                    if not self._convert_latex_file(full_tex_path, full_txt_path):
-                        continue
-
-                valid_paths.append(txt_path)  # Store relative path
-                batch_map[txt_path] = row
-
-            # Load all sentences for the batch
-            if valid_paths:
-                sentences = self._load_sentences(valid_paths)
-                if sentences:  # Only yield if we have sentences
-                    # Take first valid row for metadata since we can't map sentences back
-                    row = batch_map[valid_paths[0]]
-                    year = volume_year_map.get(row["Vol"])
-                    if year:
-                        yield CorpusEntry(
-                            corpus=self.corpus_name,
-                            title=row["タイトル"],
-                            year=year,
-                            author=row["著者"] if row["著者"] else "Unknown",
-                            publisher="自然言語処理",
-                            sentences=sentences,
-                            url=row["J-Stageにおける論文URL"] or "",
-                        )
+            sentences = self._load_sentences([txt_path])
+            if sentences:  # Only yield if we have sentences
+                year = volume_year_map.get(row["Vol"], 2024)
+                yield CorpusEntry(
+                    corpus=self.corpus_name,
+                    title=row["タイトル"],
+                    year=year,
+                    author=row["著者"] if row["著者"] else "Unknown",
+                    publisher="自然言語処理",
+                    sentences=sentences,
+                    url=row["J-Stageにおける論文URL"] or "",
+                )
 
     def _convert_latex_file(self, tex_path: Path, txt_path: Path) -> bool:
         """Convert LaTeX to text."""
@@ -350,6 +330,7 @@ def convert_latex_to_plaintext(source: Path, dest: Path) -> bool:
         subprocess.run(
             [
                 "pandoc",
+                "--quiet",
                 "--from",
                 "latex+east_asian_line_breaks",
                 "--to",
@@ -366,12 +347,13 @@ def convert_latex_to_plaintext(source: Path, dest: Path) -> bool:
         )
         return True
     except subprocess.CalledProcessError as e:
-        logger.error(f"Pandoc conversion failed for {source}: {e}")
+        # This is expected to fail for some files, so log at debug level
+        logger.debug(f"Pandoc conversion failed for {source}: {e}")
         return False
 
 
 class WikipediaCorpusLoader(BaseCorpusLoader):
-    corpus_name: str = "wiki"
+    corpus_name: str = "Wikipedia"
 
     def model_post_init(self, _context) -> None:
         self.corpus_dir = self.setup_corpus_dir()
@@ -383,60 +365,38 @@ class WikipediaCorpusLoader(BaseCorpusLoader):
             "wikimedia/wikipedia", "20231101.ja", streaming=True, split="train"
         )
 
-        # Process articles in batches for efficient sentence splitting
-        batch_size = 10  # Process 10 articles at a time
-        current_batch: List[Tuple[str, str]] = []  # (title, text) pairs
-
         # Initialize sentence splitter once
         if not hasattr(self, "_splitter"):
             self._splitter = SaT("sat-3l-sm")
             if torch.cuda.is_available():
                 self._splitter.half().to("cuda")
 
-        for article in tqdm(ds.take(500), desc="Loading Wikipedia articles", total=500):
+        article_limit = 1000
+        for article in tqdm(
+            ds.take(article_limit),
+            desc="Loading Wikipedia articles",
+            total=article_limit,
+        ):
             title = article["title"]
             text = article["text"]
             if is_japanese(text):  # Basic filter before more expensive processing
-                current_batch.append((title, text))
+                sentences = self.split_into_sentences([text], self._splitter)
 
-                if len(current_batch) >= batch_size:
-                    # Process batch
-                    texts = [text for _, text in current_batch]
-                    sentences = self.split_into_sentences(texts, self._splitter)
+                # Filter Japanese sentences
+                sentences = [
+                    sent for sent in sentences if is_japanese(sent, min_length=5)
+                ]
 
-                    # Filter Japanese sentences
-                    sentences = [
-                        sent for sent in sentences if is_japanese(sent, min_length=5)
-                    ]
-
-                    # Yield entries with sentences
-                    if sentences:
-                        yield CorpusEntry(
-                            corpus=self.corpus_name,
-                            title=current_batch[0][0],  # Use first article's title
-                            year=2023,
-                            author="Wikipedia Contributors",
-                            publisher="Wikimedia Foundation",
-                            sentences=sentences,
-                        )
-
-                    current_batch = []
-
-        # Process any remaining articles
-        if current_batch:
-            texts = [text for _, text in current_batch]
-            sentences = self.split_into_sentences(texts, self._splitter)
-            sentences = [sent for sent in sentences if is_japanese(sent, min_length=5)]
-
-            if sentences:
-                yield CorpusEntry(
-                    corpus=self.corpus_name,
-                    title=current_batch[0][0],
-                    year=2023,
-                    author="Wikipedia Contributors",
-                    publisher="Wikimedia Foundation",
-                    sentences=sentences,
-                )
+                # Yield entry if it has sentences
+                if sentences:
+                    yield CorpusEntry(
+                        corpus=self.corpus_name,
+                        title=title,
+                        year=2023,
+                        author="Wikipedia Contributors",
+                        publisher="Wikimedia Foundation",
+                        sentences=sentences,
+                    )
 
 
 class GenericCorpusLoader(BaseCorpusLoader):
@@ -531,25 +491,6 @@ class TEDCorpusLoader(BaseCorpusLoader):
         )["train"]
 
 
-def get_wiki_corpus() -> list[tuple[str, list[str]]]:
-    """Return structured wiki data with (title, sentences) tuples"""
-    logger.info("Downloading Wikipedia corpus...")
-
-    wiki_data = []
-    ds = datasets.load_dataset(
-        "wikimedia/wikipedia", "20231101.ja", streaming=True, split="train"
-    )
-
-    for article in ds.take(500):
-        title = article["title"]
-        text = article["text"]
-        paragraphs = [p.strip() for p in text.split("\n\n") if is_japanese(p)]
-        if paragraphs:
-            wiki_data.append((title, paragraphs))
-
-    return wiki_data
-
-
 def prepare_corpus(loader: BaseCorpusLoader) -> int:
     """Prepare a corpus using its loader.
 
@@ -573,24 +514,32 @@ def prepare_corpus(loader: BaseCorpusLoader) -> int:
             logger.warning(f"No sources found for corpus {loader.corpus_name}")
             return 0
 
-        logger.info(f"Inserting {len(sources)} sources...")
-        source_id_map = insert_sources_batch(conn, sources)
+        # Start single transaction for entire ingest
+        conn.execute("BEGIN TRANSACTION;")
+        try:
+            logger.info(f"Inserting {len(sources)} sources...")
+            source_id_map = insert_sources_batch(conn, sources)
 
-        # Prepare all sentences for bulk insert
-        all_sentences = []
-        for (corpus, title), sentences in source_map.items():
-            if source_id := source_id_map.get((corpus, title)):
-                all_sentences.extend(
-                    [{"text": text, "source_id": source_id} for text in sentences]
-                )
-                total += len(sentences)
-            else:
-                logger.warning(f"Source {title} not found in ID map")
+            # Prepare all sentences for bulk insert
+            all_sentences = []
+            for (corpus, title), sentences in source_map.items():
+                if source_id := source_id_map.get((corpus, title)):
+                    all_sentences.extend(
+                        [{"text": text, "source_id": source_id} for text in sentences]
+                    )
+                    total += len(sentences)
+                else:
+                    logger.warning(f"Source {title} not found in ID map")
 
-        # Bulk insert all sentences
-        if all_sentences:
-            sentences_df = pl.DataFrame(all_sentences)
-            bulk_insert_sentences(conn, sentences_df)
+            # Bulk insert all sentences
+            if all_sentences:
+                sentences_df = pl.DataFrame(all_sentences)
+                bulk_insert_sentences(conn, sentences_df)
+
+            conn.execute("COMMIT;")
+        except Exception as e:
+            conn.execute("ROLLBACK;")
+            raise e
 
     finally:
         conn.close()
@@ -634,31 +583,21 @@ if __name__ == "__main__":
         default=Path("data"),
         help="Directory to store or load the prepared corpora (default: './data').",
     )
-
-    # Create subparsers for different commands
-    subparsers = parser.add_subparsers(dest="command", help="Command to execute")
-
-    # Standard corpus command
-    corpus_parser = subparsers.add_parser("corpus", help="Process a standard corpus")
-    corpus_parser.add_argument(
-        "--name",
-        choices=["all", "jnlp", "ted", "wiki"],
-        default="all",
-        help="Which standard corpus to prepare (default: all)",
+    parser.add_argument(
+        "--corpus-type",
+        choices=["jnlp", "ted", "wikipedia", "generic", "all"],
+        required=True,
+        help="Type of corpus to process",
     )
-
-    # Generic corpus command
-    generic_parser = subparsers.add_parser("generic", help="Process a generic corpus")
-    generic_parser.add_argument(
+    parser.add_argument(
         "--name",
         type=str,
-        required=True,
-        help="Name of the corpus (will be used as directory name)",
+        help="Name of the corpus (used as identifier in database, required except for 'all')",
     )
-    generic_parser.add_argument(
+    parser.add_argument(
         "--dir",
         type=Path,
-        help="Directory containing metadata.csv and corpus files (defaults to <data-dir>/<name>_corpus)",
+        help="Directory containing corpus files (defaults to <data-dir>/<name>_corpus)",
     )
 
     args = parser.parse_args()
@@ -669,31 +608,32 @@ if __name__ == "__main__":
     # Create data directory if it doesn't exist
     args.data_dir.mkdir(parents=True, exist_ok=True)
 
-    if args.command == "corpus":
+    if args.corpus_type == "all":
+        # Process all standard corpora
+        results = prepare_corpora(args.data_dir)
+        for corpus_name, count in results.items():
+            logger.info(f"{corpus_name} corpus: {count} sentences prepared")
+    else:
+        # Validate name is provided for specific corpus types
+        if not args.name:
+            parser.error("--name is required when --corpus-type is not 'all'")
+
+        # Map corpus types to loader classes
         loader_map = {
             "jnlp": JNLPCorpusLoader,
             "ted": TEDCorpusLoader,
-            "wiki": WikipediaCorpusLoader,
+            "wikipedia": WikipediaCorpusLoader,
+            "generic": GenericCorpusLoader,
         }
 
-        if args.name == "all":
-            results = prepare_corpora(args.data_dir)
-            for corpus_name, count in results.items():
-                logger.info(f"{corpus_name.upper()} corpus: {count} sentences prepared")
-        else:
-            loader_class = loader_map[args.name]
-            loader = loader_class(args.data_dir)
-            count = prepare_corpus(loader)
-            logger.info(f"{args.name.upper()} corpus: {count} sentences prepared")
+        # Create appropriate loader
+        loader_class = loader_map[args.corpus_type]
+        loader = loader_class(args.data_dir, args.name)
 
-    elif args.command == "generic":
-        corpus_dir = args.dir if args.dir else args.data_dir / f"{args.name}_corpus"
-        loader = GenericCorpusLoader(args.data_dir, args.name)
+        # Override corpus directory if specified
         if args.dir:
-            # If custom directory specified, ensure metadata.csv exists there
             loader.corpus_dir = args.dir
-        count = prepare_corpus(loader)
-        logger.info(f"{args.name.upper()} corpus: {count} sentences prepared")
 
-    else:
-        parser.print_help()
+        # Process corpus
+        count = prepare_corpus(loader)
+        logger.info(f"{args.name} corpus: {count} sentences prepared")
