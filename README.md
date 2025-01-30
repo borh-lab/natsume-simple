@@ -85,178 +85,158 @@ direnv allow
   - その他開発に必要なツール
 
 
-## CLIコマンド
+## CLI Commands
 
-以下のコマンドが利用可能です：
+The following commands are available after entering the development environment:
 
-<!--
-#### プロジェクト外から実行する場合
+### Development Workflow
+- `watch-all` - Start development servers (backend + frontend)
+
+### Frontend
+- `build-frontend` - Build the frontend for production
+- `watch-frontend` - Start frontend in development mode with hot reload
+
+### Server
+- `watch-dev-server` - Start backend server in development mode
+- `watch-prod-server` - Start backend server in production mode
+
+### Setup
+- `ensure-database` - Ensure database exists and is up-to-date
+- `initial-setup` - Initialize Python environment and dependencies
+
+### Data Management
+- `prepare-data` - Prepare corpus data and load into database
+- `extract-patterns` - Extract patterns (collocations)
+
+### Testing & QC
+- `lint` - Run all linters and formatters
+- `run-tests` - Run the test suite with pytest
+
+### Main
+- `run-all` - Initialize database, prepare data, extract patterns and start server
+
+### Environment Variables
+- `ACCELERATOR` - Current accelerator type (cpu/cuda/rocm)
+- `PC_PORT_NUM` - Process compose port (default: 10011)
+
+Type `h` to see this command overview again
+
+Note: The default command (`nix run`) will start the backend server in production mode (`watch-prod-server`).
+
+## Python Module CLI Examples
+
+### Data Processing (data.py)
+
 ```bash
-nix run github:borh-lab/natsume-simple#コマンド名
+# Process all standard corpora
+python src/natsume_simple/data.py --corpus-type all --data-dir data
+
+# Process specific corpus types
+python src/natsume_simple/data.py --corpus-type jnlp --name "自然言語処理" --data-dir data
+python src/natsume_simple/data.py --corpus-type ted --name "TED" --data-dir data
+python src/natsume_simple/data.py --corpus-type wikipedia --name "Wikipedia" --data-dir data
+
+# Process generic corpus with custom directory
+python src/natsume_simple/data.py --corpus-type generic --name "my-corpus" --dir path/to/corpus --data-dir data
 ```
 
-#### プロジェクト内から実行する場合
--->
-
-以下のコマンドを直接実行できます：
-
-（`nix run .#コマンド名`でも実行できます）
-
-#### 開発ワークフロー
-- `watch` - 開発サーバー（バックエンド＋フロントエンド）の起動
-
-#### フロントエンド
-- `build-frontend` - プロダクション用フロントエンドのビルド
-- `watch-frontend` - 開発モードでのフロントエンド起動（ホットリロード有効）
-
-#### サーバー
-- `watch-dev-server` - 開発モードでのバックエンドサーバー起動
-- `watch-prod-server` - プロダクションモードでのバックエンドサーバー起動
-
-#### データ管理
-- `prepare-data` - コーパスサンプルの準備と読み込み
-- `extract-patterns` - すべてのコーパスからのパターン抽出
-
-#### テストと品質管理
-- `lint` - すべてのリンターとフォーマッターの実行
-- `run-tests` - pytestによるテストスイートの実行
-
-#### メイン
-- `run-all` - データ準備、パターン抽出、サーバー起動の一括実行
-
-注意：
-- 各コマンドは自動的に必要な依存関係を設定しています
-- `nix develop`で入る開発環境には以下が含まれています：
-  - Python 3.12
-  - Node.js (Svelteのフロントエンド)
-  - uv（Pythonパッケージマネージャー）
-  - pandoc
-  - その他開発に必要なツール
-
-### 開発サーバー
-
-`watch`あるいは`nix run .#watch`でフロントエンドとバックエンドの開発サーバーを同時に起動できます。
-両サーバーがホットリロード機能付きで起動します（裏でprocess-composeを使用）。
-
-### 環境変数
-
-- `ACCELERATOR` - 現在のアクセラレータタイプ（cpu/cuda/rocm）
-- `PC_PORT_NUM` - プロセスコンポーズのポート番号（デフォルト：10011）
-
-## Nixフレークの使用方法
-
-このプロジェクトはNixフレークを使用して開発環境とビルドを管理しています。
-上記以外のコマンドとしては以下のコマンドが利用可能です：
+### Pattern Extraction (pattern_extraction.py)
 
 ```bash
-# フォーマット
+# Process all unprocessed sentences
+python src/natsume_simple/pattern_extraction.py --data-dir data
+
+# Process specific corpus with options
+python src/natsume_simple/pattern_extraction.py \
+    --data-dir data \
+    --model ja_ginza \
+    --corpus ted \
+    --sample 0.1 \
+    --batch-size 1000 \
+    --clean \
+    --debug
+
+# Process only unprocessed sentences
+python src/natsume_simple/pattern_extraction.py \
+    --data-dir data \
+    --unprocessed-only
+
+# Set custom random seed
+python src/natsume_simple/pattern_extraction.py \
+    --data-dir data \
+    --seed 42
+```
+
+### Database Management (database.py)
+
+```bash
+# Show row counts for all tables
+python src/natsume_simple/database.py \
+    --data-dir data \
+    --action show-counts
+
+# Clean pattern data while preserving corpus data
+python src/natsume_simple/database.py \
+    --data-dir data \
+    --action clean-patterns
+```
+
+### Server (server.py)
+
+```bash
+# Run with FastAPI CLI in development mode
+uvicorn src.natsume_simple.server:app --reload
+
+# Run with FastAPI CLI in production mode
+uvicorn src.natsume_simple.server:app
+
+# Available API endpoints:
+# GET /corpus/stats - Get corpus statistics
+# GET /corpus/norm - Get normalization factors
+# GET /npv/{search_type}/{term} - Search for collocations
+# GET /sentences/{n}/{p}/{v}/{limit} - Get example sentences
+# GET /search/{query} - Search for terms
+
+# Example API calls:
+curl http://localhost:8000/corpus/stats
+curl http://localhost:8000/npv/noun/本
+curl http://localhost:8000/npv/verb/読む
+curl http://localhost:8000/sentences/本/を/読む/5
+curl http://localhost:8000/search/読
+```
+
+### Utility Modules (no CLI interface)
+
+The following modules provide functionality used by other modules but don't have direct CLI interfaces:
+
+- `log.py` - Logging configuration
+- `utils.py` - Utility functions like random seed setting
+
+Example usage in Python code:
+```python
+from natsume_simple.log import setup_logger
+from natsume_simple.utils import set_random_seed
+
+logger = setup_logger(__name__)
+set_random_seed(42)
+```
+
+## Nix Flake Usage
+
+This project uses Nix flakes to manage the development environment and builds.
+The following commands are available:
+
+```bash
+# Format
 nix fmt
 
-# ビルド
-nix build .#コマンド名
-# ビルドの結果が`./results`にリンクされる
+# Build
+nix build .#command-name
+# Build results are linked in ./results
 
-# 開発環境のシェル情報を表示
+# Show development shell info
 nix develop --print-build-logs
 ```
-
-## CLI使用方法
-
-### 処理の順序
-
-データの準備から検索システムの利用まで、以下の順序で処理を行う必要があります：
-
-1. データの準備（JNLPコーパスとTEDコーパスのダウンロードと前処理）
-2. パターン抽出（各コーパスからのNPVパターンの抽出）
-3. サーバーの起動（検索インターフェースの提供）
-
-### 1. データの準備
-
-```bash
-python src/natsume_simple/data.py --prepare
-```
-
-オプション：
-- `--data-dir PATH` - データを保存するディレクトリ（デフォルト: ./data）
-- `--seed INT` - 乱数シードの設定（デフォルト: 42）
-
-この処理で以下が実行されます：
-- JNLPコーパスのダウンロードと変換
-- TEDコーパスのダウンロードと前処理
-- 前処理済みデータの保存
-
-### 2. データの読み込み
-
-準備済みデータを読み込む場合：
-
-```bash
-python src/natsume_simple/data.py --load \
-    --jnlp-sample-size 3000 \
-    --ted-sample-size 30000
-```
-
-オプション：
-- `--jnlp-sample-size INT` - JNLPコーパスからのサンプルサイズ（デフォルト: 3000）
-- `--ted-sample-size INT` - TEDコーパスからのサンプルサイズ（デフォルト: 30000）
-- `--data-dir PATH` - データディレクトリの指定（デフォルト: ./data）
-- `--seed INT` - 乱数シードの設定（デフォルト: 42）
-
-この処理で以下が実行されます：
-- 準備済みコーパスの読み込み
-- 指定されたサイズでのサンプリング
-- サンプリングされたコーパスの保存（{コーパス名}-corpus.txt形式）
-
-注意：
-- 各コマンドは必要な依存関係がインストールされていることを前提としています
-- エラーが発生した場合は、依存関係のインストール状態を確認してください
-- コーパスファイルは標準的な命名規則（{コーパス名}-corpus.txt）で保存されます
-
-### 3. パターン抽出
-
-```bash
-# JNLPコーパス用
-python src/natsume_simple/pattern_extraction.py \
-    --model ja_ginza_bert_large \
-    --corpus-name "JNLP" \
-    data/jnlp-corpus.txt \
-    data/jnlp_npvs_ja_ginza_bert_large.csv
-
-# TEDコーパス用
-python src/natsume_simple/pattern_extraction.py \
-    --model ja_ginza_bert_large \
-    --corpus-name "TED" \
-    data/ted-corpus.txt \
-    data/ted_npvs_ja_ginza_bert_large.csv
-```
-
-オプション：
-- `--model NAME` - 使用するspaCyモデル（オプション、デフォルト: `ja_ginza_bert_large`）
-- `--corpus-name NAME` - コーパス名の指定（デフォルト: "Unknown"）
-- `--seed INT` - 乱数シードの設定（デフォルト: 42）
-
-この処理で以下が実行されます：
-- コーパスの読み込み
-- NPVパターンの抽出
-- 結果のCSVファイルへの保存
-
-### 4. サーバーの起動
-
-```bash
-uv run fastapi dev src/natsume_simple/server.py
-```
-
-このコマンドでは，server.pyをFastAPIでウエブサーバで起動し，ブラウザからアクセス可能にする。
-
-オプション：
-- `--reload` - コード変更時の自動リロード（開発時のみ）
-- `--host HOST` - ホストの指定（デフォルト: 127.0.0.1）
-- `--port PORT` - ポートの指定（デフォルト: 8000）
-
-注意：
-- `server.py`では，モデルの指定があるのでご注意。
-- サーバを起動後は，出力される手順に従い，<http://127.0.0.1:8000/>にアクセスする。
-- FastAPIによるドキュメンテーションは<http://127.0.0.1:8000/docs>にある。
-- 環境によっては<http://0.0.0.0:8000>が<http://127.0.0.1:8000>と同様ではない
 
 ## 機能
 
@@ -274,9 +254,7 @@ uv run fastapi dev src/natsume_simple/server.py
 ```
 .
 ├── data/                        # コーパスとパターン抽出結果
-│   ├── ted_corpus.txt           # TEDコーパス
-│   ├── jnlp_npvs_*.csv          # 自然言語処理コーパスのパターン抽出結果
-│   └── ted_npvs_*.csv           # TEDコーパスのパターン抽出結果
+│   └── corpus.db                # データベース（ensure-databaseで取得可）
 │
 ├── notebooks/                   # 分析・可視化用Jupyterノートブック
 │   ├── pattern_extraction.ipynb # パターン抽出処理の開発用
@@ -291,8 +269,10 @@ uv run fastapi dev src/natsume_simple/server.py
 │
 ├── src/natsume_simple/          # バックエンドPythonパッケージ
 │   ├── server.py                # FastAPIサーバー
+│   ├── database.py              # データベース関連
 │   ├── data.py                  # データ処理
 │   ├── pattern_extraction.py    # パターン抽出ロジック
+│   ├── log.py                   # ログ設定
 │   └── utils.py                 # ユーティリティ関数
 │
 ├── scripts/                     # データ準備スクリプト
