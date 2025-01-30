@@ -359,10 +359,11 @@ def process_corpus(
     suru_token: Token,
     conn: duckdb.DuckDBPyConnection,
     batch_size: int = 2000,  # Use this only for spaCy's pipe
+    debug: bool = False,
 ) -> None:
     """Process sentences and save results in one pass."""
     logger.info("Processing sentences with spaCy...")
-    collector = BulkIngestCollector(conn)
+    collector = BulkIngestCollector(conn, debug=debug)
 
     # Process all sentences with spaCy's batching
     with tqdm(total=len(sentences), desc="Processing sentences") as pbar:
@@ -451,6 +452,7 @@ def main(
     sample_ratio: Optional[float] = None,
     batch_size: int = 1000,
     clean: bool = False,
+    debug: bool = False,
 ) -> None:
     """Process sentences and extract collocations.
 
@@ -462,6 +464,7 @@ def main(
         sample_ratio: If set, process only this ratio of sentences (0.0-1.0)
         batch_size: Number of sentences to process in each batch (default: 1000)
         clean: If True, clean existing pattern data before processing
+        debug: If True, write intermediate CSV files for debugging
     """
     global nlp, suru_token
     if model_name:
@@ -519,7 +522,7 @@ def main(
         logger.info(f"Found {len(sentences)} sentences to process")
 
         # Process everything in one pass
-        process_corpus(sentences, nlp, suru_token, conn, batch_size)
+        process_corpus(sentences, nlp, suru_token, conn, batch_size, debug=debug)
 
         logger.info(f"Processed {len(sentences)} sentences")
     finally:
@@ -571,6 +574,11 @@ if __name__ == "__main__":
         default=42,
         help="Random seed for reproducibility (default: 42)",
     )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Enable debug mode to write intermediate CSV files",
+    )
 
     args = parser.parse_args()
 
@@ -585,4 +593,5 @@ if __name__ == "__main__":
         args.sample,
         args.batch_size,
         args.clean,
+        debug=args.debug,
     )

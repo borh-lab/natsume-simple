@@ -375,8 +375,9 @@ def create_indices(conn: duckdb.DuckDBPyConnection) -> None:
 class BulkIngestCollector:
     """Collector for bulk database ingestion."""
 
-    def __init__(self, conn: duckdb.DuckDBPyConnection):
+    def __init__(self, conn: duckdb.DuckDBPyConnection, debug: bool = False):
         self.conn = conn
+        self.debug = debug
         # Use tuples of all relevant columns as keys
         self.lemmas: Dict[Tuple[str, str], Dict[str, Any]] = {}
         self.words: Dict[WordKey, Dict[str, Any]] = {}
@@ -487,10 +488,11 @@ class BulkIngestCollector:
         """Insert all collected data into database using explicit IDs."""
         logger.info("Beginning bulk insert of all data...")
 
-        # Create timestamp for file names
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        debug_dir = Path("data/debug")
-        debug_dir.mkdir(parents=True, exist_ok=True)
+        debug_dir = None
+        if self.debug:
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            debug_dir = Path("data/debug")
+            debug_dir.mkdir(parents=True, exist_ok=True)
 
         # Insert lemmas with explicit IDs
         if self.lemmas:
@@ -500,7 +502,8 @@ class BulkIngestCollector:
                 for key, lemma in self.lemmas.items()
             ]
             df = pl.DataFrame(lemma_data)
-            df.write_csv(debug_dir / f"insert_lemmas-{timestamp}.csv")
+            if debug_dir:
+                df.write_csv(debug_dir / f"insert_lemmas-{timestamp}.csv")
 
             conn.register("__temp_lemmas", df)
             conn.execute("""
@@ -518,7 +521,8 @@ class BulkIngestCollector:
                 for key, word in self.words.items()
             ]
             df = pl.DataFrame(word_data)
-            df.write_csv(debug_dir / f"insert_words-{timestamp}.csv")
+            if debug_dir:
+                df.write_csv(debug_dir / f"insert_words-{timestamp}.csv")
 
             conn.register("__temp_words", df)
             conn.execute("""
@@ -541,7 +545,8 @@ class BulkIngestCollector:
                 for sw in self.sentence_words
             ]
             df = pl.DataFrame(sentence_word_data)
-            df.write_csv(debug_dir / f"insert_sentence_words-{timestamp}.csv")
+            if debug_dir:
+                df.write_csv(debug_dir / f"insert_sentence_words-{timestamp}.csv")
 
             conn.register("__temp_sentence_words", df)
             conn.execute("""
@@ -555,7 +560,8 @@ class BulkIngestCollector:
         if self.collocations:
             logger.info(f"Inserting {len(self.collocations)} collocations...")
             df = pl.DataFrame(self.collocations)
-            df.write_csv(debug_dir / f"insert_collocations-{timestamp}.csv")
+            if debug_dir:
+                df.write_csv(debug_dir / f"insert_collocations-{timestamp}.csv")
 
             conn.register("__temp_collocations", df)
             conn.execute("""
