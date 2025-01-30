@@ -94,7 +94,7 @@
             flake-checker.enable = true;
             ruff.enable = true;
             ruff-format.enable = true;
-            # biome.enable = true;
+            biome.enable = true;
           };
 
           devShells = {

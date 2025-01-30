@@ -107,6 +107,8 @@ class Distribution(TypedDict):
     normalizedOffset: float
     rawWidth: float
     rawOffset: float
+    total_normalized: float
+    total_raw: int
 
 
 class ParticleGroup(TypedDict):
@@ -185,11 +187,15 @@ def process_query_results(
                             "normalizedOffset": 0.0,
                             "rawWidth": 0.0,
                             "rawOffset": 0.0,
+                            "total_normalized": 0.0,
+                            "total_raw": 0,
                         }
                     distribution[corpus]["normalized"] += float(
                         contrib["normalizedFrequency"]
                     )
                     distribution[corpus]["raw"] += int(contrib["rawFrequency"])
+                    distribution[corpus]["total_normalized"] = total_norm
+                    distribution[corpus]["total_raw"] = total_raw
                     total_norm += float(contrib["normalizedFrequency"])
                     total_raw += int(contrib["rawFrequency"])
 

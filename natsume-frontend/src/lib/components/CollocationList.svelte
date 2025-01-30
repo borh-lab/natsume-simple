@@ -15,13 +15,23 @@ const {
   searchType
 } = $props();
 
-function getSortValue(collocate: Result) {
-  return $useNormalization 
-    ? collocate.totalNormalizedFrequency 
-    : collocate.totalRawFrequency;
+function hasVisibleContributions(collocate: Result): boolean {
+  return collocate.contributions.some(({ corpus }) => $selectedCorpora.includes(corpus));
 }
 
-const sortedCollocates = $derived(collocates.sort((a, b) => getSortValue(b) - getSortValue(a)));
+function getTotalFrequency(collocate: Result): number {
+  return collocate.contributions
+    .filter(({ corpus }) => $selectedCorpora.includes(corpus))
+    .reduce((sum, { normalizedFrequency, rawFrequency }) => {
+      return sum + ($useNormalization ? normalizedFrequency : rawFrequency);
+    }, 0);
+}
+
+const sortedCollocates = $derived(
+  collocates
+    .filter(hasVisibleContributions)
+    .sort((a, b) => getTotalFrequency(b) - getTotalFrequency(a))
+);
 
 	const apiUrl = getContext<string>('apiUrl');
 
@@ -51,10 +61,9 @@ const sortedCollocates = $derived(collocates.sort((a, b) => getSortValue(b) - ge
 			.filter(({ corpus }) => $selectedCorpora.includes(corpus))
 			.sort((a, b) => $selectedCorpora.indexOf(a.corpus) - $selectedCorpora.indexOf(b.corpus))
 			.map(({ corpus, normalizedFrequency, rawFrequency }) => {
-				// Use the new corpusNorm structure
-				const normFactor = $corpusNorm[corpus]?.normalizationFactor ?? 1;
+				// The normalizedFrequency already includes the normalization factor from the server
 				const frequency = $useNormalization 
-					? normalizedFrequency * normFactor
+					? normalizedFrequency  // Already normalized, don't multiply again
 					: rawFrequency;
 				const maxFreq = $useNormalization ? maxFrequency.normalized : maxFrequency.raw;
 				
@@ -68,8 +77,7 @@ const sortedCollocates = $derived(collocates.sort((a, b) => getSortValue(b) - ge
 					frequency,
 					maxFreq,
 					width,
-					xOffset,
-					normFactor
+					xOffset
 				});
 
 				const result = {

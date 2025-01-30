@@ -609,10 +609,28 @@ afterUpdate(() => {
 								<div class="h-1 w-full relative">
 									{#each Object.entries(data.distribution || {}) as [corpus, freqs]}
 										{#if $selectedCorpora.includes(corpus)}
+											{@const selectedTotal = $useNormalization 
+												? Object.entries(data.distribution)
+														.filter(([corpus]) => $selectedCorpora.includes(corpus))
+														.reduce((sum, [_, freqs]) => sum + freqs.normalized, 0)
+												: Object.entries(data.distribution)
+														.filter(([corpus]) => $selectedCorpora.includes(corpus))
+														.reduce((sum, [_, freqs]) => sum + freqs.raw, 0)}
+											{@const value = $useNormalization ? freqs.normalized : freqs.raw}
+											{@const percentage = (value / selectedTotal) * 100}
+											{@const offset = $useNormalization 
+												? Object.entries(data.distribution)
+														.filter(([c]) => $selectedCorpora.includes(c))
+														.filter(([c]) => c < corpus)
+														.reduce((sum, [_, f]) => sum + (f.normalized / selectedTotal) * 100, 0)
+												: Object.entries(data.distribution)
+														.filter(([c]) => $selectedCorpora.includes(c))
+														.filter(([c]) => c < corpus)
+														.reduce((sum, [_, f]) => sum + (f.raw / selectedTotal) * 100, 0)}
 											<div
 												class="absolute h-full"
-												style="left: {$useNormalization ? freqs.normalizedOffset : freqs.rawOffset}%; 
-													   width: {$useNormalization ? freqs.normalizedWidth : freqs.rawWidth}%; 
+												style="left: {offset}%; 
+													   width: {percentage}%; 
 													   background-color: {getSolidColor(corpus)};"
 											></div>
 										{/if}
