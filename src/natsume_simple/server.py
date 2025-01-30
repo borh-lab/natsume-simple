@@ -25,7 +25,7 @@ app.add_middleware(
 )
 
 
-def load_sentences_db() -> duckdb.DuckDBPyConnection:
+def load_db() -> duckdb.DuckDBPyConnection:
     db_path = Path("data/corpus.db")
     return duckdb.connect(str(db_path), read_only=True)
 
@@ -55,8 +55,8 @@ def calculate_corpus_norm(conn: duckdb.DuckDBPyConnection) -> Dict[str, float]:
     }
 
 
-db = load_sentences_db()
-corpus_norm = calculate_corpus_norm(db)
+conn = load_db()
+corpus_norm = calculate_corpus_norm(conn)
 
 
 @app.get("/corpus/norm")
@@ -67,7 +67,7 @@ def get_corpus_norm() -> Dict[str, float]:
 @app.get("/npv/noun/{noun}")
 def read_npv_noun(noun: str) -> List[Dict[str, Any]]:
     matches = (
-        db.execute(
+        conn.execute(
             """
         WITH pattern_counts AS (
             SELECT 
@@ -93,7 +93,7 @@ def read_npv_noun(noun: str) -> List[Dict[str, Any]]:
         )
         SELECT 
             n, p, v,
-            SUM(frequency) as frequency,
+            CAST(SUM(frequency) AS INTEGER) as frequency,
             ARRAY_AGG(STRUCT_PACK(corpus := corpus, frequency := frequency)) as contributions
         FROM pattern_counts
         GROUP BY n, p, v
@@ -110,7 +110,7 @@ def read_npv_noun(noun: str) -> List[Dict[str, Any]]:
 @app.get("/npv/verb/{verb}")
 def read_npv_verb(verb: str) -> List[Dict[str, Any]]:
     matches = (
-        db.execute(
+        conn.execute(
             """
         WITH pattern_counts AS (
             SELECT 
@@ -136,7 +136,7 @@ def read_npv_verb(verb: str) -> List[Dict[str, Any]]:
         )
         SELECT 
             n, p, v,
-            SUM(frequency) as frequency,
+            CAST(SUM(frequency) AS INTEGER) as frequency,
             ARRAY_AGG(STRUCT_PACK(corpus := corpus, frequency := frequency)) as contributions
         FROM pattern_counts
         GROUP BY n, p, v
@@ -150,14 +150,22 @@ def read_npv_verb(verb: str) -> List[Dict[str, Any]]:
     return matches
 
 
-@app.get("/sentences/{n}/{p}/{v}")
-def read_sentences(n: str, p: str, v: str) -> List[dict[str, str]]:
-    conn = load_sentences_db()
+@app.get("/sentences/{n}/{p}/{v}/{limit}")
+def read_sentences(
+    n: str, p: str, v: str, limit: int = 5
+) -> List[dict[str, str | int]]:
     matches = (
         conn.execute(
             """
         WITH colloc AS (
-            SELECT sw1.sentence_id
+            SELECT 
+                sw1.sentence_id,
+                sw1.begin as n_begin,
+                sw1."end" as n_end,
+                sw2.begin as p_begin,
+                sw2."end" as p_end,
+                sw3.begin as v_begin,
+                sw3."end" as v_end
             FROM collocation c
             JOIN sentence_word sw1 ON c.word_1_sw_id = sw1.id
             JOIN word w1 ON sw1.word_id = w1.id
@@ -172,12 +180,21 @@ def read_sentences(n: str, p: str, v: str) -> List[dict[str, str]]:
             AND l2.string = ?
             AND l3.string = ?
         )
-        SELECT s.text, src.corpus 
+        SELECT 
+            s.text, 
+            src.corpus,
+            colloc.n_begin,
+            colloc.n_end,
+            colloc.p_begin,
+            colloc.p_end,
+            colloc.v_begin,
+            colloc.v_end
         FROM sentence s
         JOIN source src ON s.source_id = src.id
         JOIN colloc ON s.id = colloc.sentence_id
+        LIMIT ?
     """,
-            [n, p, v],
+            [n, p, v, limit],
         )
         .pl()
         .to_dicts()
@@ -187,7 +204,7 @@ def read_sentences(n: str, p: str, v: str) -> List[dict[str, str]]:
 
 @app.get("/search/{query}")
 def read_query(query: str) -> List[tuple[str, str]]:
-    matches = db.execute(
+    matches = conn.execute(
         """
         WITH lemma_matches AS (
             SELECT DISTINCT l.string, 'n' as type, COUNT(*) as frequency
