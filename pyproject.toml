@@ -1,6 +1,6 @@
 [project]
 name = "natsume-simple"
-version = "0.2.0"
+version = "0.3.0"
 description = "simple dependency relation search engine for Japanese"
 authors = [{ name = "Bor Hodošček", email = "dev@bor.space" }]
 license = "MIT"
