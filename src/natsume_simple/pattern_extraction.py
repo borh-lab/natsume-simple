@@ -3,7 +3,7 @@ import re
 from collections.abc import Iterator
 from itertools import chain, dropwhile, takewhile, tee
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Iterable, List, Optional, Tuple
 
 import duckdb
 import ginza  # type: ignore
@@ -31,11 +31,9 @@ from spacy.tokens import Doc, Span, Token  # type: ignore
 from tqdm import tqdm
 
 from natsume_simple.database import (
-    bulk_insert_lemmas,
-    bulk_insert_sentence_words,
-    bulk_insert_words,
+    BulkIngestCollector,
+    clean_pattern_data,
     create_indices,
-    save_collocations,
 )
 from natsume_simple.log import setup_logger
 from natsume_simple.utils import set_random_seed
@@ -127,7 +125,9 @@ def simple_lemma(token: Token) -> str:
         return token.norm_
 
 
-def normalize_verb_span(tokens: Doc | Span, suru_token: Token) -> Optional[str]:
+def normalize_verb_span(
+    tokens: Doc | Span, suru_token: Token
+) -> tuple[Optional[str], int, int]:
     """
     Normalize a verb span.
 
@@ -142,17 +142,17 @@ def normalize_verb_span(tokens: Doc | Span, suru_token: Token) -> Optional[str]:
         >>> nlp = spacy.load("ja_ginza")
         >>> doc, suru_token = nlp("飛び立つでしょう"), nlp("する")[0]
         >>> normalize_verb_span(doc, suru_token)
-        '飛び立つ'
+        ('飛び立つ', 0, 4)
         >>> normalize_verb_span(nlp("考えられませんでした"), suru_token)
-        '考えられる'
+        ('考えられる', 0, 4)
         >>> normalize_verb_span(nlp("扱うかです"), suru_token)
-        '扱う'
+        ('扱う', 0, 2)
         >>> normalize_verb_span(nlp("突入しちゃう"), suru_token)
-        '突入する'
+        ('突入する', 0, 6)
         >>> normalize_verb_span(nlp("で囲んである"), suru_token)
-        '囲む'
+        ('囲む', 1, 6)
         >>> normalize_verb_span(nlp("たらしめている"), suru_token)
-        'たらしめる'
+        ('たらしめる', 0, 7)
     """
     # Chain filtering steps together
     clean_tokens = list(
@@ -177,13 +177,17 @@ def normalize_verb_span(tokens: Doc | Span, suru_token: Token) -> Optional[str]:
     )
 
     if len(clean_tokens) == 1:
-        return simple_lemma(clean_tokens[0])
+        return (
+            simple_lemma(clean_tokens[0]),
+            clean_tokens[0].idx,
+            clean_tokens[0].idx + len(clean_tokens[0].text),
+        )
 
     if not clean_tokens:
         logger.warning(
             f"Failed to normalize verb span: {[t for t in tokens]}; clean_tokens: {clean_tokens}"
         )
-        return None
+        return (None, -1, -1)
 
     normalized_tokens: List[Token] = []
     for i, (token, next_token) in enumerate(pairwise(clean_tokens)):
@@ -221,21 +225,29 @@ def normalize_verb_span(tokens: Doc | Span, suru_token: Token) -> Optional[str]:
 
     logger.debug(f"Normalized tokens: {[t.text for t in normalized_tokens]}")
     if len(normalized_tokens) == 1:
-        return simple_lemma(normalized_tokens[0])
+        return (
+            simple_lemma(normalized_tokens[0]),
+            normalized_tokens[0].idx,
+            normalized_tokens[0].idx + len(normalized_tokens[0].text),
+        )
 
     if not normalized_tokens:
         logger.warning(
             f"Failed to normalize verb span: {[t for t in tokens]}; clean_tokens: {clean_tokens}"
         )
-        return None
+        return (None, -1, -1)
 
     stem = normalized_tokens[0]
     affixes = normalized_tokens[1:-1]
     suffix = normalized_tokens[-1]
-    return "{}{}{}".format(
-        stem.text,
-        "".join(t.text for t in affixes),
-        simple_lemma(suffix),
+    return (
+        "{}{}{}".format(
+            stem.text,
+            "".join(t.text for t in affixes),
+            simple_lemma(suffix),
+        ),
+        stem.idx,
+        suffix.idx + len(suffix.text),
     )
 
 
@@ -267,7 +279,9 @@ def npv_matcher(
             and case_particle.nbor().head != case_particle.head
         ):
             verb_bunsetu_span = ginza.bunsetu_span(verb)
-            vp_string = normalize_verb_span(verb_bunsetu_span, suru_token)
+            vp_string, v_begin, v_end = normalize_verb_span(
+                verb_bunsetu_span, suru_token
+            )
             if not vp_string:
                 logger.error(
                     f"Error normalizing verb phrase: {verb_bunsetu_span} in document {doc}"
@@ -279,10 +293,6 @@ def npv_matcher(
             n_end = noun.idx + len(noun.text)
             p_begin = case_particle.idx
             p_end = case_particle.idx + len(case_particle.text)
-            # Note that this is not the whole verb, just the head token
-            # TODO: normalize_verb_span should return the a token span instead of a string
-            v_begin = verb.idx
-            v_end = verb.idx + len(verb.text)
 
             matches.append(
                 (
@@ -331,8 +341,8 @@ def process_sentence(
                 token.idx + len(token.text),
                 token.lemma_,
                 token.pos_,
-                pron[0] if isinstance(pron, list) else pron,  # Take first reading
-                inf[0] if isinstance(inf, list) else inf,  # Take first inflection
+                pron[0] if isinstance(pron, list) else pron,
+                ";".join(inf) if isinstance(inf, list) else inf,
                 dep,
             )
         )
@@ -343,142 +353,91 @@ def process_sentence(
     return word_entries, [(sentence_id, *p) for p in patterns]
 
 
-def save_sentence_processing_results(
-    conn: duckdb.DuckDBPyConnection,
-    word_entries: List[Tuple[int, int, str, str, str, Optional[str], str]],
-    sentence_id: int,
-) -> Dict[Tuple[int, int], int]:
-    """Save word information and return mapping of spans to sentence_word IDs."""
-    # Prepare data for bulk inserts
-    lemmas = [
-        {"string": lemma, "pos": pos} for _, _, lemma, pos, _, _, _ in word_entries
-    ]
-
-    # Get lemma IDs in bulk
-    lemma_id_map = bulk_insert_lemmas(conn, lemmas)
-
-    # Prepare word data with lemma IDs
-    words = [
-        {
-            "string": lemma,
-            "pron": pron,
-            "inf": inf,
-            "dep": dep,
-            "lemma_id": lemma_id_map[(lemma, pos)],
-        }
-        for _, _, lemma, pos, pron, inf, dep in word_entries
-    ]
-
-    # Get word IDs in bulk
-    word_id_map = bulk_insert_words(conn, words)
-
-    # Prepare sentence_word data
-    sentence_words = [
-        {
-            "sentence_id": sentence_id,
-            "word_id": word_id_map[(lemma, lemma_id_map[(lemma, pos)])],
-            "begin": begin,
-            "end": end,
-        }
-        for begin, end, lemma, pos, _, _, _ in word_entries
-    ]
-
-    # Get sentence_word IDs in bulk
-    sw_id_map = bulk_insert_sentence_words(conn, sentence_words)
-
-    # Create span to ID mapping
-    return {
-        (begin, end): sw_id_map[
-            (sentence_id, word_id_map[(lemma, lemma_id_map[(lemma, pos)])], begin, end)
-        ]
-        for begin, end, lemma, pos, _, _, _ in word_entries
-    }
-
-
 def process_corpus(
     sentences: List[Tuple[str, int]],
     nlp: spacy.language.Language,
     suru_token: Token,
     conn: duckdb.DuckDBPyConnection,
-    batch_size: int = 1000,
+    batch_size: int = 2000,  # Use this only for spaCy's pipe
 ) -> None:
-    """Process sentences and save results in one pass.
-
-    Args:
-        sentences: List of (text, sentence_id) pairs
-        nlp: The loaded NLP model
-        suru_token: The constant する token
-        conn: Database connection
-        batch_size: Number of sentences to process in each batch
-    """
-    # First phase: Process all sentences with spaCy in batches
+    """Process sentences and save results in one pass."""
     logger.info("Processing sentences with spaCy...")
-    processed_batches = []
+    collector = BulkIngestCollector(conn)
 
-    # Create a single progress bar for all batches
-    pbar = tqdm(total=len(sentences) // batch_size + 1, desc="Processing sentences")
-
-    for i in range(0, len(sentences), batch_size):
-        batch = sentences[i : i + batch_size]
-
-        # Process batch with spaCy
-        docs = list(nlp.pipe(batch, as_tuples=True, batch_size=batch_size))
-
-        # Process each document in the batch
-        batch_results = []
-        for doc, sentence_id in docs:
+    # Process all sentences with spaCy's batching
+    with tqdm(total=len(sentences), desc="Processing sentences") as pbar:
+        for doc, sentence_id in nlp.pipe(
+            sentences, as_tuples=True, batch_size=batch_size
+        ):
+            if not doc.has_annotation("DEP"):
+                logger.warning(f"Skipping sentence {sentence_id}: No dependency parse")
+                continue
             # Process sentence
             word_entries, patterns = process_sentence(doc, sentence_id, suru_token)
-            batch_results.append((word_entries, patterns, sentence_id))
 
-        processed_batches.append(batch_results)
-        pbar.update(1)  # Update progress after each batch
-        pbar.set_postfix(
-            {"sentences": i + len(batch)}
-        )  # Show total sentences processed
+            # Add word information to collector
+            span_to_id = {}
+            for begin, end, lemma, pos, pron, inf, dep in word_entries:
+                lemma_id = collector.add_lemma(lemma, pos)
+                # Use the actual token string from the span, not the lemma
+                word_string = doc.text[begin:end]
+                word_id = collector.add_word(word_string, pron, inf, dep, lemma_id)
+                sw_id = collector.add_sentence_word(sentence_id, word_id, begin, end)
+                span_to_id[(begin, end)] = sw_id
 
-    pbar.close()
+            # Add patterns to collector
+            for pattern in patterns:
+                sentence_id, _, _, _, n_begin, n_end, p_begin, p_end, v_begin, v_end = (
+                    pattern
+                )
+                word_1_id = span_to_id[(n_begin, n_end)]
+                particle_id = span_to_id[(p_begin, p_end)]
 
-    # Second phase: Save all results to database
-    logger.info("Saving results to database...")
-    all_patterns = []
+                # Find the sentence_word that *begins* the span since sentence_word is limited to single tokens
+                verb_id = None
+                for (span_begin, _span_end), sw_id in span_to_id.items():
+                    if span_begin == v_begin:
+                        verb_id = sw_id
+                        break
 
-    for batch in tqdm(processed_batches, desc="Saving batches"):
-        # Process each sentence in the batch
-        for word_entries, patterns, sentence_id in batch:
-            # Save word information and get span mapping
-            span_to_id = save_sentence_processing_results(
-                conn, word_entries, sentence_id
+                if verb_id is None:
+                    logger.error(
+                        f"Failed to find verb span for pattern: {pattern} in spans: {list(span_to_id.keys())}"
+                    )
+                    continue
+
+                collector.add_collocation(word_1_id, particle_id, verb_id)
+
+            pbar.update(1)
+
+    # Start transaction and bulk insert everything at once
+    conn.execute("BEGIN TRANSACTION;")
+    try:
+        # Bulk insert all collected data
+        collector.bulk_insert_all(conn)
+
+        # Create indices after all data is loaded
+        create_indices(conn)
+
+        # Validate database state
+        logger.info("Validating database state...")
+        lemma_count = conn.execute("SELECT COUNT(*) FROM lemma").fetchone()[0]
+        word_count = conn.execute("SELECT COUNT(*) FROM word").fetchone()[0]
+
+        if lemma_count != len(collector._lemma_id_map):
+            raise ValueError(
+                f"Lemma count mismatch: DB {lemma_count} vs Collector {len(collector._lemma_id_map)}"
             )
 
-            # Convert patterns to use sentence_word IDs
-            for pattern in patterns:
-                (
-                    sentence_id,
-                    _noun,
-                    _particle,
-                    _verb,
-                    n_begin,
-                    n_end,
-                    p_begin,
-                    p_end,
-                    v_begin,
-                    v_end,
-                ) = pattern
+        if word_count != len(collector._word_id_map):
+            raise ValueError(
+                f"Word count mismatch: DB {word_count} vs Collector {len(collector._word_id_map)}"
+            )
 
-                word_1_id = span_to_id.get((n_begin, n_end))
-                particle_id = span_to_id.get((p_begin, p_end))
-                word_2_id = span_to_id.get((v_begin, v_end))
-
-                if None not in (word_1_id, particle_id, word_2_id):
-                    all_patterns.append((word_1_id, particle_id, word_2_id))
-
-        # Commit after each batch to avoid huge transactions
-        conn.commit()
-
-    logger.info(f"Saving {len(all_patterns)} patterns to database...")
-    # Bulk save all patterns at once
-    save_collocations(conn, all_patterns)
+        conn.execute("COMMIT;")
+    except Exception as e:
+        conn.execute("ROLLBACK;")
+        raise e
 
 
 nlp, suru_token = load_nlp_model()
@@ -491,6 +450,7 @@ def main(
     unprocessed_only: bool = False,
     sample_ratio: Optional[float] = None,
     batch_size: int = 1000,
+    clean: bool = False,
 ) -> None:
     """Process sentences and extract collocations.
 
@@ -501,6 +461,7 @@ def main(
         unprocessed_only: Only process sentences without existing collocations
         sample_ratio: If set, process only this ratio of sentences (0.0-1.0)
         batch_size: Number of sentences to process in each batch (default: 1000)
+        clean: If True, clean existing pattern data before processing
     """
     global nlp, suru_token
     if model_name:
@@ -509,18 +470,20 @@ def main(
     conn = duckdb.connect(str(data_dir / "corpus.db"))
 
     try:
-        # Build query based on options - note the SELECT order is now (text, id)
+        if clean:
+            logger.info("Cleaning existing pattern data...")
+            clean_pattern_data(conn)
+        # Build query based on options
         if unprocessed_only:
             query = """
-                SELECT DISTINCT s.text, s.id
+                SELECT s.text, s.id
                 FROM sentence s
                 JOIN source src ON s.source_id = src.id
-                LEFT JOIN sentence_word sw ON s.id = sw.sentence_id
-                LEFT JOIN collocation c ON 
-                    sw.id = c.word_1_sw_id OR 
-                    sw.id = c.particle_sw_id OR 
-                    sw.id = c.word_2_sw_id
-                WHERE c.word_1_sw_id IS NULL
+                WHERE NOT EXISTS (
+                    SELECT 1 
+                    FROM sentence_word sw 
+                    WHERE sw.sentence_id = s.id
+                )
             """
         else:
             query = """
@@ -558,11 +521,6 @@ def main(
         # Process everything in one pass
         process_corpus(sentences, nlp, suru_token, conn, batch_size)
 
-        # Create indices after all data is loaded
-        create_indices(conn)
-
-        conn.commit()
-
         logger.info(f"Processed {len(sentences)} sentences")
     finally:
         conn.close()
@@ -570,6 +528,11 @@ def main(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Extract NPV patterns from corpora.")
+    parser.add_argument(
+        "--clean",
+        action="store_true",
+        help="Clean existing pattern data before processing",
+    )
     parser.add_argument(
         "--data-dir",
         type=Path,
@@ -621,4 +584,5 @@ if __name__ == "__main__":
         args.unprocessed_only,
         args.sample,
         args.batch_size,
+        args.clean,
     )
