@@ -59,6 +59,7 @@ const filteredResultCount = derived(
 	([$d, $selectedCorpora]) => {
 		if (!$d || Object.keys($d).length === 0) return 0;
 		return Object.values($d).reduce((total, collocates) => {
+			console.log("filteredResultCount", total, collocates);
 			return (
 				total +
 				collocates.filter(
@@ -307,70 +308,69 @@ function computeDerivedData(
 	selectedCorpora: string[],
 	combinedSearch: boolean,
 ) {
-	console.log("Computing derived data");
-	let derivedData: Record<string, CombinedResult[]>;
+	console.log("Computing derived data with:", {
+		results,
+		useNormalization,
+		selectedCorpora,
+		combinedSearch,
+	});
 
-	const appendedResults = results.map((result) => ({
-		...result,
-		n: searchTerm,
-	}));
+	// Filter results that have contributions from selected corpora
+	const filteredResults = results.filter((result) =>
+		result.contributions.some((c) => selectedCorpora.includes(c.corpus)),
+	);
 
 	if (combinedSearch) {
-		// Combine results across all particles first
-		const combinedResults = appendedResults.reduce<
-			Record<string, CombinedResult>
-		>((acc, curr) => {
-			if (selectedCorpora.includes(curr.corpus as string)) {
-				const key = `${curr.v}-${curr.p}`; // Use both verb and particle as key
-				if (!acc[key]) {
-					acc[key] = {
-						n: searchTerm,
-						v: curr.v,
-						p: curr.p,
-						frequency: 0,
-						contributions: [],
-					};
-				}
-				acc[key].frequency +=
-					curr.frequency * (useNormalization ? corpusNorm[curr.corpus] : 1);
-				acc[key].contributions.push({
-					corpus: curr.corpus as string,
-					frequency: curr.frequency,
+		// Combine results with same verb and particle
+		const combinedMap = new Map<string, CombinedResult>();
+
+		for (const result of filteredResults) {
+			const key = `${result.v}-${result.p}`;
+			if (!combinedMap.has(key)) {
+				combinedMap.set(key, {
+					n: result.n,
+					v: result.v,
+					p: result.p,
+					frequency: 0,
+					contributions: [],
 				});
 			}
-			return acc;
-		}, {});
+			const combined = combinedMap.get(key);
+			if (combined) {
+				combined.frequency += result.frequency;
+				combined.contributions.push(...result.contributions);
+			} else {
+				console.error(
+					`Expected to find key ${key} in combinedMap but it was not present`,
+				);
+			}
+		}
 
-		// Then separate by particle
-		derivedData = Object.fromEntries(
+		// Group combined results by particle
+		const derivedData = Object.fromEntries(
 			particles.map((particle) => [
 				particle,
-				Object.values(combinedResults)
-					.filter((d: CombinedResult) => d.p === particle)
+				Array.from(combinedMap.values())
+					.filter((r) => r.p === particle)
 					.sort((a, b) => b.frequency - a.frequency),
 			]),
 		);
-	} else {
-		// Non-combined logic remains the same
-		derivedData = Object.fromEntries(
-			particles.map((particle) => [
-				particle,
-				appendedResults
-					.filter(
-						(d: { p: string; corpus: string }) =>
-							d.p === particle && selectedCorpora.includes(d.corpus),
-					)
-					.map((d: Result) => ({ ...d, contributions: d.contributions || [] }))
-					.sort((a: Result, b: Result): number => {
-						const aValue =
-							a.frequency * (useNormalization ? corpusNorm[a.corpus] : 1);
-						const bValue =
-							b.frequency * (useNormalization ? corpusNorm[b.corpus] : 1);
-						return bValue - aValue;
-					}),
-			]),
-		);
+
+		console.log("Final combined derivedData:", derivedData);
+		return derivedData;
 	}
+	// Non-combined search
+	// Group by particle without combining
+	const derivedData = Object.fromEntries(
+		particles.map((particle) => [
+			particle,
+			filteredResults
+				.filter((r) => r.p === particle)
+				.sort((a, b) => b.frequency - a.frequency),
+		]),
+	);
+
+	console.log("Final non-combined derivedData:", derivedData);
 	return derivedData;
 }
 
@@ -392,8 +392,8 @@ async function handleCheckboxChange() {
 }
 
 async function performSearch(): Promise<void> {
-	console.log({ d: $d });
 	console.log("performSearch");
+	console.log({ d: $d });
 	try {
 		isLoading = true; // Set loading state
 		const startTime = performance.now();
@@ -403,8 +403,10 @@ async function performSearch(): Promise<void> {
 			searchType === "verb"
 				? `/npv/verb/${searchTerm}`
 				: `/npv/noun/${searchTerm}`;
+		console.log("performSearch: before fetch", endpoint);
 		const response = await fetch(`${apiUrl}${endpoint}`);
 		const data = await response.json();
+		console.log("performSearch: after fetch", data);
 
 		const endTime = performance.now();
 		searchElapsedTime.set((endTime - startTime) / 1000); // Calculate elapsed time
@@ -413,8 +415,6 @@ async function performSearch(): Promise<void> {
 		lastSearchedNoun.set(searchTerm); // Update the last searched term
 
 		await updateDerivedData(); // Update derived data
-
-		console.log({ d: $d });
 	} catch (error) {
 		console.error("Error fetching results:", error);
 	} finally {
@@ -849,6 +849,7 @@ afterUpdate(() => {
 											{selectedCorpora}
 											{getSolidColor}
 											{corpusNorm}
+											{searchType}
 										/>
 									</div>
 								{/if}

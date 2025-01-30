@@ -1,4 +1,29 @@
 <script lang="ts">
+	// Add this function to handle highlighting with spans
+	function highlightSentence(
+		text: string,
+		spans: Array<{ start: number; end: number; type: 'noun' | 'particle' | 'verb' }>
+	): string {
+		// Sort spans by start position in reverse order to handle overlapping spans
+		const sortedSpans = [...spans].sort((a, b) => b.start - a.start);
+
+		let result = text;
+		for (const span of sortedSpans) {
+			const before = result.slice(0, span.start);
+			const highlight = result.slice(span.start, span.end);
+			const after = result.slice(span.end);
+
+			const className = {
+				noun: 'font-bold text-blue-600 dark:text-blue-400',
+				particle: 'font-bold text-red-600 dark:text-red-400',
+				verb: 'font-bold text-green-600 dark:text-green-400'
+			}[span.type];
+
+			result = `${before}<span class="${className}">${highlight}</span>${after}`;
+		}
+
+		return result;
+	}
 	import type { CombinedResult, Result } from '$lib/query';
 	import { getContext, onMount } from 'svelte';
 	import type { Writable } from 'svelte/store';
@@ -12,7 +37,8 @@
 		useNormalization,
 		selectedCorpora,
 		getSolidColor,
-		corpusNorm
+		corpusNorm,
+		searchType
 	}: {
 		collocates: Result[];
 		combinedSearch: Writable<boolean>;
@@ -43,22 +69,37 @@
 		selectedCorpora: Writable<string[]>;
 		getSolidColor: (corpus: string) => string;
 		corpusNorm: Record<string, number>;
+		searchType: 'verb' | 'noun';
 	} = $props();
 
 	const apiUrl = getContext<string>('apiUrl');
 
-	let sentencesMap: Record<string, Array<{ corpus: string; sentence: string }>> = $state({});
+	let sentencesMap: Record<
+		string,
+		Array<{
+			corpus: string;
+			text: string;
+			n_begin: number;
+			n_end: number;
+			p_begin: number;
+			p_end: number;
+			v_begin: number;
+			v_end: number;
+		}>
+	> = $state({});
 
-	onMount(async () => {
-		for (const collocate of collocates) {
+	async function loadSentences(collocate: Result) {
+		const key = `${collocate.n}-${collocate.p}-${collocate.v}`;
+
+		// Only fetch if we haven't already loaded these sentences
+		if (!sentencesMap[key]) {
 			const response = await fetch(
-				`${apiUrl}/sentences/${collocate.n}/${collocate.p}/${collocate.v}`
+				`${apiUrl}/sentences/${collocate.n}/${collocate.p}/${collocate.v}/5`
 			);
 			const data = await response.json();
-			const key = `${collocate.n}-${collocate.p}-${collocate.v}`;
 			sentencesMap[key] = data;
 		}
-	});
+	}
 </script>
 
 {#snippet frequencyBar(collocate: Result | CombinedResult)}
@@ -76,7 +117,9 @@
 {/snippet}
 
 {#snippet collocationContent(collocate: Result)}
-	<span class="text-left font-medium">{collocate.v}</span>
+	<span class="text-left font-medium">
+		{searchType === 'verb' ? collocate.n : collocate.v}
+	</span>
 	{#if !$combinedSearch}
 		<span class="text-sm text-gray-600 dark:text-gray-200 ml-2 text-left">{collocate.corpus}</span>
 	{/if}
@@ -109,7 +152,14 @@
 				useNormalization: $useNormalization
 			}}
 		>
-			<details>
+			<details
+				ontoggle={(e) => {
+					// Load sentences when details is opened
+					if ((e.target as HTMLDetailsElement).open) {
+						loadSentences(collocate);
+					}
+				}}
+			>
 				<summary class="list-none flex items-center justify-start p-0">
 					{@render frequencyBar(collocate)}
 					{@render collocationContent(collocate)}
@@ -118,10 +168,11 @@
 					{#each sentencesMap[`${collocate.n}-${collocate.p}-${collocate.v}`] || [] as sentence}
 						<li>
 							{sentence.corpus}:{' '}
-							{@html sentence.sentence.replaceAll(
-								`${collocate.n}${collocate.p}`,
-								`<strong>${collocate.n}${collocate.p}</strong>`
-							)}
+							{@html highlightSentence(sentence.text, [
+								{ start: sentence.n_begin, end: sentence.n_end, type: 'noun' },
+								{ start: sentence.p_begin, end: sentence.p_end, type: 'particle' },
+								{ start: sentence.v_begin, end: sentence.v_end, type: 'verb' }
+							])}
 						</li>
 					{/each}
 				</ul>
