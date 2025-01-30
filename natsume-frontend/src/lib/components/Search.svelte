@@ -79,8 +79,8 @@ onMount(() => {
     class="border rounded h-8 dark:bg-gray-700 dark:text-white dark:border-gray-600"
     bind:value={searchType}
   >
-  <option value="verb">Verb(Noun-Particle-Verb)</option>
-  <option value="noun">Noun(Noun-Particle-Verb)</option>
+  <option value="verb">Verb-Particle Collocations</option>
+  <option value="noun">Noun-Particle Collocations</option>
 </select>
 
 	<div class="relative inline-block">

@@ -4,11 +4,23 @@ import Search from "$lib/components/Search.svelte";
 import ThemeSwitch from "$lib/components/ThemeSwitch.svelte";
 import Options from "$lib/components/menus/Options.svelte";
 import Stats from "$lib/components/menus/Stats.svelte";
+import {
+	corpusNorm,
+	filteredResultCount,
+	particleGroups,
+	resultCount,
+	results,
+	searchElapsedTime,
+	selectedCorpora,
+	useNormalization,
+} from "$lib/stores/corpus";
+import { type Writable, writable } from "svelte/store";
 
 import { afterUpdate, onMount, setContext, tick } from "svelte";
-import { type Writable, derived, writable } from "svelte/store";
 import "./../tailwind.css";
 import Loading from "$lib/components/Loading.svelte";
+import MobileMenu from "$lib/components/MobileMenu.svelte";
+import type { DropdownOption } from "$lib/types";
 import resolveConfig from "tailwindcss/resolveConfig";
 import tailwindConfig from "../../tailwind.config.js";
 
@@ -31,19 +43,10 @@ setContext("apiUrl", apiUrl);
 
 const particles = ["が", "を", "に", "で", "から", "より", "と", "へ"];
 // TODO: Convert to runes
-const results = writable<Result[]>([]);
-
 let searchType: "verb" | "noun" = "noun";
 let searchTerm = "時間";
 
 const lastSearchedNoun = writable("");
-let corpusNorm: Record<string, number> = {};
-let corpusSizes: string[] = [];
-const resultCount = writable(0);
-const useNormalization = writable(true);
-const selectedCorpora = writable<string[]>([]);
-const combinedSearch = writable(false);
-const searchElapsedTime = writable(0);
 let statsDropdownOpen = false;
 let optionsDropdownOpen = false;
 
@@ -54,26 +57,7 @@ let mobileDropdownOption: "select" | "stats" | "options" | null = null;
 // TODO: Convert to runes
 const d: Writable<Record<string, Result[]>> = writable({});
 
-const filteredResultCount = derived(
-	[d, selectedCorpora],
-	([$d, $selectedCorpora]) => {
-		if (!$d || Object.keys($d).length === 0) return 0;
-		return Object.values($d).reduce((total, collocates) => {
-			console.log("filteredResultCount", total, collocates);
-			return (
-				total +
-				collocates.filter(
-					(collocate) =>
-						$selectedCorpora.includes(collocate.corpus) ||
-						collocate.contributions?.some((c) =>
-							$selectedCorpora.includes(c.corpus),
-						),
-				).length
-			);
-		}, 0);
-	},
-);
-
+// Define colors (keep these outside any function)
 const highlightColors = [
 	twFullConfig.theme.colors.red[200],
 	twFullConfig.theme.colors.purple[200],
@@ -101,184 +85,42 @@ const solidColors = [
 	twFullConfig.theme.colors.pink[500],
 ];
 
+// Create a mapping of corpus to color index when corpusNorm is first loaded
+let corpusColorIndices: Record<string, number> = {};
+
 function getColor(corpus: string): string {
-	const index = Object.keys(corpusNorm).indexOf(corpus);
+	const index = corpusColorIndices[corpus] ?? 0;
 	return themeManager.isDarkMode
 		? highlightColorsDark[index % highlightColorsDark.length]
 		: highlightColors[index % highlightColors.length];
 }
 
 function getSolidColor(corpus: string): string {
-	const index = Object.keys(corpusNorm).indexOf(corpus);
+	const index = corpusColorIndices[corpus] ?? 0;
 	return solidColors[index % solidColors.length];
-}
-
-function renderContributions(
-	collocate: Result,
-	collocates: (Result | CombinedResult)[],
-	selectedCorpora: string[],
-	useNormalization: boolean,
-): Array<{ corpus: string; width: number; xOffset: number; value: number }> {
-	let xOffset = 0;
-
-	const contributions =
-		collocate.contributions && collocate.contributions.length > 0
-			? collocate.contributions
-			: [{ corpus: collocate.corpus, frequency: collocate.frequency }];
-
-	return contributions
-		.filter(({ corpus }) => selectedCorpora.includes(corpus))
-		.sort(
-			(a, b) =>
-				selectedCorpora.indexOf(a.corpus) - selectedCorpora.indexOf(b.corpus),
-		)
-		.map(({ corpus, frequency }) => {
-			const width =
-				((frequency * (useNormalization ? corpusNorm[corpus] : 1)) /
-					getMax(collocates, useNormalization)) *
-				100;
-			const value = useNormalization
-				? frequency * corpusNorm[corpus]
-				: frequency;
-			const item = { corpus, width, xOffset, value };
-			xOffset += width;
-			return item;
-		});
-}
-
-$: {
-	console.log("selectedCorpora changed:", $selectedCorpora);
-}
-
-function renderContributionsCombined(
-	collocate: CombinedResult,
-	collocates: (Result | CombinedResult)[],
-	selectedCorpora: string[],
-	useNormalization: boolean,
-): Array<{ corpus: string; width: number; xOffset: number; value: number }> {
-	let xOffset = 0;
-	return collocate.contributions
-		.filter(({ corpus }) => selectedCorpora.includes(corpus))
-		.sort(
-			(a, b) =>
-				selectedCorpora.indexOf(a.corpus) - selectedCorpora.indexOf(b.corpus),
-		)
-		.map(({ corpus, frequency }) => {
-			const width =
-				((frequency * (useNormalization ? corpusNorm[corpus] : 1)) /
-					getMax(collocates, useNormalization)) *
-				100;
-			const value = useNormalization
-				? frequency * corpusNorm[corpus]
-				: frequency;
-			const result = { corpus, width, xOffset, value };
-			xOffset += width;
-			return result;
-		});
-}
-function calculateCorpusDistribution(
-	collocates: (Result | CombinedResult)[],
-	useNormalization: boolean,
-	corpusNorm: Record<string, number>,
-): Record<string, number> {
-	console.log("Calculating corpus distribution", collocates);
-	const distribution: Record<string, number> = {};
-	for (const collocate of collocates) {
-		if (collocate.contributions && collocate.contributions.length > 0) {
-			// Combined search mode
-			for (const { corpus, frequency } of collocate.contributions) {
-				distribution[corpus] =
-					(distribution[corpus] || 0) +
-					frequency *
-						(useNormalization && corpusNorm[corpus] ? corpusNorm[corpus] : 1);
-			}
-		} else if ("corpus" in collocate) {
-			// Non-combined search mode
-			const corpus = collocate.corpus;
-			distribution[corpus] =
-				(distribution[corpus] || 0) +
-				collocate.frequency *
-					(useNormalization && corpusNorm[corpus] ? corpusNorm[corpus] : 1);
-		}
-	}
-	console.log("Corpus distribution result:", distribution);
-	return distribution;
-}
-
-function ParticleHeader({
-	particle,
-	collocates,
-	maxFrequency,
-	useNormalization,
-	corpusNorm,
-	totalFrequency,
-	selectedCorpora,
-}: {
-	particle: string;
-	collocates: (Result | CombinedResult)[];
-	maxFrequency: number;
-	useNormalization: boolean;
-	corpusNorm: Record<string, number>;
-	totalFrequency: number;
-	selectedCorpora: string[];
-}) {
-	console.log("ParticleHeader called with:", {
-		particle,
-		collocates,
-		selectedCorpora,
-	});
-	const distribution = calculateCorpusDistribution(
-		collocates,
-		useNormalization,
-		corpusNorm,
-	);
-	const particleTotal = Object.values(distribution).reduce(
-		(sum, value) => sum + value,
-		0,
-	);
-
-	let cumulativeFrequency = 0;
-	const distributionWithOffsets = Object.entries(distribution)
-		.filter(([corpus]) => selectedCorpora.includes(corpus))
-		.map(([corpus, frequency]) => {
-			const width = totalFrequency > 0 ? (frequency / totalFrequency) * 100 : 0;
-			const xOffset =
-				totalFrequency > 0 ? (cumulativeFrequency / totalFrequency) * 100 : 0;
-			cumulativeFrequency += frequency;
-			return { corpus, frequency, width, xOffset };
-		});
-
-	console.log("ParticleHeader result:", {
-		particle,
-		distribution,
-		particleTotal,
-		distributionWithOffsets,
-	});
-	return {
-		particle,
-		distribution,
-		particleTotal,
-		distributionWithOffsets,
-		maxFrequency,
-	};
 }
 
 onMount(() => {
 	const fetchData = async () => {
 		try {
 			const response = await fetch(`${apiUrl}/corpus/norm`);
-			corpusNorm = await response.json();
-			corpusSizes = Object.entries(corpusNorm).map(
-				([corpus, size]) => `${corpus}: ${size.toFixed(2)}`,
-			);
-			selectedCorpora.set(Object.keys(corpusNorm));
+			const normData = await response.json();
 
-			// Call getNPVs to fetch initial data
+			// Create the color mapping when we first get the corpus data
+			corpusColorIndices = Object.keys(normData).reduce(
+				(acc, corpus, index) => {
+					acc[corpus] = index;
+					return acc;
+				},
+				{} as Record<string, number>,
+			);
+
+			corpusNorm.set(normData);
+			selectedCorpora.set(Object.keys(normData));
 			await performSearch();
 		} catch (error) {
 			console.error("Error fetching corpus norm:", error);
 		}
-
 		updateScrollButtonsVisibility();
 	};
 
@@ -306,62 +148,24 @@ function computeDerivedData(
 	results: Result[],
 	useNormalization: boolean,
 	selectedCorpora: string[],
-	combinedSearch: boolean,
 ) {
 	console.log("Computing derived data with:", {
-		results,
+		resultsLength: results.length,
 		useNormalization,
 		selectedCorpora,
-		combinedSearch,
 	});
 
-	// Filter results that have contributions from selected corpora
-	const filteredResults = results.filter((result) =>
-		result.contributions.some((c) => selectedCorpora.includes(c.corpus)),
+	// Filter results that have contributions matching selected corpora
+	const filteredResults = results.filter(
+		(result) =>
+			selectedCorpora.includes(result.corpus) ||
+			result.contributions?.some((c) => selectedCorpora.includes(c.corpus)),
 	);
 
-	if (combinedSearch) {
-		// Combine results with same verb and particle
-		const combinedMap = new Map<string, CombinedResult>();
+	console.log("Filtered results:", filteredResults);
 
-		for (const result of filteredResults) {
-			const key = `${result.v}-${result.p}`;
-			if (!combinedMap.has(key)) {
-				combinedMap.set(key, {
-					n: result.n,
-					v: result.v,
-					p: result.p,
-					frequency: 0,
-					contributions: [],
-				});
-			}
-			const combined = combinedMap.get(key);
-			if (combined) {
-				combined.frequency += result.frequency;
-				combined.contributions.push(...result.contributions);
-			} else {
-				console.error(
-					`Expected to find key ${key} in combinedMap but it was not present`,
-				);
-			}
-		}
-
-		// Group combined results by particle
-		const derivedData = Object.fromEntries(
-			particles.map((particle) => [
-				particle,
-				Array.from(combinedMap.values())
-					.filter((r) => r.p === particle)
-					.sort((a, b) => b.frequency - a.frequency),
-			]),
-		);
-
-		console.log("Final combined derivedData:", derivedData);
-		return derivedData;
-	}
-	// Non-combined search
-	// Group by particle without combining
-	const derivedData = Object.fromEntries(
+	// Group by particle
+	const particleGroups = Object.fromEntries(
 		particles.map((particle) => [
 			particle,
 			filteredResults
@@ -370,8 +174,8 @@ function computeDerivedData(
 		]),
 	);
 
-	console.log("Final non-combined derivedData:", derivedData);
-	return derivedData;
+	console.log("Particle groups:", particleGroups);
+	return particleGroups;
 }
 
 async function updateDerivedData() {
@@ -379,7 +183,6 @@ async function updateDerivedData() {
 		$results,
 		$useNormalization,
 		$selectedCorpora,
-		$combinedSearch,
 	);
 	d.set(derivedData as Record<string, Result[]>);
 	await tick(); // Wait for the next DOM update
@@ -393,32 +196,28 @@ async function handleCheckboxChange() {
 
 async function performSearch(): Promise<void> {
 	console.log("performSearch");
-	console.log({ d: $d });
 	try {
-		isLoading = true; // Set loading state
+		isLoading = true;
 		const startTime = performance.now();
 
-		// Construct API endpoint based on search type
-		const endpoint =
-			searchType === "verb"
-				? `/npv/verb/${searchTerm}`
-				: `/npv/noun/${searchTerm}`;
+		const endpoint = `/npv/${searchType}/${searchTerm}`;
+
 		console.log("performSearch: before fetch", endpoint);
 		const response = await fetch(`${apiUrl}${endpoint}`);
 		const data = await response.json();
-		console.log("performSearch: after fetch", data);
+		console.log("Raw API response:", data);
+
+		// Update stores with the new data structure
+		particleGroups.set(data.particleGroups);
+		corpusNorm.set(data.corpusNorm);
+		resultCount.set(data.totalResults);
 
 		const endTime = performance.now();
-		searchElapsedTime.set((endTime - startTime) / 1000); // Calculate elapsed time
-		results.set(data as Result[]);
-		resultCount.set(data.length);
-		lastSearchedNoun.set(searchTerm); // Update the last searched term
-
-		await updateDerivedData(); // Update derived data
+		searchElapsedTime.set((endTime - startTime) / 1000);
 	} catch (error) {
 		console.error("Error fetching results:", error);
 	} finally {
-		isLoading = false; // Turn off loading state
+		isLoading = false;
 	}
 }
 
@@ -426,23 +225,31 @@ function getMax(
 	collocates: (Result | CombinedResult)[],
 	useNormalization: boolean,
 ): number {
-	return Math.max(
-		...collocates.map((x) => {
-			if (x.contributions && x.contributions.length > 0) {
-				return Math.max(
-					...x.contributions.map(
-						(c) => c.frequency * (useNormalization ? corpusNorm[c.corpus] : 1),
-					),
-				);
-			}
+	console.log("Getting max value for:", {
+		collocatesLength: collocates.length,
+		useNormalization,
+	});
 
-			return (
-				x.frequency *
-				(useNormalization && "corpus" in x ? corpusNorm[x.corpus] : 1)
-			);
-		}),
-		0.0,
+	const max = Math.max(
+		...collocates.flatMap((collocate) =>
+			collocate.contributions.map(({ corpus, frequency }) => {
+				const normalizedFreq = useNormalization
+					? frequency * ($corpusNorm[corpus] || 1)
+					: frequency;
+				console.log("Max calculation:", {
+					corpus,
+					frequency,
+					normalizedFreq,
+					corpusNorm: $corpusNorm[corpus],
+				});
+				return normalizedFreq;
+			}),
+		),
+		0,
 	);
+
+	console.log("Max value:", max);
+	return max;
 }
 
 function showTooltip(
@@ -451,7 +258,7 @@ function showTooltip(
 ) {
 	const tooltip = document.getElementById("tooltip");
 	if (tooltip) {
-		tooltip.textContent = text;
+		tooltip.innerHTML = text;
 		tooltip.style.left = `${event.pageX + 10}px`;
 		tooltip.style.top = `${event.pageY + 10}px`;
 		tooltip.classList.remove("hidden");
@@ -471,19 +278,17 @@ function tooltipAction(
 		getTooltipData,
 		useNormalization,
 	}: {
-		getTooltipData: () => Record<string, number>;
+		getTooltipData: () => Record<string, string>;
 		useNormalization: boolean;
 	},
 ) {
 	const handleMouseover = (event: MouseEvent) => {
 		const tooltipData = getTooltipData();
 		const tooltipText = Object.entries(tooltipData)
-			.map(([corpus, value]) => {
-				const formattedValue = useNormalization
-					? value.toFixed(2)
-					: Math.round(value).toString();
-				return `${corpus}: ${formattedValue}`;
-			})
+			.map(
+				([corpus, value]) =>
+					`<span style="color: ${getSolidColor(corpus)}">${corpus}: ${value}</span>`,
+			)
 			.join(", ");
 		showTooltip(event, tooltipText);
 	};
@@ -696,7 +501,6 @@ afterUpdate(() => {
 					{#if optionsDropdownOpen}
 						<Options
 							{useNormalization}
-							{combinedSearch}
 							{selectedCorpora}
 							{getColor}
 							{getSolidColor}
@@ -770,7 +574,6 @@ afterUpdate(() => {
 						<div class="p-2 bg-gray-100 dark:bg-gray-700 rounded">
 							<Options
 								{useNormalization}
-								{combinedSearch}
 								{selectedCorpora}
 								{getColor}
 								{getSolidColor}
@@ -798,19 +601,21 @@ afterUpdate(() => {
 	>
 		<HorizontallyScrollableContainer {syncScroll} bind:scrollContainer={headerScrollContainer}>
 			<div class="flex" style="gap: {columnSpacing}px;">
-				{#if $d && Object.keys($d).length > 0}
-					{#each Object.entries($d) as [particle, collocates]}
-						{#if collocates && collocates.length > 0}
+				{#if $particleGroups && Object.keys($particleGroups).length > 0}
+					{#each Object.entries($particleGroups) as [particle, data]}
+						{#if data && data.collocates && data.collocates.length > 0}
 							<div style="width: {columnWidth}px; flex-shrink: 0;">
 								<h2 class="text-center text-2xl font-semibold">{particle}</h2>
 								<div class="h-1 w-full relative">
-									{#each ParticleHeader( { particle, collocates, maxFrequency: getMax(collocates, $useNormalization), useNormalization: $useNormalization, corpusNorm, totalFrequency: collocates.reduce((sum, c) => sum + c.frequency, 0), selectedCorpora: $selectedCorpora } ).distributionWithOffsets as { corpus, width, xOffset }}
-										<div
-											class="absolute h-full"
-											style="left: {xOffset}%; width: {width}%; background-color: {getSolidColor(
-												corpus
-											)};"
-										></div>
+									{#each Object.entries(data.distribution || {}) as [corpus, freqs]}
+										{#if $selectedCorpora.includes(corpus)}
+											<div
+												class="absolute h-full"
+												style="left: {$useNormalization ? freqs.normalizedOffset : freqs.rawOffset}%; 
+													   width: {$useNormalization ? freqs.normalizedWidth : freqs.rawWidth}%; 
+													   background-color: {getSolidColor(corpus)};"
+											></div>
+										{/if}
 									{/each}
 								</div>
 							</div>
@@ -834,17 +639,15 @@ afterUpdate(() => {
 					style="width: 100%; max-width: 100vw;"
 				>
 					<div class="flex" style="gap: {columnSpacing}px;">
-						{#if $d && Object.keys($d).length > 0}
-							{#each Object.entries($d) as [particle, collocates]}
-								{#if collocates && collocates.length > 0}
+						{#if $particleGroups && Object.keys($particleGroups).length > 0}
+							{#each Object.entries($particleGroups) as [particle, data]}
+								{#if data && data.collocates && data.collocates.length > 0}
 									<div style="width: {columnWidth}px; flex-shrink: 0;">
 										<CollocationList
-											{collocates}
-											{combinedSearch}
+											collocates={data.collocates}
+											maxFrequency={data.maxFrequency}
 											{getColor}
 											{tooltipAction}
-											{renderContributions}
-											{renderContributionsCombined}
 											{useNormalization}
 											{selectedCorpora}
 											{getSolidColor}
@@ -856,8 +659,8 @@ afterUpdate(() => {
 							{/each}
 						{:else}
 							<p class="text-center text-gray-600 mt-4">
-								{#if $results.length > 0}
-									Showing results for {searchType === 'verb' ? 'Verb' : 'Noun'}: "{searchTerm}"
+								{#if $resultCount > 0}
+									No filtered results found for {searchType === 'verb' ? 'Verb' : 'Noun'}: "{searchTerm}"
 								{:else}
 									No results found for {searchType === 'verb' ? 'Verb' : 'Noun'}: "{searchTerm}"
 								{/if}
@@ -879,7 +682,7 @@ afterUpdate(() => {
 
 <div
 	id="tooltip"
-	class="hidden absolute bg-gray-700 dark:bg-gray-200 text-white dark:text-gray-800 text-sm p-2 rounded"
+	class="hidden absolute bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm p-2 rounded shadow-lg"
 ></div>
 
 <svelte:window on:click={handleClickOutside} />

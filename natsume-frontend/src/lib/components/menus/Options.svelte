@@ -1,7 +1,6 @@
 <script>
 const {
 	useNormalization,
-	combinedSearch,
 	selectedCorpora,
 	getColor,
 	getSolidColor,
@@ -31,25 +30,11 @@ const {
 				/>
 				<span class="dark:text-gray-300">Use Corpus Normalization</span>
 			</label>
-			<label class="flex items-center mb-2">
-				<input
-					type="checkbox"
-					id="combined-search"
-					name="combined-search"
-					checked={$combinedSearch}
-					onchange={() => {
-						$combinedSearch = !$combinedSearch;
-						handleCheckboxChange();
-					}}
-					class="mr-2"
-				/>
-				<span class="dark:text-gray-300">Combined Search</span>
-			</label>
 			<div class="mt-2">
 				<span class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
 					>Corpus Selection</span
 				>
-				{#each Object.keys(corpusNorm) as corpus}
+				{#each Object.keys($corpusNorm) as corpus}
 					<label
 						class="flex items-center mb-2 px-2 py-1 rounded border-2"
 						style="border-color: {getSolidColor(corpus)}; background-color: {getColor(corpus)}"
