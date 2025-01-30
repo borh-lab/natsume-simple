@@ -109,6 +109,7 @@
                     [
                       uv-wrapped
                       help-command
+                      ensure-database
                       run-tests
                       lint
                       prepare-data
@@ -189,6 +190,17 @@
             passthru.meta = {
               category = "Setup";
               description = "Initialize Python environment and dependencies";
+            };
+          };
+          packages.ensure-database = pkgs.writeShellApplication {
+            name = "ensure-database";
+            runtimeInputs = runtime-packages;
+            text = ''
+              curl https://nlp.lang.osaka-u.ac.jp/files/corpus.db -o data/corpus.db
+            '';
+            passthru.meta = {
+              category = "Setup";
+              description = "Ensure database exists and is up-to-date";
             };
           };
           packages.run-tests = pkgs.writeShellApplication {
