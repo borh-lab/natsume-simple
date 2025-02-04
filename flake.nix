@@ -83,6 +83,22 @@
             pkgs.sqlite
           ];
           help = import ./help.nix { inherit lib; };
+          projectSrc = lib.cleanSourceWith {
+            src = ./.;
+            filter =
+              path: type:
+              let
+                relPath = lib.removePrefix (toString ./. + "/") (toString path);
+                parts = lib.splitString "/" relPath;
+                firstDir = builtins.head parts;
+              in
+              firstDir == "src"
+              || firstDir == "natsume-frontend"
+              || relPath == "pyproject.toml"
+              || relPath == "README.md"
+              || relPath == "uv.lock"
+              || relPath == ".python-version";
+          };
         in
         {
           # Per-system attributes can be defined here. The self' and inputs'
@@ -94,7 +110,7 @@
             flake-checker.enable = true;
             ruff.enable = true;
             ruff-format.enable = true;
-            biome.enable = true;
+            biome.enable = false; # Seems to break; run manually
           };
 
           devShells = {
@@ -179,7 +195,7 @@
 
           packages.initial-setup = pkgs.writeShellApplication {
             name = "initial-setup";
-            runtimeInputs = runtime-packages;
+            runtimeInputs = runtime-packages ++ [ pkgs.coreutils ];
             text = ''
               ${detect-accelerator}
               export PYTHON_VERSION=3.12.7
@@ -237,6 +253,9 @@
             runtimeInputs = runtime-packages;
             text = ''
               ${config.packages.initial-setup}/bin/initial-setup
+              export NATSUME_HOST="''${NATSUME_HOST:-localhost}"
+              export NATSUME_PORT="''${NATSUME_PORT:-8000}"
+              export VITE_API_URL="''${NATSUME_API_URL:-http://$NATSUME_HOST:$NATSUME_PORT}"
               cd natsume-frontend && npm i && npm run build && cd ..
             '';
             passthru.meta = {
@@ -262,7 +281,10 @@
             text = ''
               ${config.packages.initial-setup}/bin/initial-setup
               ${config.packages.build-frontend}/bin/build-frontend
-              ${uv-run} --with fastapi --with duckdb fastapi dev --host localhost src/natsume_simple/server.py
+              export NATSUME_HOST="''${NATSUME_HOST:-localhost}"
+              export NATSUME_PORT="''${NATSUME_PORT:-8000}"
+              export NATSUME_API_URL="''${NATSUME_API_URL:-http://$NATSUME_HOST:$NATSUME_PORT}"
+              ${uv-run} --with fastapi --with duckdb fastapi dev --host "$NATSUME_HOST" --port "$NATSUME_PORT" src/natsume_simple/server.py
             '';
             passthru.meta = {
               category = "Server";
@@ -275,7 +297,11 @@
             text = ''
               ${config.packages.initial-setup}/bin/initial-setup
               ${config.packages.build-frontend}/bin/build-frontend
-              ${uv-run} --with fastapi --with duckdb fastapi run --host localhost src/natsume_simple/server.py
+              ${config.packages.ensure-database}/bin/ensure-database
+              export NATSUME_HOST="''${NATSUME_HOST:-localhost}"
+              export NATSUME_PORT="''${NATSUME_PORT:-8000}"
+              export NATSUME_API_URL="''${NATSUME_API_URL:-http://$NATSUME_HOST:$NATSUME_PORT}"
+              ${uv-run} --with fastapi --with duckdb fastapi run --host "$NATSUME_HOST" --port "$NATSUME_PORT" src/natsume_simple/server.py
             '';
             passthru.meta = {
               category = "Server";
@@ -333,7 +359,28 @@
               description = "Initialize database, prepare data, extract patterns and start server";
             };
           };
-          packages.default = config.packages.watch-prod-server;
+          packages.default = pkgs.writeShellApplication {
+            name = "natsume-simple";
+            runtimeInputs = runtime-packages;
+            text = ''
+              export ACCELERATOR_EXPLICIT=cpu # We do not need GPU for deployment
+              workdir="./dist"
+              rm -rf "$workdir"  # Remove existing directory
+              mkdir -p "$workdir"
+              cp -r "${projectSrc}"/* "$workdir"/
+              mkdir -p "$workdir"/data # For the database
+              chmod -R +w "$workdir"
+              cd "$workdir"
+
+              ${config.packages.initial-setup}/bin/initial-setup
+              ${config.packages.build-frontend}/bin/build-frontend
+              ${config.packages.ensure-database}/bin/ensure-database
+              export NATSUME_HOST="''${NATSUME_HOST:-localhost}"
+              export NATSUME_PORT="''${NATSUME_PORT:-8000}"
+              export NATSUME_API_URL="''${NATSUME_API_URL:-http://$NATSUME_HOST:$NATSUME_PORT}"
+              ${uv-run} --with fastapi --with duckdb fastapi run --host "$NATSUME_HOST" --port "$NATSUME_PORT" src/natsume_simple/server.py
+            '';
+          };
         };
       flake = {
         # The usual flake attributes can be defined here, including system-

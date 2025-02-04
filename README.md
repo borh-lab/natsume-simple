@@ -123,6 +123,31 @@ Type `h` to see this command overview again
 
 Note: The default command (`nix run`) will start the backend server in production mode (`watch-prod-server`).
 
+## Deployment
+
+To deploy and run the application:
+
+```bash
+nix run github:borh-lab/natsume-simple
+```
+
+Requirements:
+- At least 3.6GB of free disk space (for the database and application files)
+- Nix package manager installed (see Setup section above)
+
+The application will:
+1. Create a clean distribution directory
+2. Download and set up all dependencies
+3. Build the frontend
+4. Download the corpus database
+5. Start the server
+
+By default, the server runs on `localhost:8000`. You can override these with environment variables:
+
+```bash
+env NATSUME_HOST=0.0.0.0 NATSUME_PORT=9000 nix run github:borh-lab/natsume-simple
+```
+
 ## Python Module CLI Examples
 
 ### Data Processing (data.py)

@@ -6,15 +6,36 @@
 # ]
 # ///
 
+import os
 from pathlib import Path
 from typing import Any, Dict, List, TypedDict
 
 import duckdb
-from fastapi import FastAPI  # type: ignore
+from fastapi import FastAPI, Request, Response  # type: ignore
 from fastapi.middleware.cors import CORSMiddleware  # type: ignore
 from fastapi.staticfiles import StaticFiles  # type: ignore
 
+HOST = os.getenv("NATSUME_HOST", "localhost")
+PORT = int(os.getenv("NATSUME_PORT", "8000"))
+
 app = FastAPI()
+
+
+def inject_api_url(html_content: str) -> str:
+    """Replace the API URL placeholder in the HTML template."""
+    api_url = os.getenv("NATSUME_API_URL", f"http://{HOST}:{PORT}")
+    return html_content.replace("{{NATSUME_API_URL}}", api_url)
+
+
+@app.middleware("http")
+async def process_html(request: Request, call_next):
+    response = await call_next(request)
+    if response.headers.get("content-type") == "text/html":
+        content = await response.body()
+        content = inject_api_url(content.decode())
+        return Response(content=content, media_type="text/html")
+    return response
+
 
 app.add_middleware(
     CORSMiddleware,
