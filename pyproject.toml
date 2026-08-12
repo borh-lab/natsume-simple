@@ -43,12 +43,11 @@ conflicts = [
 
 [project.optional-dependencies]
 cpu = [
-    "torch>=2.6.0",
+    "torch==2.13.0+cpu",
 ]
 cuda = [
-    "torch==2.6.0+cu126",
-    "onnxruntime-gpu>=1.20.1",
-    "cupy-cuda12x>=13.3.0",
+    "torch==2.13.0+cu126",
+    "cupy-cuda12x>=14.1.1,<15",
 ]
 backend = [
     "fastapi[standard-no-fastapi-cloud-cli]>=0.141.1,<1",
