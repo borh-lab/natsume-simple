@@ -34,12 +34,13 @@ The only inspected legacy database is the untracked `data/corpus.db`:
 
 All inspection used DuckDB read-only connections. No conversion has begun. A
 distinct read-only local safety copy now exists outside the repository at
-`~/Backups/natsume-simple/corpus-7326a9fa…05c0eca.db`; its `SHA256SUMS` check
-passes. This protects against accidental modification or deletion of the working
-copy, but it is on the same machine and is not the durable off-machine or
-content-addressed backup required before conversion. The operator must still
-name that durable target before any conversion command may read the seed for
-export.
+`/persistent/home/bor/Backups/natsume-simple/corpus-7326a9fa1d3f5231d83e46e8543d20139bac0ee17aa7570434e5e62ec05c0eca.db`.
+It is stored on the persistent `btrfs` filesystem backed by `/dev/nvme3n1p2`,
+and its adjacent `SHA256SUMS` check passes. This protects against accidental
+modification, deletion, and tmpfs/reboot loss, but it is on the same physical
+machine and is not the durable off-machine backup required before conversion.
+The operator must still name that durable target before any conversion command
+may read the seed for export.
 
 ## JNLP LaTeX corpus
 
