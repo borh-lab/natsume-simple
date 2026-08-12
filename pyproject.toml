@@ -100,3 +100,6 @@ testpaths = [
     "src",
 ]
 doctest_optionflags = "NORMALIZE_WHITESPACE IGNORE_EXCEPTION_DETAIL"
+markers = [
+    "nlp_model: requires the locally installed Japanese NLP model",
+]

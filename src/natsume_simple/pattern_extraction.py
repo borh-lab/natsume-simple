@@ -175,12 +175,24 @@ def normalize_verb_span(
             )
         )
     )
+    visible_tokens = [token for token in tokens if token.pos not in {PUNCT, SYM}]
+
+    def source_span_end(
+        normalized_end: int, *, include_contracted: bool = False
+    ) -> int:
+        if include_contracted or any(
+            token.idx >= normalized_end and token.dep_ == "fixed"
+            for token in visible_tokens
+        ):
+            return visible_tokens[-1].idx + len(visible_tokens[-1].text)
+        return normalized_end
 
     if len(clean_tokens) == 1:
+        normalized_end = clean_tokens[0].idx + len(clean_tokens[0].text)
         return (
             simple_lemma(clean_tokens[0]),
             clean_tokens[0].idx,
-            clean_tokens[0].idx + len(clean_tokens[0].text),
+            source_span_end(normalized_end),
         )
 
     if not clean_tokens:
@@ -190,15 +202,24 @@ def normalize_verb_span(
         return (None, -1, -1)
 
     normalized_tokens: List[Token] = []
+    contracted_suru = False
+    synthetic_suru = False
     for i, (token, next_token) in enumerate(pairwise(clean_tokens)):
         normalized_tokens.append(token)
-        if next_token.lemma_ in ["ます", "た"]:
+        if (
+            "サ変可能" in token.tag_ or token.tag_.startswith("名詞-普通名詞-サ変")
+        ) and simple_lemma(next_token) == "する":
+            normalized_tokens.append(next_token)
+            contracted_suru = True
+            break
+        elif next_token.lemma_ in ["ます", "た"]:
             # Check UniDic POS tag for サ変可能 nouns
             if "サ変可能" in token.tag_ or token.tag_.startswith("名詞-普通名詞-サ変"):
                 logger.debug(
                     f"Adding suru token to: {normalized_tokens} in {tokens}/{clean_tokens}"
                 )
                 normalized_tokens.append(suru_token)
+                synthetic_suru = True
                 break
             elif token.tag_.startswith("動詞") or re.match(
                 r"^(五|上|下|サ|.変格|助動詞).+", ginza.inflection(token)
@@ -240,6 +261,13 @@ def normalize_verb_span(
     stem = normalized_tokens[0]
     affixes = normalized_tokens[1:-1]
     suffix = normalized_tokens[-1]
+    source_end = (
+        normalized_tokens[-2].idx + len(normalized_tokens[-2].text)
+        if synthetic_suru
+        else suffix.idx + len(suffix.text)
+    )
+    source_end = source_span_end(source_end, include_contracted=contracted_suru)
+
     return (
         "{}{}{}".format(
             stem.text,
@@ -247,7 +275,7 @@ def normalize_verb_span(
             simple_lemma(suffix),
         ),
         stem.idx,
-        suffix.idx + len(suffix.text),
+        source_end,
     )
 
 
@@ -268,7 +296,7 @@ def npv_matcher(
         noun = token
         case_particle = noun.nbor(1)
         verb = token.head
-        if (
+        ordinary_match = (
             noun.pos in {NOUN, PROPN, PRON, NUM}
             and noun.dep in {obj, obl, nsubj}
             and verb.pos == VERB
@@ -277,8 +305,24 @@ def npv_matcher(
             in {"が", "を", "に", "で", "から", "より", "と", "へ"}
             and case_particle.nbor().dep_ != "fixed"
             and case_particle.nbor().head != case_particle.head
-        ):
-            verb_bunsetu_span = ginza.bunsetu_span(verb)
+        )
+        fixed_verb = noun.nbor(2)
+        fixed_expression_match = (
+            noun.pos in {NOUN, PROPN, PRON, NUM}
+            and noun.dep_ == "ROOT"
+            and case_particle.dep_ == "fixed"
+            and case_particle.lemma_
+            in {"が", "を", "に", "で", "から", "より", "と", "へ"}
+            and fixed_verb.pos == VERB
+            and fixed_verb.dep_ == "compound"
+            and fixed_verb.head == noun
+        )
+        if ordinary_match or fixed_expression_match:
+            verb_bunsetu_span = (
+                doc[fixed_verb.i :]
+                if fixed_expression_match
+                else ginza.bunsetu_span(verb)
+            )
             vp_string, v_begin, v_end = normalize_verb_span(
                 verb_bunsetu_span, suru_token
             )
