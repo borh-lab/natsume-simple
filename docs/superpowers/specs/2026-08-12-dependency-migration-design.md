@@ -139,9 +139,8 @@ releases of Polars, spaCy, GiNZA/ja-ginza, wtpsplit, and their direct runtime
 requirements.
 
 This cohort cannot begin until Spec 3 Gate 3A proves every planned public corpus
-can be reacquired without dataset remote code or converted from the legacy
-database, and records an explicit exclusion outcome for every inventoried
-remainder.
+can be reacquired without dataset remote code and records an explicit exclusion
+outcome for every inventoried remainder.
 Datasets 4 removed dataset-script/remote-code loading; the target 5.x release is
 therefore a deliberate adapter migration, not a compatible parameter update.
 See the [official datasets releases](https://github.com/huggingface/datasets/releases).

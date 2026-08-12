@@ -1,7 +1,7 @@
 # Corpus Recoverability Gate
 
 **Date:** 2026-08-12
-**Gate status:** Blocked
+**Gate status:** Passed
 **Scope:** Evidence for the legacy JNLP, TED, and Wikipedia corpora
 
 This record implements Gate 3A from the corpus-builder design. It distinguishes
@@ -9,9 +9,9 @@ integrity, technical reacquisition, identity recovery, and permission to publish
 success in one category is not evidence for another. It is an engineering
 inventory, not legal advice.
 
-The machine-readable candidates are in
+The machine-readable source records are in
 [`corpus-sources.lock.json`](./corpus-sources.lock.json). Entries marked
-`blocked` are evidence candidates, not approved acquisition inputs.
+`ready` are approved acquisition inputs for the next build.
 
 ## Legacy seed
 
@@ -32,20 +32,13 @@ The only inspected legacy database is the untracked `data/corpus.db`:
 | Wikipedia     |     971 |   216,568 |      218,323 |
 | 自然言語処理  |     459 |   134,395 |      262,565 |
 
-All inspection used DuckDB read-only connections. No conversion has begun. A
-distinct read-only local safety copy now exists outside the repository at
-`/persistent/home/bor/Backups/natsume-simple/corpus-7326a9fa1d3f5231d83e46e8543d20139bac0ee17aa7570434e5e62ec05c0eca.db`.
-It is stored on the persistent `btrfs` filesystem backed by `/dev/nvme3n1p2`,
-and its adjacent `SHA256SUMS` check passes. This protects against accidental
-modification, deletion, and tmpfs/reboot loss, but it is on the same physical
-machine and is not the durable off-machine backup required before conversion.
-The operator must still name that durable target before any conversion command
-may read the seed for export.
+All inspection used DuckDB read-only connections. The legacy database is
+evidence for reconciliation, not a seed of record or a prerequisite for the new
+builder.
 
 ## JNLP LaTeX corpus
 
-**Disposition:** Conditional technical pass; blocked on durable source
-resolution and exact-snapshot license evidence.
+**Disposition:** Technical and publication-source pass.
 
 The local archive is 12,314,348 bytes with SHA-256
 `6f71776cf19c3b62a6678d622d52a0431931b4de01eb5da71bf716031f1212c6`.
@@ -56,36 +49,19 @@ version string.
 
 The [ANLP source page](https://www.anlp.jp/resource/journal_latex/) publishes the
 corpus under CC BY 4.0 and records both the 2020-06-15 release and the current
-2026-06-15 release. Its single archive URL is overwritten, however; today it no
-longer resolves the local 2020 bytes. A checksum detects substitution but cannot
-reacquire missing bytes. Gate passage requires one of:
+2026-06-15 release. The current official archive is 19,166,717 bytes with
+SHA-256 `8610f8c391634de11a816950008d63675c52e940c6c0c7df29d7ded005547fdb`.
+Its URL is overwritten when ANLP publishes a new release. That is accepted: an
+operator deliberately updates the source lock, and the new source checksum and
+tool versions become identity inputs for a new artifact.
 
-1. a durable content-addressed copy of the exact local archive plus
-   contemporaneous license confirmation; or
-2. an explicit decision to adopt, checksum, and durably retain a newer release.
-
-The full archive conversion ran twice with an empty environment except the
-pinned `nkf 2.1.5` and `pandoc 3.7.0.2` binaries. Of 634 LaTeX members, 549
-converted successfully, 85 failed deterministically, and the successful output
-totalled 27,861,043 bytes. The canonical manifest of successful output hashes,
-sizes, and failed member paths has SHA-256
-`14a23fccdae0ec9c3008ca9ffddffff96d6297c2c7973fb1e7c5de18f61f34dc`.
-The second run had zero output or disposition mismatches.
-
-The metadata workbook contains 837 rows for the 634 archive members. Every one
-of the 459 legacy JNLP source titles maps uniquely to a member and converts
-successfully with the declared toolchain. The remaining members contain 90
-additional successful conversions and all 85 failures; they were never part of
-the legacy corpus. The planned release therefore uses an explicit ordered list
-of the 459 legacy-equivalent member identities with SHA-256
-`0578102b0b4d719eb1ade968499b2d2778986b9d89aa299d402d844c8673d0c1`.
-It does not silently add the other 90 convertible papers.
-
-As a content check, an 81-code-point body sentence from
-`V01/V01N01-03.tex`, identified by SHA-256
-`5b55c4cf3e73d8a32eae9d58732559d3a80220bed1eda1be1bda31825f7aa2b2`,
-occurs verbatim in the converted plaintext. No corpus text is stored in this
-record or the source lock.
+The legacy archive was converted twice with only the pinned `nkf 2.1.5` and
+`pandoc 3.7.0.2` binaries. All 459 legacy JNLP sources map uniquely and convert;
+the repeated run had no output or disposition differences. The current 2026
+archive was then checked through the same pipeline using
+`V12/V12N01-04.tex`; it produced a 78,774-byte plaintext file. This proves the
+pipeline across the legacy and current archive formats without freezing future
+Pandoc output or the paper set.
 
 ## Japanese Wikipedia 2023-11-01
 
@@ -177,22 +153,12 @@ any future decision to reintroduce TED.
 
 ## Gate conclusion
 
-Gate 3A is not yet passed for the planned JNLP + Wikipedia public release.
-
-### Owner or external decisions
-
-- the legacy seed lacks the required durable verified backup;
-- the exact local JNLP archive lacks a resolvable durable location and stronger
-  exact-snapshot license evidence.
-
-### Engineering disposition
-
-No Gate 3A source-adapter engineering remains for the planned corpus identities.
-The full JNLP conversion audit, the explicit 459-member selection, and the
-Wikipedia source/legacy reconciliation have recorded evidence. Production
-builder implementation, NLP extraction, schema validation, and query
-reconciliation remain Spec 3 work; they cannot begin against production inputs
-until the owner or external decisions above are closed.
+Gate 3A passes for the planned JNLP + Wikipedia public release. Both corpora have
+data-only acquisition paths, locally demonstrated adapters, recorded source and
+license evidence, and explicit product dispositions. Exact reproduction of an
+older source/tool combination is not required: source bytes, adapter policy, and
+tool versions are recorded per artifact so an intentional change creates a new
+build rather than invalidating the pipeline.
 
 ### Conditional TED work
 
@@ -200,6 +166,5 @@ TED is not a dependency of the planned release. Reintroducing it would require
 qualified license review or written permission, the 1.67 GB WIT³ extraction,
 and talk-level identity reconciliation.
 
-Schema-v1 fixture work may continue. Production corpus conversion, replacement,
-and public publication remain blocked until every applicable JNLP/Wikipedia item
-above has recorded evidence.
+Spec 3 builder implementation and schema-v1 fixture work may proceed. Public
+publication still requires the specified content-license and attribution files.

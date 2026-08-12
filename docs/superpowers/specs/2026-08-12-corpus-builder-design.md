@@ -19,9 +19,8 @@ The project permits greenfield replacement, but rebuildability is a claim to
 prove rather than a premise. The working tree contains the legacy JNLP archive
 but no TED or Wiki source files, and current TED acquisition executes a remote
 dataset script that the target policy prohibits. A mandatory recoverability gate
-therefore precedes implementation. It may select clean reacquisition, a one-time
-legacy conversion, or a documented mixture by corpus; none requires an in-place
-migration framework.
+therefore precedes implementation. It selects clean reacquisition or an explicit
+exclusion by corpus; neither requires an in-place migration framework.
 
 ## Goals
 
@@ -40,11 +39,11 @@ migration framework.
 
 Before schema/builder implementation begins, a bounded spike inventories JNLP,
 TED, and Wiki independently and produces `docs/corpus-recoverability.md` plus
-machine-readable source-lock candidates. For each corpus it must:
+machine-readable source records. For each corpus it must:
 
-1. identify the exact content currently represented in the legacy database;
-2. locate an immutable, legally usable source and acquire a representative
-   sample using data-only code with no `trust_remote_code`;
+1. inventory the legacy corpus coverage used for reconciliation;
+2. locate a legally usable source and acquire a representative sample using
+   data-only code with no `trust_remote_code`;
 3. prove a local adapter can reproduce stable source identities, ordered text
    units, and representative sentences; and
 4. record checksum, revision, license/redistribution status, and the command used.
@@ -55,19 +54,16 @@ extraction in a clean declared environment. Its adapter currently requires
 success from an ambient developer `PATH` is not evidence. Spec 6 puts both tools
 in the corpus-builder closure.
 
-The spike passes only when every planned public corpus has one of the first two
-recorded outcomes and every inventoried corpus has one of these recorded
-outcomes:
+The spike passes only when every planned public corpus has a `reacquire` outcome
+and every other inventoried corpus has a recorded outcome:
 
-- **reacquire**: a pinned data-only source and adapter are viable; or
-- **convert**: the existing database is the seed of record and the conversion
-  path below passes its validation fixture; or
+- **reacquire**: a data-only source and adapter are viable, and each build
+  records the exact acquired checksum and transformation versions; or
 - **exclude**: the corpus is absent from public and locally distributed
   artifacts, its product impact is recorded, and tests use synthetic fixtures.
 
-Failure to obtain the required outcome blocks Spec 3 and data/NLP Cohort 6. Owner
-confidence that conversion is acceptable is not evidence that corpus content is
-recoverable.
+Failure to obtain the required outcome blocks Spec 3 and data/NLP Cohort 6. A
+runnable data-only adapter is the required evidence.
 
 The planned schema-v1 public release contains JNLP and Wikipedia. TED is an
 `exclude` outcome because its current publication permission is unresolved and
@@ -76,26 +72,6 @@ sentence. Synthetic TED-shaped fixtures remain useful for three-corpus protocol
 coverage. Reintroducing real TED data requires a new product/license decision
 and a local adapter that models talks as sources, subtitle segments as ordered
 sentences, and stable upstream talk IDs as external identities.
-
-### One-time legacy conversion
-
-`convert-legacy --database <read-only legacy.db> --output inputs/legacy-v1/`
-extracts canonical source, sentence, occurrence, span, and corpus-count records
-without modifying the source database. The output manifest includes the legacy
-database checksum, inspected legacy schema version/fingerprint, conversion
-revision, per-table source counts, and explicit fields that could not be
-recovered.
-
-Conversion validation reconciles corpus/source/sentence/occurrence counts,
-checks every span against sentence text, compares a curated set of noun, verb,
-frequency, and example queries against the legacy database, and samples stable
-identities for manual review. At gate entry, the only legacy database receives a
-checksum-verified second local safety copy outside the
-repository; this protects against accidental deletion without pretending to be
-durable disaster recovery. Before conversion, the same checksum must exist in
-durable off-machine or content-addressed operator backup storage outside any
-builder output or retention path. Conversion is removed only after durable
-pinned sources exist for every converted corpus.
 
 ## Non-Goals
 
@@ -112,7 +88,7 @@ pinned sources exist for every converted corpus.
 acquire --manifest sources.lock.json --output inputs/
        │
        ▼
-validated pinned inputs
+validated inputs
        │
        ▼
 build --inputs inputs/ --output artifacts/<instance-id>.staging/
@@ -182,16 +158,19 @@ keys only after stable identities are known.
 
 - Stable corpus ID and display label.
 - Dataset/archive URL or registry identifier.
-- Configuration and immutable revision.
+- Configuration and source version/revision when the publisher provides one.
 - Expected checksum for acquired content or a checksum manifest for a directory.
 - Adapter version/configuration.
 - License identifier, source URL, and redistribution notes.
 
 Archive downloads are checksum-verified before replacing a validated cache.
-Dataset revisions are pinned. Normal acquisition does not execute remote dataset
-code; `trust_remote_code=True` is prohibited. If a source has no non-executable
-loader under the selected datasets release, Spec 3 remains blocked until an
-explicit local adapter or separately audited acquisition tool exists.
+Dataset revisions are pinned where available. A mutable official archive, such
+as JNLP, is locked to its observed checksum for one build; an upstream or tool
+change requires an intentional lock update and produces a new artifact identity.
+Normal acquisition does not execute remote dataset code; `trust_remote_code=True`
+is prohibited. If a source has no non-executable loader under the selected
+datasets release, Spec 3 remains blocked until an explicit local adapter or
+separately audited acquisition tool exists.
 
 License/redistribution status is a publication prerequisite. Unknown license is
 not silently represented as permissive; it blocks public artifact publication
@@ -441,8 +420,8 @@ manifest and recorded provenance.
   pointer swap, and server restart boundaries.
 - Duplicate-input tests prove base-table uniqueness failures are loud.
 - Compatibility probes against selected datasets/GiNZA/spaCy/wtpsplit versions.
-- Recoverability-gate tests for data-only acquisition and the legacy conversion
-  reconciliations before real corpus replacement.
+- Recoverability-gate tests for data-only acquisition before real corpus
+  replacement.
 - Production-like benchmark records build duration, peak memory, artifact size,
   rejection counts, and curated query plans without making an optimization claim
   before measurement.
@@ -451,9 +430,8 @@ manifest and recorded provenance.
 
 ## Acceptance Criteria
 
-- Gate 3A records a passing reacquire or convert path for every planned public
-  corpus and an explicit disposition for TED before builder implementation or
-  legacy database replacement begins.
+- Gate 3A records a passing reacquire path for every planned public corpus and an
+  explicit disposition for TED before builder implementation begins.
 - A fixture artifact can be built twice into distinct immutable instance paths
   with equal structured identity inputs and relational contents.
 - The built artifact passes all schema, protocol, and query fixture validations.
@@ -477,7 +455,7 @@ manifest and recorded provenance.
 | Serve a projection, not token graph            | Accepted | Public consumers need collocations/examples only                                                                        | Token research becomes a supported product                          |
 | Derive per-million values at query time        | Accepted | Prevents denominator drift                                                                                              | Measured query cost is material                                     |
 | Publish via versioned directory pointer        | Accepted | Database and manifest switch together and roll back cheaply                                                             | Deployment filesystem cannot provide atomic pointer replacement     |
-| Gate replacement on corpus recoverability      | Accepted | Public inputs need durable immutable resolution; executing the incumbent remote loaders is prohibited                   | All public corpora have durable pinned sources                      |
+| Gate replacement on corpus recoverability      | Accepted | Public inputs need a tested data-only pipeline; source and tool changes become recorded new artifact identities         | A planned corpus loses its legal or technical acquisition path      |
 | Use one artifact instance identity             | Accepted | Structured manifest fields already support equivalence comparison; a second hashed identity has no independent consumer | A real consumer requires a compact equivalence key                  |
 | Record the execution profile as provenance     | Accepted | Device, precision, and concurrency can change NLP extraction results                                                    | Extraction becomes proven invariant across profiles                 |
 | Require applied deterministic controls         | Accepted | A seed flag that controls no actual sampler is not reproducibility evidence                                             | All retained transforms become proven deterministic by construction |

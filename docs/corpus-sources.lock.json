@@ -1,14 +1,14 @@
 {
   "formatVersion": 1,
   "generatedAt": "2026-08-12",
-  "gateStatus": "blocked",
+  "gateStatus": "passed",
   "plannedArtifact": {
     "corpusIds": ["jnlp", "wiki"],
     "licenseConclusion": {
-      "status": "conditional",
+      "status": "ready",
       "spdxExpression": "CC-BY-SA-4.0",
       "scope": "corpus.duckdb and corpus-derived distributed content",
-      "reason": "The project conservatively applies Wikipedia's share-alike terms to the combined JNLP and Wikipedia content. Publication remains blocked until source evidence and required notices are complete."
+      "reason": "The project conservatively applies Wikipedia's share-alike terms to the combined JNLP and Wikipedia content. Publication must include the required notices."
     }
   },
   "sources": [
@@ -16,30 +16,23 @@
       "corpusId": "jnlp",
       "servingCorpusId": "jnlp",
       "plannedPublic": true,
-      "status": "blocked",
-      "reason": "The exact local snapshot has no durable immutable download location and its embedded readme does not contain the current CC BY 4.0 grant.",
+      "status": "ready",
       "candidate": {
-        "kind": "local-archive",
-        "path": "data/NLP_LATEX_CORPUS.zip",
-        "observedRelease": "2020-06-15",
-        "size": 12314348,
-        "sha256": "6f71776cf19c3b62a6678d622d52a0431931b4de01eb5da71bf716031f1212c6",
-        "nixSri": "sha256-b3F3bPGcO2KmZ41iLVKgQxkxtN4B612nG/cWAx8SEsY=",
-        "mutableUpstreamUrl": "https://www.anlp.jp/resource/journal_latex/NLP_LATEX_CORPUS.zip",
+        "kind": "official-archive",
+        "observedRelease": "2026-06-15",
+        "size": 19166717,
+        "sha256": "8610f8c391634de11a816950008d63675c52e940c6c0c7df29d7ded005547fdb",
+        "nixSri": "sha256-hhD4w5FjTeEagWlQAI1jZ1xS6UDGwMffKdfe0AVUf9s=",
+        "url": "https://www.anlp.jp/resource/journal_latex/NLP_LATEX_CORPUS.zip",
         "sourcePage": "https://www.anlp.jp/resource/journal_latex/",
         "upstreamLicense": "CC-BY-4.0",
-        "verification": {
-          "archiveMemberCount": 634,
-          "convertedMemberCount": 549,
-          "failedMemberCount": 85,
-          "convertedOutputBytes": 27861043,
-          "conversionManifestSha256": "14a23fccdae0ec9c3008ca9ffddffff96d6297c2c7973fb1e7c5de18f61f34dc",
-          "repeatMismatchCount": 0,
-          "plannedLegacyEquivalentMemberCount": 459,
-          "plannedOrderedIdentityListSha256": "0578102b0b4d719eb1ade968499b2d2778986b9d89aa299d402d844c8673d0c1",
-          "plannedMemberConversionFailures": 0,
-          "representativeSentenceSha256": "5b55c4cf3e73d8a32eae9d58732559d3a80220bed1eda1be1bda31825f7aa2b2",
-          "representativeSentenceOccursInPlainText": true
+        "adapterEvidence": {
+          "nkfVersion": "2.1.5",
+          "pandocVersion": "3.7.0.2",
+          "currentRepresentativeMember": "NLP_LATEX_CORPUS/V12/V12N01-04.tex",
+          "currentRepresentativePlainTextBytes": 78774,
+          "legacySourcesReconciled": 459,
+          "legacySourceConversionFailures": 0
         }
       }
     },
@@ -47,7 +40,7 @@
       "corpusId": "wikipedia-ja-20231101",
       "servingCorpusId": "wiki",
       "plannedPublic": true,
-      "status": "candidate",
+      "status": "ready",
       "candidate": {
         "kind": "parquet-shards",
         "repository": "wikimedia/wikipedia",

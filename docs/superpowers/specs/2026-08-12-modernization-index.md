@@ -15,8 +15,9 @@ upgrades supported dependency majors, and makes Nix the authoritative build and
 deployment interface.
 
 This is a greenfield modernization. A recoverability gate must first prove that
-each corpus can be reacquired under the new no-remote-code policy or converted
-once from the legacy database. After that gate, the current database may be
+each planned corpus can be reacquired through a tested no-remote-code pipeline.
+Source and transformation versions are artifact provenance, not a promise to
+reproduce historical bytes forever. After that gate, the current database may be
 replaced rather than migrated in place, and the FastAPI and Svelte contracts may
 change atomically. There are no external API consumers to preserve.
 
@@ -49,7 +50,7 @@ change atomically. There are no external API consumers to preserve.
 
 | Term                       | Definition                                                                                                            |
 | -------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| Corpus input               | Pinned, checksum-validated source material consumed by the offline builder                                            |
+| Corpus input               | Checksum-validated source material consumed by the offline builder and recorded in artifact provenance                |
 | Serving artifact           | Versioned directory containing `corpus.duckdb`, `manifest.json`, and validation evidence                              |
 | Artifact instance ID       | Unique identity of one artifact execution; it names the flat directory and appears on the wire                        |
 | Identity inputs            | Structured source, transformation, model, execution, schema, and builder provenance recorded in the artifact manifest |
@@ -94,7 +95,7 @@ completion record linking the implementation commits and surviving ADRs.
 | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ | -------------------- |
 | Selection-specific top N was impossible after global truncation | `corpusId` and `rankBy` are server inputs; selection/ranking precede limiting and UI toggles refetch                           | 2 and 5              |
 | Equivalent builds collided on one directory                     | Flat unique no-overwrite instance directories; structured provenance and execution profile remain manifest metadata            | 3                    |
-| Rebuildability was assumed                                      | Gate 3A requires reacquire/convert for every public corpus and an explicit exclusion outcome for any inventoried remainder     | 3                    |
+| Rebuildability was assumed                                      | Gate 3A requires a tested reacquisition pipeline for every public corpus and an explicit exclusion for each remainder          | 3                    |
 | Large NLP model had no check owner                              | Default checks use model-free observations; an explicit locked model derivation is a release/scheduled gate                    | 1 and 6              |
 | Formatter ownership was undecided                               | Prettier formats and ESLint lints; duplicate Biome ownership is removed                                                        | 1 and 4              |
 | Baseline and Nix specs owned the same mutation cleanup          | Spec 1 owns non-mutating wrappers/shell and minimal checks; Spec 6 owns derivations and closures                               | 1 and 6              |
@@ -228,23 +229,22 @@ Nix flake ──► frontend package
 
 - Spec 2 records the production host class and proves memory/query limits with
   its curated benchmark before public release.
-- Spec 3 first proves reacquisition or a validated legacy conversion for every
-  planned public corpus, explicitly excludes TED, then records per-corpus and
-  artifact-level license/redistribution status plus resolvable immutable source
-  revisions before publication.
+- Spec 3 proves data-only reacquisition for every planned public corpus,
+  explicitly excludes TED, then records acquired checksums, transformation
+  versions, and per-corpus/artifact-level license status before publication.
 - Spec 4 selects and proves the exact common CPU/CUDA NLP matrix before
   advertising accelerator support.
 
 ## Decision Log
 
-| Decision                                              | Status   | Date       | Reversibility | Evidence / reason                                                                                                                         | Revisit trigger                                                                    |
-| ----------------------------------------------------- | -------- | ---------- | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| Use six capability specs with explicit phase gates    | Accepted | 2026-08-12 | Easy          | Separates defects, protocol, data lifecycle, refactor, upgrades, and packaging without forcing unsafe total ordering                      | Specs repeatedly require coupled changes                                           |
-| Replace the database only after a recoverability gate | Accepted | 2026-08-12 | Moderate      | Greenfield replacement is acceptable, but public inputs require durable sources and remote dataset code is prohibited                     | Every public corpus has a durable pinned source and conversion fallback is retired |
-| Release JNLP and Wikipedia; exclude TED               | Accepted | 2026-08-12 | Moderate      | TED is 48% of legacy collocations but lacks clear public derived-output permission; its loader also made subtitle segments pseudo-sources | Written permission and a talk-level adapter are available                          |
-| Rank over the requested corpus set and metric         | Accepted | 2026-08-12 | Moderate      | Client-side refinement of a globally truncated page omits valid top results                                                               | Cursor pagination or a new analytical ranking is required                          |
-| Change frontend/backend atomically                    | Accepted | 2026-08-12 | Moderate      | Owner confirmed no external API consumers                                                                                                 | First external consumer appears                                                    |
-| Target an anonymous read-only single instance         | Accepted | 2026-08-12 | Moderate      | Owner confirmed intended runtime                                                                                                          | Authentication, writes, or horizontal scaling is required                          |
-| Make Nix authoritative                                | Accepted | 2026-08-12 | Moderate      | Owner selected Nix for production                                                                                                         | Deployment platform cannot consume Nix outputs                                     |
-| Derive OCI from Nix server package                    | Accepted | 2026-08-12 | Easy          | Prevents two competing production definitions                                                                                             | Measured OCI constraints require a specialized builder                             |
-| Preserve the executable teaching walkthrough          | Accepted | 2026-08-12 | Moderate      | `AGENDA.md`, module doctests, pytest configuration, and Codespaces setup identify learning as a present consumer                          | The repository is no longer used for instruction                                   |
+| Decision                                              | Status   | Date       | Reversibility | Evidence / reason                                                                                                                         | Revisit trigger                                                |
+| ----------------------------------------------------- | -------- | ---------- | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| Use six capability specs with explicit phase gates    | Accepted | 2026-08-12 | Easy          | Separates defects, protocol, data lifecycle, refactor, upgrades, and packaging without forcing unsafe total ordering                      | Specs repeatedly require coupled changes                       |
+| Replace the database only after a recoverability gate | Accepted | 2026-08-12 | Moderate      | Greenfield replacement is acceptable once every planned corpus has a tested data-only acquisition pipeline                                | A planned corpus loses its legal or technical acquisition path |
+| Release JNLP and Wikipedia; exclude TED               | Accepted | 2026-08-12 | Moderate      | TED is 48% of legacy collocations but lacks clear public derived-output permission; its loader also made subtitle segments pseudo-sources | Written permission and a talk-level adapter are available      |
+| Rank over the requested corpus set and metric         | Accepted | 2026-08-12 | Moderate      | Client-side refinement of a globally truncated page omits valid top results                                                               | Cursor pagination or a new analytical ranking is required      |
+| Change frontend/backend atomically                    | Accepted | 2026-08-12 | Moderate      | Owner confirmed no external API consumers                                                                                                 | First external consumer appears                                |
+| Target an anonymous read-only single instance         | Accepted | 2026-08-12 | Moderate      | Owner confirmed intended runtime                                                                                                          | Authentication, writes, or horizontal scaling is required      |
+| Make Nix authoritative                                | Accepted | 2026-08-12 | Moderate      | Owner selected Nix for production                                                                                                         | Deployment platform cannot consume Nix outputs                 |
+| Derive OCI from Nix server package                    | Accepted | 2026-08-12 | Easy          | Prevents two competing production definitions                                                                                             | Measured OCI constraints require a specialized builder         |
+| Preserve the executable teaching walkthrough          | Accepted | 2026-08-12 | Moderate      | `AGENDA.md`, module doctests, pytest configuration, and Codespaces setup identify learning as a present consumer                          | The repository is no longer used for instruction               |
