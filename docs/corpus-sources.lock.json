@@ -1,0 +1,143 @@
+{
+  "formatVersion": 1,
+  "generatedAt": "2026-08-12",
+  "gateStatus": "blocked",
+  "sources": [
+    {
+      "corpusId": "jnlp",
+      "status": "blocked",
+      "reason": "The exact local snapshot has no durable immutable download location and its embedded readme does not contain the current CC BY 4.0 grant.",
+      "candidate": {
+        "kind": "local-archive",
+        "path": "data/NLP_LATEX_CORPUS.zip",
+        "observedRelease": "2020-06-15",
+        "size": 12314348,
+        "sha256": "6f71776cf19c3b62a6678d622d52a0431931b4de01eb5da71bf716031f1212c6",
+        "nixSri": "sha256-b3F3bPGcO2KmZ41iLVKgQxkxtN4B612nG/cWAx8SEsY=",
+        "mutableUpstreamUrl": "https://www.anlp.jp/resource/journal_latex/NLP_LATEX_CORPUS.zip",
+        "sourcePage": "https://www.anlp.jp/resource/journal_latex/",
+        "upstreamLicense": "CC-BY-4.0"
+      }
+    },
+    {
+      "corpusId": "wikipedia-ja-20231101",
+      "status": "candidate",
+      "candidate": {
+        "kind": "parquet-shards",
+        "repository": "wikimedia/wikipedia",
+        "revision": "b8e579a0c09383e0e254c9980d56833d16048707",
+        "path": "20231101.ja",
+        "urlTemplate": "https://huggingface.co/datasets/wikimedia/wikipedia/resolve/b8e579a0c09383e0e254c9980d56833d16048707/20231101.ja/{name}?download=true",
+        "upstreamLicenseMetadata": ["cc-by-sa-3.0", "gfdl"],
+        "controllingLicenseEvidence": "https://dumps.wikimedia.org/legal.html",
+        "files": [
+          {
+            "name": "train-00000-of-00015.parquet",
+            "size": 611504422,
+            "sha256": "4751c14478e712fd637bd83c2cf3537b0e299ea5115e9a78ddededf42f34c29d"
+          },
+          {
+            "name": "train-00001-of-00015.parquet",
+            "size": 383148798,
+            "sha256": "ccb1b97328fee31da6c62eb2d0de5cfaff6c9c27ba95c2a8706978aecd9028a7"
+          },
+          {
+            "name": "train-00002-of-00015.parquet",
+            "size": 304603238,
+            "sha256": "683f2ce3f5fa6c9b763c91c1d89ce9971a08eafa4f8f9bd8866e2a747e0c3fc8"
+          },
+          {
+            "name": "train-00003-of-00015.parquet",
+            "size": 252027908,
+            "sha256": "384387ad7efd966b410f45d8a3317977e53817f701e7e6fbf56eb8c15f481410"
+          },
+          {
+            "name": "train-00004-of-00015.parquet",
+            "size": 240133299,
+            "sha256": "16bfb8cfc7b53084fb0e76ebaf9e3ab8e82d775a045e7781f96494a2277e2dae"
+          },
+          {
+            "name": "train-00005-of-00015.parquet",
+            "size": 240414553,
+            "sha256": "98fd014a7863168c5d23b8df3de874654bf1d858e5e67ffd003864ade5ae5723"
+          },
+          {
+            "name": "train-00006-of-00015.parquet",
+            "size": 233075429,
+            "sha256": "ea69e7a0ec68d5d3279a30820fb5bd496759daa32ec4f03146ff62a414ca5420"
+          },
+          {
+            "name": "train-00007-of-00015.parquet",
+            "size": 217654475,
+            "sha256": "b112e83cf73327ba2246fd9c31eb1af501e51bac8450d8420963e29132d9b04b"
+          },
+          {
+            "name": "train-00008-of-00015.parquet",
+            "size": 224362017,
+            "sha256": "859bb8856808e91d47cbf17f0c1ec5bfaf5ec8fb9f576c2f365bd49bda1daf7b"
+          },
+          {
+            "name": "train-00009-of-00015.parquet",
+            "size": 234568965,
+            "sha256": "296ce0665517bbd706bbf42e97f520aa413870df35a2eab77eca07d70174ed0d"
+          },
+          {
+            "name": "train-00010-of-00015.parquet",
+            "size": 217186356,
+            "sha256": "b13eb0cf6f28099844ba2d651cf429ad000eb1ba90bbb3243e9d22a92bef7eab"
+          },
+          {
+            "name": "train-00011-of-00015.parquet",
+            "size": 213095924,
+            "sha256": "271165db78420d9286c82c2b9b93ac520925b41187537ef12bc9ff7ec1a1dca4"
+          },
+          {
+            "name": "train-00012-of-00015.parquet",
+            "size": 201165492,
+            "sha256": "7703f9b833df6292569fb088a92c933650ba2e07b32afa2fe32ddeaed31272f9"
+          },
+          {
+            "name": "train-00013-of-00015.parquet",
+            "size": 192710096,
+            "sha256": "734e0527d693f9867ee58ea66c8e52ef830d10b880b46152bc64931789bde962"
+          },
+          {
+            "name": "train-00014-of-00015.parquet",
+            "size": 176347554,
+            "sha256": "f4b59ae7c4519ec8b1c2aae6ba892f6b406e70e23685123acdc2b34bcf4c84ed"
+          }
+        ]
+      }
+    },
+    {
+      "corpusId": "ted-iwslt-2014-2016",
+      "status": "blocked",
+      "reason": "Representative extraction is unverified, legacy identities are not reproducible, and public derived-output permission is unresolved.",
+      "candidate": {
+        "kind": "tar-archive",
+        "repository": "IWSLT/ted_talks_iwslt",
+        "revision": "39479634113d3d716305d294dfa5581fa29df496",
+        "path": "data/XML_releases.tgz",
+        "url": "https://huggingface.co/datasets/IWSLT/ted_talks_iwslt/resolve/39479634113d3d716305d294dfa5581fa29df496/data/XML_releases.tgz",
+        "size": 1666674366,
+        "sha256": "4f3d977f743e330d566024420ea53ca4db50649191fd350f8e9a60d070b13dff",
+        "licenseEvidence": "conflicting CC-BY-NC-4.0 and CC-BY-NC-ND metadata"
+      }
+    },
+    {
+      "corpusId": "ted-iwslt-2017-ja-en",
+      "status": "blocked",
+      "reason": "Legacy identities are not reproducible and public derived-output permission is unresolved.",
+      "candidate": {
+        "kind": "zip-archive",
+        "repository": "IWSLT/iwslt2017",
+        "revision": "c18a4f81a47ae6fa079fe9d32db288ddde38451d",
+        "path": "data/2017-01-trnted/texts/ja/en/ja-en.zip",
+        "url": "https://huggingface.co/datasets/IWSLT/iwslt2017/resolve/c18a4f81a47ae6fa079fe9d32db288ddde38451d/data/2017-01-trnted/texts/ja/en/ja-en.zip",
+        "size": 26190859,
+        "sha256": "a923cdaa5632e55a94e799d31468c58fd2eab290a34f8b950a562f6ff20046b6",
+        "licenseEvidence": "archive README names TED copyright and CC-BY-NC-ND-3.0"
+      }
+    }
+  ]
+}
