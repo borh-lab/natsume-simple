@@ -110,6 +110,7 @@
                       help-command
                       ensure-database
                       run-tests
+                      frontend-check
                       lint
                       prepare-data
                       extract-patterns
@@ -207,6 +208,20 @@
             passthru.meta = {
               category = "Testing & QC";
               description = "Run the test suite with pytest";
+            };
+          };
+          packages.frontend-check = pkgs.writeShellApplication {
+            name = "frontend-check";
+            runtimeInputs = runtime-packages;
+            text = ''
+              cd natsume-frontend
+              npm run check
+              npm run test:unit -- --run
+              npm run build
+            '';
+            passthru.meta = {
+              category = "Testing & QC";
+              description = "Type-check, test, and build the frontend";
             };
           };
           packages.lint = pkgs.writeShellApplication {
