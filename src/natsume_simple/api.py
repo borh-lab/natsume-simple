@@ -119,6 +119,23 @@ class PublicApiError(Exception):
 QueryResult = TypeVar("QueryResult")
 
 
+def database_unavailable() -> PublicApiError:
+    return PublicApiError(
+        503,
+        "database_unavailable",
+        "The database artifact is unavailable",
+    )
+
+
+async def run_database_operation(
+    operation: Callable[[], QueryResult],
+) -> QueryResult:
+    try:
+        return await anyio.to_thread.run_sync(operation)
+    except duckdb.OperationalError as error:
+        raise database_unavailable() from error
+
+
 async def run_bounded_query(
     connection,
     limiter: CapacityLimiter,
@@ -145,7 +162,7 @@ async def run_bounded_query(
 
     timer = asyncio.get_running_loop().call_later(timeout, interrupt)
     try:
-        return await anyio.to_thread.run_sync(operation)
+        return await run_database_operation(operation)
     except duckdb.InterruptException as error:
         if timed_out:
             raise PublicApiError(
@@ -172,9 +189,16 @@ def select_corpora(requested: list[str] | None, known: set[str]) -> list[str]:
 async def database_connection(
     request: Request,
 ) -> AsyncIterator[duckdb.DuckDBPyConnection]:
-    connection = await anyio.to_thread.run_sync(
-        lambda: duckdb.connect(str(request.app.state.database_path), read_only=True)
-    )
+    database_path = request.app.state.database_path
+    if database_path is None:
+        raise database_unavailable()
+
+    try:
+        connection = await anyio.to_thread.run_sync(
+            lambda: duckdb.connect(str(database_path), read_only=True)
+        )
+    except (duckdb.OperationalError, OSError) as error:
+        raise database_unavailable() from error
     try:
         yield connection
     finally:
@@ -187,25 +211,40 @@ DatabaseConnection = Annotated[duckdb.DuckDBPyConnection, Depends(database_conne
 def create_app(artifact_dir: Path) -> FastAPI:
     @asynccontextmanager
     async def artifact_lifespan(api: FastAPI):
-        manifest = json.loads((artifact_dir / "manifest.json").read_text())
-        database_path = artifact_dir / "corpus.duckdb"
-        checksum = hashlib.sha256(database_path.read_bytes()).hexdigest()
-        if manifest["schemaVersion"] != 1 or checksum != manifest["databaseSha256"]:
-            raise RuntimeError("incompatible database artifact")
-
-        connection = duckdb.connect(str(database_path), read_only=True)
-        metadata = connection.execute(
-            "SELECT schema_version, artifact_instance_id FROM build_metadata"
-        ).fetchone()
-        if metadata != (manifest["schemaVersion"], manifest["artifactInstanceId"]):
-            connection.close()
-            raise RuntimeError("database identity does not match manifest")
-
-        api.state.database_path = database_path
-        api.state.database_build_id = manifest["artifactInstanceId"]
-        api.state.schema_version = manifest["schemaVersion"]
+        api.state.database_path = None
+        api.state.database_build_id = None
+        api.state.schema_version = None
         api.state.query_limiter = CapacityLimiter(QUERY_CAPACITY)
-        connection.close()
+
+        try:
+            manifest = json.loads((artifact_dir / "manifest.json").read_text())
+            database_path = artifact_dir / "corpus.duckdb"
+            checksum = hashlib.sha256(database_path.read_bytes()).hexdigest()
+            if manifest["schemaVersion"] != 1 or checksum != manifest["databaseSha256"]:
+                raise RuntimeError("incompatible database artifact")
+
+            with duckdb.connect(str(database_path), read_only=True) as connection:
+                metadata = connection.execute(
+                    "SELECT schema_version, artifact_instance_id FROM build_metadata"
+                ).fetchone()
+            if metadata != (
+                manifest["schemaVersion"],
+                manifest["artifactInstanceId"],
+            ):
+                raise RuntimeError("database identity does not match manifest")
+        except (
+            OSError,
+            KeyError,
+            TypeError,
+            json.JSONDecodeError,
+            duckdb.Error,
+            RuntimeError,
+        ):
+            pass
+        else:
+            api.state.database_path = database_path
+            api.state.database_build_id = manifest["artifactInstanceId"]
+            api.state.schema_version = manifest["schemaVersion"]
         yield
 
     api = FastAPI(lifespan=artifact_lifespan)
@@ -247,15 +286,26 @@ def create_app(artifact_dir: Path) -> FastAPI:
             },
         )
 
+    @api.exception_handler(Exception)
+    async def unexpected_error(request: Request, _error: Exception):
+        return JSONResponse(
+            status_code=500,
+            content={
+                "error": {
+                    "code": "internal_error",
+                    "message": "An unexpected error occurred",
+                    "requestId": request.state.request_id,
+                }
+            },
+        )
+
     @api.get("/api/health/live", response_model=HealthResponse)
     def live() -> HealthResponse:
         return HealthResponse(status="ok")
 
     @api.get("/api/health/ready", response_model=ReadyResponse)
     async def ready(request: Request, connection: DatabaseConnection) -> ReadyResponse:
-        await anyio.to_thread.run_sync(
-            lambda: connection.execute("SELECT 1").fetchone()
-        )
+        await run_database_operation(lambda: connection.execute("SELECT 1").fetchone())
         return ReadyResponse(
             status="ok",
             databaseBuildId=request.app.state.database_build_id,
@@ -266,7 +316,7 @@ def create_app(artifact_dir: Path) -> FastAPI:
     async def corpora(
         request: Request, connection: DatabaseConnection
     ) -> CorporaResponse:
-        rows = await anyio.to_thread.run_sync(
+        rows = await run_database_operation(
             lambda: connection.execute(
                 """
                 SELECT c.id, c.label, cs.collocation_count, cs.sentence_count

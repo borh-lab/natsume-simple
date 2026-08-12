@@ -1,3 +1,5 @@
+import hashlib
+import json
 from pathlib import Path
 
 import pytest
@@ -10,6 +12,17 @@ from tests.database_fixture import build_search_artifact
 def fixture_client(tmp_path: Path) -> TestClient:
     artifact_dir = build_search_artifact(tmp_path / "artifact")
     return TestClient(create_app(artifact_dir))
+
+
+def assert_database_unavailable(response, request_id: str):
+    assert response.status_code == 503
+    assert response.json() == {
+        "error": {
+            "code": "database_unavailable",
+            "message": "The database artifact is unavailable",
+            "requestId": request_id,
+        }
+    }
 
 
 def test_ready_and_corpora_describe_the_deployed_artifact(tmp_path: Path):
@@ -39,6 +52,82 @@ def test_ready_and_corpora_describe_the_deployed_artifact(tmp_path: Path):
             ],
             "databaseBuildId": "fixture-build-001",
         }
+
+
+@pytest.mark.parametrize(
+    "damage", ["missing_manifest", "checksum", "schema", "invalid_database"]
+)
+def test_invalid_artifact_stays_live_but_never_becomes_ready(
+    tmp_path: Path, damage: str
+):
+    artifact_dir = build_search_artifact(tmp_path / "artifact")
+    manifest_path = artifact_dir / "manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+
+    if damage == "missing_manifest":
+        manifest_path.unlink()
+    elif damage == "checksum":
+        manifest["databaseSha256"] = "0" * 64
+        manifest_path.write_text(json.dumps(manifest))
+    elif damage == "schema":
+        manifest["schemaVersion"] = 2
+        manifest_path.write_text(json.dumps(manifest))
+    else:
+        database_path = artifact_dir / "corpus.duckdb"
+        database_path.write_bytes(b"not a DuckDB database")
+        manifest["databaseSha256"] = hashlib.sha256(
+            database_path.read_bytes()
+        ).hexdigest()
+        manifest_path.write_text(json.dumps(manifest))
+
+    with TestClient(create_app(artifact_dir), raise_server_exceptions=False) as client:
+        assert client.get("/api/health/live").json() == {"status": "ok"}
+        response = client.get(
+            "/api/health/ready", headers={"X-Request-ID": f"broken-{damage}"}
+        )
+        search_response = client.get(
+            "/api/suggestions",
+            params={"q": "情報", "pos": "noun"},
+            headers={"X-Request-ID": f"search-{damage}"},
+        )
+
+    assert_database_unavailable(response, f"broken-{damage}")
+    assert_database_unavailable(search_response, f"search-{damage}")
+
+
+def test_ready_becomes_unavailable_when_database_disappears(tmp_path: Path):
+    artifact_dir = build_search_artifact(tmp_path / "artifact")
+    with TestClient(create_app(artifact_dir), raise_server_exceptions=False) as client:
+        (artifact_dir / "corpus.duckdb").unlink()
+        response = client.get(
+            "/api/health/ready", headers={"X-Request-ID": "database-removed"}
+        )
+
+    assert_database_unavailable(response, "database-removed")
+
+
+def test_unexpected_errors_use_a_sanitized_common_envelope(tmp_path: Path):
+    artifact_dir = build_search_artifact(tmp_path / "artifact")
+    api = create_app(artifact_dir)
+
+    @api.get("/api/test/unexpected")
+    def unexpected():
+        raise RuntimeError("SELECT secret FROM /private/database")
+
+    with TestClient(api, raise_server_exceptions=False) as client:
+        response = client.get(
+            "/api/test/unexpected", headers={"X-Request-ID": "unexpected-request"}
+        )
+
+    assert response.status_code == 500
+    assert response.json() == {
+        "error": {
+            "code": "internal_error",
+            "message": "An unexpected error occurred",
+            "requestId": "unexpected-request",
+        }
+    }
+    assert "secret" not in response.text
 
 
 def test_suggestions_filter_part_of_speech_and_order_by_frequency(tmp_path: Path):
