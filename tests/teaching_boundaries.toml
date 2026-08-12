@@ -1,0 +1,27 @@
+[source_adaptation]
+target = "test_source_adaptation_example"
+behavior = "A metadata path is adapted once into a relative Path and its sentences stay with the source."
+
+[japanese_filtering]
+target = "test_japanese_filtering_example"
+behavior = "Japanese text passes while an equally short Latin string does not."
+
+[segmentation]
+target = "test_segmentation_example"
+behavior = "Paragraphs are batched into the splitter and empty segments are removed."
+
+[normalization]
+target = "test_normalization_example"
+behavior = "A captured polite verb span becomes its stable normalized lemma and offsets."
+
+[occurrence_construction]
+target = "test_occurrence_construction_example"
+behavior = "One parsed sentence produces token observations and an offset-bearing NPV occurrence."
+
+[aggregation]
+target = "test_aggregation_example"
+behavior = "Per-corpus raw counts are normalized and summed into one particle group."
+
+[query_semantics]
+target = "test_query_semantics_example"
+behavior = "Noun and verb directions bind the requested lemma on opposite sides of the relation."

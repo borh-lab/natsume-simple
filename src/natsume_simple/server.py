@@ -6,15 +6,34 @@
 # ]
 # ///
 
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Dict, List, TypedDict
 
 import duckdb
-from fastapi import FastAPI  # type: ignore
+from fastapi import FastAPI, Request  # type: ignore
 from fastapi.middleware.cors import CORSMiddleware  # type: ignore
 from fastapi.staticfiles import StaticFiles  # type: ignore
 
-app = FastAPI()
+DATABASE_PATH = Path("data/corpus.db")
+
+
+def load_db(db_path: Path) -> duckdb.DuckDBPyConnection:
+    return duckdb.connect(str(db_path), read_only=True)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    conn = load_db(DATABASE_PATH)
+    app.state.conn = conn
+    app.state.corpus_stats = calculate_corpus_stats(conn)
+    try:
+        yield
+    finally:
+        conn.close()
+
+
+app = FastAPI(lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -23,11 +42,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
-def load_db() -> duckdb.DuckDBPyConnection:
-    db_path = Path("data/corpus.db")
-    return duckdb.connect(str(db_path), read_only=True)
 
 
 def calculate_normalized_frequencies(
@@ -63,19 +77,15 @@ def calculate_corpus_stats(
     return stats
 
 
-conn = load_db()
-corpus_stats = calculate_corpus_stats(conn)
-
-
 @app.get("/corpus/norm")
-def get_corpus_norm() -> Dict[str, Dict[str, float]]:
+def get_corpus_norm(request: Request) -> Dict[str, Dict[str, float]]:
     """Return both normalization factors and collocation counts for each corpus."""
     return {
         corpus: {
             "normalizationFactor": stats["normalizationFactor"],
             "collocationCount": stats["collocationCount"],
         }
-        for corpus, stats in corpus_stats.items()
+        for corpus, stats in request.app.state.corpus_stats.items()
     }
 
 
@@ -266,12 +276,13 @@ def get_npv_query(search_type: str, term: str) -> tuple[str, list]:
 
 
 @app.get("/npv/{search_type}/{term}")
-def read_npv(search_type: str, term: str) -> Dict[str, Any]:
+def read_npv(request: Request, search_type: str, term: str) -> Dict[str, Any]:
     if search_type not in ["noun", "verb"]:
         raise ValueError("search_type must be either 'noun' or 'verb'")
 
     query, params = get_npv_query(search_type, term)
-    raw_matches = conn.execute(query, params).pl()
+    raw_matches = request.app.state.conn.execute(query, params).pl()
+    corpus_stats = request.app.state.corpus_stats
 
     particles = ["が", "を", "に", "で", "から", "より", "と", "へ"]
     particle_groups = process_query_results(
@@ -298,10 +309,10 @@ def read_npv(search_type: str, term: str) -> Dict[str, Any]:
 
 @app.get("/sentences/{n}/{p}/{v}/{limit}")
 def read_sentences(
-    n: str, p: str, v: str, limit: int = 5
+    request: Request, n: str, p: str, v: str, limit: int = 5
 ) -> List[dict[str, str | int]]:
     matches = (
-        conn.execute(
+        request.app.state.conn.execute(
             """
         WITH colloc AS (
             SELECT 
@@ -349,8 +360,8 @@ def read_sentences(
 
 
 @app.get("/search/{query}")
-def read_query(query: str) -> List[tuple[str, str]]:
-    matches = conn.execute(
+def read_query(request: Request, query: str) -> List[tuple[str, str]]:
+    matches = request.app.state.conn.execute(
         """
         WITH lemma_matches AS (
             SELECT DISTINCT l.string, 'n' as type, COUNT(*) as frequency
@@ -379,4 +390,8 @@ def read_query(query: str) -> List[tuple[str, str]]:
     return [(str(m[0]), str(m[1])) for m in matches]
 
 
-app.mount("/", StaticFiles(directory="natsume-frontend/build", html=True), name="app")
+app.mount(
+    "/",
+    StaticFiles(directory="natsume-frontend/build", html=True, check_dir=False),
+    name="app",
+)
