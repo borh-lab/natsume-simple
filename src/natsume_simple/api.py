@@ -1,16 +1,22 @@
+import asyncio
 from contextlib import asynccontextmanager
 import hashlib
 import json
 from pathlib import Path
 import re
-from typing import Annotated, Literal
+from typing import Annotated, AsyncIterator, Callable, Literal, TypeVar
 import uuid
 
+import anyio
 import duckdb
-from fastapi import FastAPI, Query, Request  # type: ignore
+from anyio import CapacityLimiter, WouldBlock
+from fastapi import Depends, FastAPI, Query, Request  # type: ignore
 from fastapi.exceptions import RequestValidationError  # type: ignore
 from fastapi.responses import JSONResponse  # type: ignore
 from pydantic import BaseModel
+
+QUERY_CAPACITY = 16
+QUERY_TIMEOUT_SECONDS = 2.0
 
 
 class HealthResponse(BaseModel):
@@ -97,10 +103,58 @@ class ExamplesResponse(BaseModel):
 
 
 class PublicApiError(Exception):
-    def __init__(self, status_code: int, code: str, message: str):
+    def __init__(
+        self,
+        status_code: int,
+        code: str,
+        message: str,
+        headers: dict[str, str] | None = None,
+    ):
         self.status_code = status_code
         self.code = code
         self.message = message
+        self.headers = headers or {}
+
+
+QueryResult = TypeVar("QueryResult")
+
+
+async def run_bounded_query(
+    connection,
+    limiter: CapacityLimiter,
+    operation: Callable[[], QueryResult],
+    *,
+    timeout: float,
+) -> QueryResult:
+    try:
+        limiter.acquire_nowait()
+    except WouldBlock as error:
+        raise PublicApiError(
+            429,
+            "capacity_exceeded",
+            "Query capacity is exhausted",
+            {"Retry-After": "1"},
+        ) from error
+
+    timed_out = False
+
+    def interrupt():
+        nonlocal timed_out
+        timed_out = True
+        connection.interrupt()
+
+    timer = asyncio.get_running_loop().call_later(timeout, interrupt)
+    try:
+        return await anyio.to_thread.run_sync(operation)
+    except duckdb.InterruptException as error:
+        if timed_out:
+            raise PublicApiError(
+                504, "query_timeout", "The database query timed out"
+            ) from error
+        raise
+    finally:
+        timer.cancel()
+        limiter.release()
 
 
 def select_corpora(requested: list[str] | None, known: set[str]) -> list[str]:
@@ -113,6 +167,21 @@ def select_corpora(requested: list[str] | None, known: set[str]) -> list[str]:
             400, "invalid_parameter", "corpusId must name a known corpus"
         )
     return selected
+
+
+async def database_connection(
+    request: Request,
+) -> AsyncIterator[duckdb.DuckDBPyConnection]:
+    connection = await anyio.to_thread.run_sync(
+        lambda: duckdb.connect(str(request.app.state.database_path), read_only=True)
+    )
+    try:
+        yield connection
+    finally:
+        await anyio.to_thread.run_sync(connection.close)
+
+
+DatabaseConnection = Annotated[duckdb.DuckDBPyConnection, Depends(database_connection)]
 
 
 def create_app(artifact_dir: Path) -> FastAPI:
@@ -135,6 +204,7 @@ def create_app(artifact_dir: Path) -> FastAPI:
         api.state.database_path = database_path
         api.state.database_build_id = manifest["artifactInstanceId"]
         api.state.schema_version = manifest["schemaVersion"]
+        api.state.query_limiter = CapacityLimiter(QUERY_CAPACITY)
         connection.close()
         yield
 
@@ -167,6 +237,7 @@ def create_app(artifact_dir: Path) -> FastAPI:
     async def public_api_error(request: Request, error: PublicApiError):
         return JSONResponse(
             status_code=error.status_code,
+            headers=error.headers,
             content={
                 "error": {
                     "code": error.code,
@@ -181,11 +252,10 @@ def create_app(artifact_dir: Path) -> FastAPI:
         return HealthResponse(status="ok")
 
     @api.get("/api/health/ready", response_model=ReadyResponse)
-    def ready(request: Request) -> ReadyResponse:
-        with duckdb.connect(
-            str(request.app.state.database_path), read_only=True
-        ) as conn:
-            conn.execute("SELECT 1").fetchone()
+    async def ready(request: Request, connection: DatabaseConnection) -> ReadyResponse:
+        await anyio.to_thread.run_sync(
+            lambda: connection.execute("SELECT 1").fetchone()
+        )
         return ReadyResponse(
             status="ok",
             databaseBuildId=request.app.state.database_build_id,
@@ -193,11 +263,11 @@ def create_app(artifact_dir: Path) -> FastAPI:
         )
 
     @api.get("/api/corpora", response_model=CorporaResponse)
-    def corpora(request: Request) -> CorporaResponse:
-        with duckdb.connect(
-            str(request.app.state.database_path), read_only=True
-        ) as conn:
-            rows = conn.execute(
+    async def corpora(
+        request: Request, connection: DatabaseConnection
+    ) -> CorporaResponse:
+        rows = await anyio.to_thread.run_sync(
+            lambda: connection.execute(
                 """
                 SELECT c.id, c.label, cs.collocation_count, cs.sentence_count
                 FROM corpus c
@@ -205,6 +275,7 @@ def create_app(artifact_dir: Path) -> FastAPI:
                 ORDER BY c.id
                 """
             ).fetchall()
+        )
         return CorporaResponse(
             corpora=[
                 CorpusResponse(
@@ -219,16 +290,17 @@ def create_app(artifact_dir: Path) -> FastAPI:
         )
 
     @api.get("/api/suggestions", response_model=SuggestionsResponse)
-    def suggestions(
+    async def suggestions(
         request: Request,
+        connection: DatabaseConnection,
         q: Annotated[str, Query(min_length=1, max_length=64)],
         pos: Literal["noun", "verb"],
         limit: Annotated[int, Query(ge=1, le=20)] = 10,
     ) -> SuggestionsResponse:
-        with duckdb.connect(
-            str(request.app.state.database_path), read_only=True
-        ) as conn:
-            rows = conn.execute(
+        rows = await run_bounded_query(
+            connection,
+            request.app.state.query_limiter,
+            lambda: connection.execute(
                 """
                 SELECT lemma, part_of_speech, occurrence_count
                 FROM lemma_frequency
@@ -237,7 +309,9 @@ def create_app(artifact_dir: Path) -> FastAPI:
                 LIMIT ?
                 """,
                 [pos, q, limit],
-            ).fetchall()
+            ).fetchall(),
+            timeout=QUERY_TIMEOUT_SECONDS,
+        )
         return SuggestionsResponse(
             suggestions=[
                 SuggestionResponse(lemma=row[0], pos=row[1], occurrenceCount=row[2])
@@ -246,18 +320,17 @@ def create_app(artifact_dir: Path) -> FastAPI:
         )
 
     @api.get("/api/collocations", response_model=CollocationsResponse)
-    def collocations(
+    async def collocations(
         request: Request,
+        connection: DatabaseConnection,
         term: Annotated[str, Query(min_length=1, max_length=64)],
         pos: Literal["noun", "verb"],
         rankBy: Literal["raw", "meanPerMillion"],
         corpusId: Annotated[list[str] | None, Query()] = None,
         limitPerParticle: Annotated[int, Query(ge=1, le=200)] = 100,
     ) -> CollocationsResponse:
-        with duckdb.connect(
-            str(request.app.state.database_path), read_only=True
-        ) as conn:
-            corpus_rows = conn.execute(
+        def load_rows():
+            corpus_rows = connection.execute(
                 "SELECT corpus_id, collocation_count FROM corpus_stats ORDER BY corpus_id"
             ).fetchall()
             corpus_counts = {row[0]: row[1] for row in corpus_rows}
@@ -265,7 +338,7 @@ def create_app(artifact_dir: Path) -> FastAPI:
 
             term_column = "noun" if pos == "noun" else "verb"
             placeholders = ", ".join("?" for _ in selected)
-            rows = conn.execute(
+            rows = connection.execute(
                 f"""
                 SELECT corpus_id, noun, particle, verb, raw_frequency
                 FROM collocation_frequency
@@ -273,6 +346,14 @@ def create_app(artifact_dir: Path) -> FastAPI:
                 """,
                 [term, *selected],
             ).fetchall()
+            return corpus_counts, selected, rows
+
+        corpus_counts, selected, rows = await run_bounded_query(
+            connection,
+            request.app.state.query_limiter,
+            load_rows,
+            timeout=QUERY_TIMEOUT_SECONDS,
+        )
 
         by_triple: dict[tuple[str, str, str], dict[str, int]] = {}
         for corpus_id, noun, particle, verb, raw_frequency in rows:
@@ -366,24 +447,25 @@ def create_app(artifact_dir: Path) -> FastAPI:
         )
 
     @api.get("/api/examples", response_model=ExamplesResponse)
-    def examples(
+    async def examples(
         request: Request,
+        connection: DatabaseConnection,
         noun: Annotated[str, Query(min_length=1, max_length=64)],
         particle: Annotated[str, Query(min_length=1, max_length=64)],
         verb: Annotated[str, Query(min_length=1, max_length=64)],
         corpusId: Annotated[list[str] | None, Query()] = None,
         limit: Annotated[int, Query(ge=1, le=20)] = 5,
     ) -> ExamplesResponse:
-        with duckdb.connect(
-            str(request.app.state.database_path), read_only=True
-        ) as conn:
+        def load_rows():
             all_corpora = [
                 row[0]
-                for row in conn.execute("SELECT id FROM corpus ORDER BY id").fetchall()
+                for row in connection.execute(
+                    "SELECT id FROM corpus ORDER BY id"
+                ).fetchall()
             ]
             selected = select_corpora(corpusId, set(all_corpora))
             placeholders = ", ".join("?" for _ in selected)
-            rows = conn.execute(
+            rows = connection.execute(
                 f"""
                 SELECT src.corpus_id, src.id, src.title, s.id, s.text,
                        o.n_begin, o.n_end, o.p_begin, o.p_end, o.v_begin, o.v_end
@@ -397,6 +479,14 @@ def create_app(artifact_dir: Path) -> FastAPI:
                 """,
                 [noun, particle, verb, *selected, limit],
             ).fetchall()
+            return selected, rows
+
+        selected, rows = await run_bounded_query(
+            connection,
+            request.app.state.query_limiter,
+            load_rows,
+            timeout=QUERY_TIMEOUT_SECONDS,
+        )
         return ExamplesResponse(
             examples=[
                 ExampleResponse(

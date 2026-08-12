@@ -296,7 +296,7 @@ runtime generated-client framework is added.
   prove the next request succeeds on a new connection. They also exercise
   completion just before the timer fires so cancellation cannot interrupt a
   later request.
-- The request path in `server.py` remains readable top-to-bottom for the backend
+- The request path in `api.py` remains readable top-to-bottom for the backend
   walkthrough: FastAPI dependency, validation, bounded query helper, response.
   No repository, pool, watchdog, or generic manager layer is introduced.
 - The curated concurrency benchmark meets the documented p95 target or the

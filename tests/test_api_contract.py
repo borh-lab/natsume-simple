@@ -74,6 +74,33 @@ def test_validation_errors_use_the_public_envelope(tmp_path: Path):
     }
 
 
+def test_exhausted_query_capacity_returns_retryable_error(tmp_path: Path):
+    with fixture_client(tmp_path) as client:
+        limiter = client.app.state.query_limiter
+        borrowers = [object() for _ in range(limiter.total_tokens)]
+        for borrower in borrowers:
+            limiter.acquire_on_behalf_of_nowait(borrower)
+        try:
+            response = client.get(
+                "/api/suggestions",
+                params={"q": "情報", "pos": "noun"},
+                headers={"X-Request-ID": "busy-request"},
+            )
+        finally:
+            for borrower in borrowers:
+                limiter.release_on_behalf_of(borrower)
+
+    assert response.status_code == 429
+    assert response.headers["retry-after"] == "1"
+    assert response.json() == {
+        "error": {
+            "code": "capacity_exceeded",
+            "message": "Query capacity is exhausted",
+            "requestId": "busy-request",
+        }
+    }
+
+
 def test_collocations_select_and_rank_before_applying_the_limit(tmp_path: Path):
     with fixture_client(tmp_path) as client:
         response = client.get(
