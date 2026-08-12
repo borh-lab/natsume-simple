@@ -49,6 +49,12 @@ machine-readable source-lock candidates. For each corpus it must:
    units, and representative sentences; and
 4. record checksum, revision, license/redistribution status, and the command used.
 
+The JNLP proof runs from its archive through encoding conversion and LaTeX text
+extraction in a clean declared environment. Its adapter currently requires
+`nkf` and `pandoc`; their pinned versions and output checksums are recorded, and
+success from an ambient developer `PATH` is not evidence. Spec 6 puts both tools
+in the corpus-builder closure.
+
 The spike passes only when every corpus has one of these recorded outcomes:
 
 - **reacquire**: a pinned data-only source and adapter are viable; or
@@ -110,6 +116,11 @@ publish --artifact artifacts/<instance-id>/ --pointer deploy/current
 Acquisition is network-capable. Transformation accepts already acquired inputs
 and does not fetch datasets, models, or code. Publication is a distinct command
 and cannot target a `.staging` or failed artifact.
+
+Publishable transformation never performs random row sampling. Fixture and
+representative-sample runs consume an explicit ordered identity list with its
+own checksum, so the selected subset is reproducible. The legacy `--sample`
+diagnostic and its ineffective Python `--seed` control are not carried forward.
 
 ## Canonical Values
 
@@ -282,6 +293,13 @@ is sealed.
 - Serving schema version.
 - Builder application revision.
 
+These are observed applied settings, not caller assertions. The build command
+sets fixed process/thread counts, enables and verifies Torch deterministic
+algorithms, applies the selected backend's documented deterministic controls,
+and seeds only RNGs that a retained transformation actually consumes. Startup
+fails if the requested profile cannot be applied; recording
+`"deterministic": true` without verification is invalid.
+
 Artifact layout:
 
 ```text
@@ -333,6 +351,9 @@ Publication requires all of the following:
   identical ordered relational exports after excluding observational fields.
   Changing an identity input, including backend/precision/thread count, changes
   the corresponding recorded field.
+- The manifest's deterministic settings equal runtime-observed values, and a
+  build fails rather than publishing when any required control cannot be
+  applied.
 - The certified CPU publication profile passes the repeated-build comparison;
   accelerated profiles fail publication until they independently pass it.
 
@@ -420,5 +441,7 @@ manifest and recorded provenance.
 | Gate replacement on corpus recoverability        | Accepted | TED/Wiki source material is absent locally and the target datasets stack cannot execute the incumbent remote loader | All corpora have durable pinned data-only sources                    |
 | Use one artifact instance identity                | Accepted | Structured manifest fields already support equivalence comparison; a second hashed identity has no independent consumer | A real consumer requires a compact equivalence key                 |
 | Record the execution profile as provenance        | Accepted | Device, precision, and concurrency can change NLP extraction results                                                | Extraction becomes proven invariant across profiles                  |
+| Require applied deterministic controls             | Accepted | A seed flag that controls no actual sampler is not reproducibility evidence                                          | All retained transforms become proven deterministic by construction  |
+| Use explicit sample identities                     | Accepted | Representative builds must select the same records without relying on engine RNG behavior                            | Representative sampling is removed                                  |
 | Materialize hot, artifact-wide aggregate facts    | Accepted | Immutable builder-written corpus/lemma counts avoid repeated full scans; filtered collocation aggregation stays a view | Benchmarks show either recorded table is unnecessary               |
 | Use flat instance directories                    | Accepted | Instance IDs are globally unique; flat layout makes listing and retention one-dimensional                           | Artifact volume requires a measured sharding strategy                |

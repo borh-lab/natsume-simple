@@ -49,7 +49,8 @@ For every supported system where dependencies exist:
   `npm ci` semantics and no network during the derivation build.
 - `server`: minimal Python environment/application with the `frontend` assets and
   one executable entry point.
-- `corpus-builder-cpu`: offline builder with CPU data/NLP dependencies.
+- `corpus-builder-cpu`: offline builder with CPU data/NLP dependencies plus the
+  pinned `nkf` and `pandoc` executables required by the JNLP adapter.
 - `corpus-builder-cuda`: supported Linux systems only when Cohort 7 resolves and
   builds.
 - `corpus-builder-rocm`: supported Linux systems only when Cohort 7 resolves and
@@ -236,8 +237,12 @@ a second hand-written list of mutable wrappers.
 - The untracked `container.nix` is either replaced by the accepted package module
   or rewritten to expose only the concrete `container` output. Placeholder
   `services.foo` and commented speculative service-flake layers are removed.
-- `.devcontainer` remains a development entry point into the flake and does not
-  become a production image definition.
+- One default `.devcontainer/devcontainer.json` remains the Codespaces/local
+  editor entry into the flake and does not become a production image definition.
+  It uses a standard upstream base image directly; the one-line Dockerfile and
+  unconsumed rootless/ROCm variants are removed. Accelerator development uses
+  the same Nix outputs and explicit hardware gates as other environments rather
+  than adding another setup definition.
 
 ## Test Strategy
 
@@ -248,6 +253,8 @@ a second hand-written list of mutable wrappers.
   from `server` and `container` references.
 - Dev-shell smoke checks prove entry does not change tracked files or start
   package-manager synchronization.
+- CPU-builder closure/smoke tests run the fixture JNLP archive conversion with
+  no ambient `nkf` or `pandoc` and record the selected executable versions.
 - Direct server smoke: liveness, readiness, static page, one query.
 - Container smoke: non-root UID, read-only root filesystem, read-only artifact
   mount, same HTTP assertions, clean termination.
@@ -268,6 +275,8 @@ a second hand-written list of mutable wrappers.
   production topology.
 - Direct server and image expose identical application behavior for the fixture.
 - Entering a development shell causes no checkout mutation or automatic setup.
+- The one documented default devcontainer reaches the same flake interface;
+  there are no alternative devcontainer or Dockerfile dependency definitions.
 - README/help accurately describe the real flake interface.
 
 ## Rollback
@@ -288,4 +297,5 @@ no separate Dockerfile rollback path.
 | Focused non-mutating shells                         | Accepted | Keeps dependency ownership clear and entry predictable                        | Contributor evidence shows union shell is sufficient                              |
 | x86_64 Linux image initially                        | Accepted | Current public-host target                                                    | Deployment requires another architecture                                          |
 | Require bounded public edge                         | Accepted | Anonymous expensive queries need overload protection even on one instance     | Authentication, multi-instance limiting, or measured capacity changes the control |
+| Keep one devcontainer that delegates to Nix         | Accepted | The default is the only documented Codespaces consumer; host/accelerator variants duplicate setup ownership | A distinct environment gains a named user and automated smoke test |
 | Keep large-model integration outside default checks | Accepted | Default checks remain small while release evidence owns the real pinned model | Model closure becomes appropriate for every check                                 |

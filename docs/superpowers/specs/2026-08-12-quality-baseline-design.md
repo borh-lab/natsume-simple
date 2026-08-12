@@ -96,6 +96,12 @@ each demonstrates. The count is a deletion alarm, not a quota: later work may
 combine or replace examples only when review shows that the taught behavior is
 still covered more clearly. An empty doctest collection is a failure.
 
+One such decision is made here: replace the local `pairwise` implementation with
+Python 3.12's `itertools.pairwise`. Its three examples teach a reimplementation
+of a standard primitive, so the reviewed baseline becomes 23 examples. The
+inventory records that explicit subtraction; every other decrease still needs a
+teaching-contract decision.
+
 Every public transformation boundary on the documented backend walkthrough has
 at least one short executable example using fixture-sized values. This includes
 source adaptation, Japanese-text filtering, segmentation, normalization,
@@ -106,6 +112,42 @@ getters use integration tests instead of ceremonial doctests.
 Examples are adjacent to the code they explain, deterministic, and readable
 without the production corpus. A reviewer may reject a helper or abstraction
 that makes the walkthrough harder to read even when it reduces local line count.
+
+The pattern-extraction notebook demonstrates the module rather than forking it.
+It imports `simple_lemma`, `normalize_verb_span`, and extraction functions from
+`natsume_simple.pattern_extraction`; its duplicate implementations and unittest
+classes are removed. Narration, dependency visualization, KWIC, and `Counter`
+exploration remain. The parameterized pytest table is the authoritative behavior
+matrix; adjacent module doctests may retain one representative teaching example
+without becoming a second independently maintained implementation.
+
+### Proven dead-code and primitive cleanup
+
+Small verified deletions remain separate from the two defect fixes:
+
+- Delete `utils.py`, its imports, and both ineffective `--seed` flags. The data
+  command performs no random work; the extraction command's DuckDB `USING
+  SAMPLE` is not controlled by Python/NumPy/Torch seeding. Spec 3 separately
+  prohibits random sampling in publishable builds and owns real deterministic
+  controls.
+- Delete uncalled `filter_non_japanese`; retain the live `is_japanese` predicate.
+- Replace `setup_logger` with module-level `logging.getLogger(__name__)` and one
+  `logging.basicConfig(...)` call in each CLI entry point. Server logging remains
+  owned by its ASGI runner. This also removes duplicate handlers on repeated
+  setup.
+- Delete the uncalled `/corpus/stats` route and its README example. Keep
+  `calculate_corpus_stats` temporarily because `/corpus/norm` calls its result;
+  Spec 2 removes both with the complete legacy API.
+- Remove unused `pkgs.bun`, `pkgs.sqlite`, Biome ownership, and the Bun editor
+  recommendation from the flake, tracked devcontainers, and VS Code settings.
+- Delete stale `CHANGELOG.md` and `pkgs.git-cliff`. There is no release workflow
+  or cliff configuration, the file has only two historical updates and only an
+  unreleased section, and repository versioning already moved beyond its sole
+  release tag. A changelog returns only with a named release consumer.
+
+README structure, command, logging, and endpoint examples are updated in the
+same focused cleanup commits so the teaching entry point never documents deleted
+surfaces.
 
 ### Frontend baseline cleanup
 
@@ -221,15 +263,18 @@ wrappers with full derivations and production closures.
   corpus download.
 - Ordinary `nix flake check` requires no large NLP model; the explicit model
   integration output is green before release or an NLP dependency update.
-- The baseline records all 26 current prompt examples, and every taught public
+- The baseline records all 26 current prompt examples, the reviewed stdlib
+  replacement accounts for the reduction to 23, and every taught public
   transformation boundary retains or gains a meaningful fixture-sized doctest.
 - The two confirmed defects have focused regression tests and separate commits.
 - Placeholder arithmetic and `h1`-only tests are removed when stronger tests
   cover their test layers.
 - CI runs every declared check and uploads useful failure artifacts without
   modifying tracked files.
-- No public endpoint, persisted schema, normalization formula, or rendering
-  trust behavior changes in this spec.
+- No consumed public endpoint, persisted schema, normalization formula, or
+  rendering trust behavior changes in this spec; `/corpus/stats` is the sole
+  endpoint deletion, after repository-wide reachability evidence and the
+  no-external-consumer premise establish that it is dead.
 
 ## Rollback
 
@@ -251,3 +296,6 @@ than suppressing or weakening the new check.
 | Baseline owns non-mutating wrappers and minimal flake checks | Accepted | Its acceptance criteria otherwise depend circularly on Spec 6                                                                  | Full derivations land in Spec 6                                     |
 | Preserve meaningful walkthrough doctests                    | Accepted | The agenda and pytest configuration make executable examples a present learner-facing interface                                | The repository is no longer used for instruction                    |
 | Do not require doctests on orchestration/getters             | Accepted | A per-function quota creates ceremonial examples; integration tests explain lifecycle behavior better                           | Learner feedback identifies a missing executable seam               |
+| Replace local `pairwise` with the standard primitive         | Accepted | Python 3.12 is required; teaching the standard API is clearer and explicitly accounts for three removed examples                 | A domain-specific pairing rule appears                              |
+| Make the notebook a consumer of extraction code              | Accepted | One tested normalization implementation prevents an untested teaching fork while preserving exploration                         | The notebook needs a genuinely experimental algorithm               |
+| Retire the unconsumed generated changelog                    | Accepted | No release automation/configuration consumes it, and its all-unreleased contents are stale                                      | A release process names changelog output as a deliverable            |

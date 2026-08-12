@@ -61,6 +61,11 @@ connections and FastAPI's lifespan guidance for process-lifetime resources:
 The static Svelte application owns `/`. Application routes use `/api`; no `/v1`
 namespace is introduced while frontend and backend deploy atomically.
 
+The atomic cutover removes all legacy `/corpus/*`, `/search/*`, `/npv/*`, and
+`/sentences/*` routes and their query helpers. In particular,
+`calculate_corpus_stats` remains temporarily live through `/corpus/norm` during
+Spec 1; it is deleted here rather than mislabeled as dead code.
+
 ### `GET /api/health/live`
 
 Returns `200 {"status":"ok"}` without querying DuckDB.
@@ -275,6 +280,8 @@ runtime generated-client framework is added.
 ## Acceptance Criteria
 
 - All routes and models above appear in OpenAPI and generated frontend types.
+- No legacy route or legacy corpus-normalization helper remains reachable or
+  documented.
 - Invalid `pos`/limits return the common 4xx envelope, never an uncaught
   `ValueError`/500.
 - The server starts only with a compatible artifact and becomes unready if its
