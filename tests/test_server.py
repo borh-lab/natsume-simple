@@ -27,6 +27,13 @@ def test_corpus_normalization_uses_fixture_counts(client: TestClient):
     }
 
 
+def test_liveness_does_not_query_the_database(client: TestClient):
+    response = client.get("/api/health/live")
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
+
+
 @pytest.mark.parametrize(
     ("search_type", "term", "particle", "other_lemma", "result_count"),
     [
