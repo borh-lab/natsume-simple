@@ -1,6 +1,6 @@
 # Nix Packages and OCI Image Design
 
-**Status:** Draft for written review
+**Status:** Revised draft after written review
 
 **Date:** 2026-08-12
 **Boundary:** Authoritative Nix build/check interfaces, focused development
@@ -24,7 +24,8 @@ interface is not established and must not become a second competing design.
 - Make the flake the source of truth for building, checking, developing, and
   running the project.
 - Produce real immutable frontend, server, corpus-builder, and OCI outputs.
-- Keep dev-shell entry and check commands non-mutating.
+- Preserve the non-mutating dev-shell entry and minimal checks established by
+  Spec 1 while replacing wrappers with real derivations.
 - Ensure the production closure excludes build, notebook, NLP, and accelerator
   machinery.
 - Derive the OCI image from exactly the same server package used outside a
@@ -86,6 +87,12 @@ Check derivations are non-mutating and network-independent after fixed inputs ar
 available. Large corpus/model/hardware jobs are separate scheduled workflows,
 not ordinary `nix flake check`.
 
+The model-free normalization policy fixture is part of `nix flake check`.
+`packages.<system>.nlp-model-integration` is a separate declared test derivation
+whose locked closure includes `ja-ginza`; release and scheduled workflows build
+it explicitly. It has no network access during execution and is not silently
+skipped when an NLP cohort changes.
+
 ### Development shells
 
 - `server`: Python/API development and fixture tests.
@@ -145,6 +152,24 @@ The image is a packaging of `server`, not another deployment implementation.
 Its smoke test compares direct-package and container behavior for readiness,
 static page, and a representative search against the same fixture artifact.
 
+## Public Edge Prerequisite
+
+The server package and image are not exposed directly to the public internet.
+The operator terminates public traffic at a reverse proxy or equivalent edge
+that, for `/api` routes, starts with these conservative limits:
+
+- 2 requests/second per source IP with a burst of 5;
+- at most 4 concurrent API requests per source IP; and
+- a 3-second upstream response timeout, longer than the application's 2-second
+  DuckDB deadline.
+
+The edge rejects excess work with `429` and does not forward unbounded request
+bodies or headers. Health probes use a separately bounded internal path. These
+values may be loosened only after the Spec 2 capacity benchmark demonstrates
+headroom and the accepted-risk entry in the index is reviewed. The application
+additionally owns its global 16-query admission bound; the edge is not its only
+overload protection.
+
 ## Artifact Mount and Startup
 
 Required configuration identifies an artifact directory containing both
@@ -190,6 +215,7 @@ The README documents:
 - Running backend/frontend development servers.
 - Building and validating a fixture corpus artifact.
 - Running `nix flake check` and explicit packages.
+- Running the explicit `nlp-model-integration` release gate.
 - Loading/running the OCI image with a read-only fixture/production artifact
   mount.
 - Formatting separately from checking.
@@ -199,9 +225,10 @@ a second hand-written list of mutable wrappers.
 
 ## Superseding Existing Machinery
 
-- Runtime setup calls are removed from `run-tests`, `lint`, frontend build/watch,
-  and server launch paths.
-- The dev-shell `shellHook` no longer mutates or activates `.venv`.
+- Spec 1 has already removed runtime setup calls from check paths, stopped the
+  dev-shell `shellHook` from mutating/activating `.venv`, and exposed minimal
+  checks. This spec removes the remaining setup behavior from runtime/build
+  paths and replaces command wrappers with real package/check derivations.
 - Process-compose may remain a development-only coordinator that launches the
   already available server/frontend development commands; it does not define
   production ownership.
@@ -235,6 +262,9 @@ a second hand-written list of mutable wrappers.
 - Server/container closures exclude all forbidden dependency classes.
 - The container runs non-root with a read-only root and artifact mount and passes
   HTTP smoke tests.
+- Deployment documentation/configuration proves the public endpoint is behind
+  the stated edge limits; a direct unbounded public bind is not a supported
+  production topology.
 - Direct server and image expose identical application behavior for the fixture.
 - Entering a development shell causes no checkout mutation or automatic setup.
 - README/help accurately describe the real flake interface.
@@ -249,10 +279,12 @@ no separate Dockerfile rollback path.
 
 ## Decision Log
 
-| Decision | Status | Reason | Revisit trigger |
-|---|---|---|---|
-| Nix is authoritative | Accepted | Owner-selected production interface and reproducible closures | Target platform cannot consume Nix artifacts |
-| OCI derives from server | Accepted | One runtime definition and behavior | Measured image constraints require specialized layering |
-| Database is a mount, not default image content | Accepted | Data refresh independent of app build | Deployment strongly prefers self-contained immutable images |
-| Focused non-mutating shells | Accepted | Keeps dependency ownership clear and entry predictable | Contributor evidence shows union shell is sufficient |
-| x86_64 Linux image initially | Accepted | Current public-host target | Deployment requires another architecture |
+| Decision                                            | Status   | Reason                                                                        | Revisit trigger                                                                   |
+| --------------------------------------------------- | -------- | ----------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| Nix is authoritative                                | Accepted | Owner-selected production interface and reproducible closures                 | Target platform cannot consume Nix artifacts                                      |
+| OCI derives from server                             | Accepted | One runtime definition and behavior                                           | Measured image constraints require specialized layering                           |
+| Database is a mount, not default image content      | Accepted | Data refresh independent of app build                                         | Deployment strongly prefers self-contained immutable images                       |
+| Focused non-mutating shells                         | Accepted | Keeps dependency ownership clear and entry predictable                        | Contributor evidence shows union shell is sufficient                              |
+| x86_64 Linux image initially                        | Accepted | Current public-host target                                                    | Deployment requires another architecture                                          |
+| Require bounded public edge                         | Accepted | Anonymous expensive queries need overload protection even on one instance     | Authentication, multi-instance limiting, or measured capacity changes the control |
+| Keep large-model integration outside default checks | Accepted | Default checks remain small while release evidence owns the real pinned model | Model closure becomes appropriate for every check                                 |

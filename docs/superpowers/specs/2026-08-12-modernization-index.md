@@ -1,6 +1,6 @@
 # Natsume Simple Modernization Specifications
 
-**Status:** Draft for written review
+**Status:** Revised draft after written review
 
 **Date:** 2026-08-12
 **Decision owner:** Repository owner
@@ -13,9 +13,11 @@ establishes meaningful quality gates, simplifies the Svelte application,
 upgrades supported dependency majors, and makes Nix the authoritative build and
 deployment interface.
 
-This is a greenfield modernization. The current database may be rebuilt or
-converted once, and the FastAPI and Svelte contracts may change atomically.
-There are no external API consumers to preserve.
+This is a greenfield modernization. A recoverability gate must first prove that
+each corpus can be reacquired under the new no-remote-code policy or converted
+once from the legacy database. After that gate, the current database may be
+replaced rather than migrated in place, and the FastAPI and Svelte contracts may
+change atomically. There are no external API consumers to preserve.
 
 ## Product Boundary
 
@@ -31,44 +33,69 @@ There are no external API consumers to preserve.
 
 ## Actors and Use Cases
 
-| Actor | Objective | Current obstacle | Capability after modernization |
-|---|---|---|---|
-| Public visitor | Find Japanese noun/particle/verb relations and inspect examples | Inconsistent API types, unbounded work, weak failure UI, and unsafe text rendering | Bounded search with interpretable frequencies, corpus filters, examples, and visible errors |
-| Corpus operator | Acquire sources and publish a new corpus safely | In-place mutation, duplicate risk, unclear provenance, and no atomic publication | Reproducible offline build, validation report, immutable publication, and pointer rollback |
-| Developer | Change backend/frontend with fast feedback | Red baseline and checks that omit or mutate important surfaces | Fixture-backed, non-mutating checks covering types, protocol, behavior, and build outputs |
-| Dependency maintainer | Upgrade major versions without losing domain behavior | One broad environment and trivial tests obscure compatibility regressions | Independently verified compatibility cohorts and accelerator evidence |
-| Service operator | Run and roll back one public instance | Runtime setup scripts and no minimal production artifact | Nix server package and derived non-root OCI image consuming a read-only artifact |
+| Actor                 | Objective                                                       | Current obstacle                                                                   | Capability after modernization                                                              |
+| --------------------- | --------------------------------------------------------------- | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| Public visitor        | Find Japanese noun/particle/verb relations and inspect examples | Inconsistent API types, unbounded work, weak failure UI, and unsafe text rendering | Bounded search with interpretable frequencies, corpus filters, examples, and visible errors |
+| Corpus operator       | Acquire sources and publish a new corpus safely                 | In-place mutation, duplicate risk, unclear provenance, and no atomic publication   | Reproducible offline build, validation report, immutable publication, and pointer rollback  |
+| Developer             | Change backend/frontend with fast feedback                      | Red baseline and checks that omit or mutate important surfaces                     | Fixture-backed, non-mutating checks covering types, protocol, behavior, and build outputs   |
+| Dependency maintainer | Upgrade major versions without losing domain behavior           | One broad environment and trivial tests obscure compatibility regressions          | Independently verified compatibility cohorts and accelerator evidence                       |
+| Service operator      | Run and roll back one public instance                           | Runtime setup scripts and no minimal production artifact                           | Nix server package and derived non-root OCI image consuming a read-only artifact            |
 
 ## Glossary
 
-| Term | Definition |
-|---|---|
-| Corpus input | Pinned, checksum-validated source material consumed by the offline builder |
-| Serving artifact | Versioned directory containing `corpus.duckdb`, `manifest.json`, and validation evidence |
-| Semantic build ID | Hash of source identities/checksums, transformation configuration, model identity, schema version, and builder revision |
-| Database file checksum | Hash of the completed DuckDB file; distinct from semantic build identity |
-| Occurrence | One extracted noun-particle-verb relation tied to a sentence and source spans |
-| Raw frequency | Count of occurrences for a collocation in a corpus |
-| Frequency per million | Raw frequency divided by that corpus's total collocation count, multiplied by 1,000,000 |
-| Characterization test | Test that records current required behavior before a structure-only change |
-| Compatibility cohort | Dependency set upgraded, reviewed, verified, and reverted as one unit |
+| Term                       | Definition                                                                                                                       |
+| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| Corpus input               | Pinned, checksum-validated source material consumed by the offline builder                                                       |
+| Serving artifact           | Versioned directory containing `corpus.duckdb`, `manifest.json`, and validation evidence                                         |
+| Semantic build ID          | Hash of source identities/checksums, transformation and execution profiles, model identity, schema version, and builder revision |
+| Artifact instance ID       | Unique identity of one execution producing an artifact; multiple instances may share a semantic build ID                         |
+| Database file checksum     | Hash of the completed DuckDB file; distinct from semantic build identity                                                         |
+| Occurrence                 | One extracted noun-particle-verb relation tied to a sentence and source spans                                                    |
+| Raw frequency              | Count of occurrences for a collocation in a corpus                                                                               |
+| Frequency per million      | Raw frequency divided by that corpus's total collocation count, multiplied by 1,000,000                                          |
+| Mean frequency per million | Arithmetic mean of the selected corpora's per-million rates, including zero for a selected corpus with no occurrence             |
+| Characterization test      | Test that records current required behavior before a structure-only change                                                       |
+| Compatibility cohort       | Dependency set upgraded, reviewed, verified, and reverted as one unit                                                            |
 
 ## Specification Set
 
-| Order | Specification | Outcome | Depends on |
-|---|---|---|---|
-| 1 | [Executable Quality Baseline](./2026-08-12-quality-baseline-design.md) | Truthful, non-mutating green checks and characterization rails | None |
-| 2 | [Safe Public Service and Typed API](./2026-08-12-public-service-api-design.md) | Bounded anonymous API, safe rendering contract, and explicit runtime ownership | Spec 1 |
-| 3 | [Deterministic Corpus Artifact Builder](./2026-08-12-corpus-builder-design.md) | Rebuildable immutable search projection with provenance and validation | Spec 1; must satisfy Spec 2 fixture contract |
-| 4 | [Frontend State and Component Simplification](./2026-08-12-frontend-simplification-design.md) | Page-scoped state, pure projections, typed components, and accessible behavior | Specs 1 and 2 |
-| 5 | [Major-Version Dependency Migration](./2026-08-12-dependency-migration-design.md) | Supported modern dependency cohorts with reproducible lockfiles | Specs 1–4 |
-| 6 | [Nix Packages and OCI Image](./2026-08-12-nix-delivery-design.md) | Real derivations for frontend, server, builder, checks, and container | Specs 1–5 |
+| Order | Specification                                                                                 | Outcome                                                                                         | Depends on                                                          |
+| ----- | --------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| 1     | [Executable Quality Baseline](./2026-08-12-quality-baseline-design.md)                        | Truthful, non-mutating green checks and characterization rails                                  | None                                                                |
+| 2     | [Safe Public Service and Typed API](./2026-08-12-public-service-api-design.md)                | Bounded anonymous API, safe rendering contract, and explicit runtime ownership                  | Spec 1                                                              |
+| 3     | [Deterministic Corpus Artifact Builder](./2026-08-12-corpus-builder-design.md)                | Recoverability gate plus rebuildable immutable search projection with provenance and validation | Spec 1; must satisfy Spec 2 fixture contract                        |
+| 4     | [Major-Version Dependency Migration](./2026-08-12-dependency-migration-design.md)             | Supported modern dependency cohorts with reproducible lockfiles                                 | Frontend phase: Spec 1; serving/data phases: Specs 2/3 respectively |
+| 5     | [Frontend State and Component Simplification](./2026-08-12-frontend-simplification-design.md) | Page-scoped state, server-ranked selection, typed components, and accessible behavior           | Specs 1 and 2; Spec 4 frontend cohorts                              |
+| 6     | [Nix Packages and OCI Image](./2026-08-12-nix-delivery-design.md)                             | Real derivations for frontend, server, builder, checks, and container                           | Specs 1–5                                                           |
 
-Specs 2 and 3 may be developed in parallel against the same fixture schema,
-but production cutover requires both. Spec 4 follows the stable wire contract.
-Dependency majors follow behavioral coverage so dependency regressions are
-distinguishable from pre-existing defects. Final Nix packaging follows stable
-application closures, though individual Nix checks may be improved earlier.
+Specs 2 and 3 may be developed in parallel against the same fixture schema, but
+Spec 3 implementation cannot begin until its corpus recoverability gate passes,
+and production cutover requires both. Dependency Spec 4 is phased: frontend
+cohorts 1–4 run after the baseline and before frontend Spec 5; serving and NLP
+cohorts wait for their protocol and corpus characterization. Final Nix packaging
+follows stable application closures. Spec 1 creates the minimal non-mutating
+flake checks and shell behavior that later specs extend.
+
+## Written Review Disposition
+
+| Finding                                                         | Resolution                                                                                                                     | Owning specification |
+| --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ | -------------------- |
+| Selection-specific top N was impossible after global truncation | `corpusId` and `rankBy` are server inputs; selection/ranking precede limiting and UI toggles refetch                           | 2 and 5              |
+| Equivalent builds collided on one directory                     | Semantic identity and unique no-overwrite artifact-instance identity are separate; execution profile affects semantic identity | 3                    |
+| Rebuildability was assumed                                      | Gate 3A requires a passing reacquire or validated conversion outcome for every corpus                                          | 3                    |
+| Large NLP model had no check owner                              | Default checks use model-free observations; an explicit locked model derivation is a release/scheduled gate                    | 1 and 6              |
+| Formatter ownership was undecided                               | Prettier formats and ESLint lints; duplicate Biome ownership is removed                                                        | 1 and 4              |
+| Baseline and Nix specs owned the same mutation cleanup          | Spec 1 owns non-mutating wrappers/shell and minimal checks; Spec 6 owns derivations and closures                               | 1 and 6              |
+| Baseline perfected types and tooling later replaced             | Spec 1 uses narrow transitional types; frontend cohorts precede the component refactor                                         | 1, 4, and 5          |
+| Public abuse control was absent                                 | Bounded application admission plus a rate/connection-limited reverse proxy are release prerequisites                           | 2 and 6              |
+| Aggregate rate name/meaning was ambiguous                       | Per-corpus `frequencyPerMillion` and selected `meanFrequencyPerMillion` are distinct                                           | 2                    |
+| p95 equalled timeout and cancellation was unspecified           | p95 is below 1 second; the 2-second watchdog interrupts and discards its request-local connection                              | 2                    |
+| Determinism criterion partly restated ID construction           | Repeated builds compare ordered relational exports and separately test identity changes                                        | 3                    |
+
+Review follow-ups also assign legacy static deletion to Spec 1, acknowledge the
+incumbent prerelease manifest range, require cumulative intermediate-major
+migration review, and permit only ephemeral keyed query fingerprints plus coarse
+length buckets in logs.
 
 ## System Flow
 
@@ -76,12 +103,12 @@ application closures, though individual Nix checks may be improved earlier.
 Pinned corpus inputs
         │
         ▼
-Offline corpus builder ──► versioned artifact directory
+Offline corpus builder ──► versioned artifact instance directory
                               ├── corpus.duckdb
                               └── manifest.json
                                         │
                                         ▼ read-only
-Browser ──same origin──► FastAPI server ──► DuckDB
+Browser ──► rate-limited reverse proxy ──same origin──► FastAPI ──► DuckDB
    ▲                         │
    └──── static Svelte app ──┘
 
@@ -101,13 +128,16 @@ Nix flake ──► frontend package
 - Each dependency cohort is independently locked, verified, and reviewable.
 - No production build or test requires the full production corpus unless it is
   explicitly a scheduled corpus compatibility job.
-- Corpus content, search text, and sentence text do not enter logs.
+- Corpus content, raw search text, and sentence text do not enter logs. Search
+  diagnostics use only a process-ephemeral keyed fingerprint and a coarse length
+  bucket.
 - A merge leaves all declared checks green and does not mutate the checkout.
 
 ## Shared Success Criteria
 
-- A clean checkout can run the complete check suite without a production
-  database or large NLP model.
+- A clean checkout can run the complete default check suite without a production
+  database or large NLP model. Model-dependent compatibility is a separate
+  declared release/scheduled gate with a pinned model closure.
 - A fresh corpus artifact can be built, validated, published, served, and rolled
   back without in-place database mutation.
 - Every valid public request is bounded by input, result count, response size,
@@ -129,6 +159,8 @@ Nix flake ──► frontend package
   artifact rather than widening the serving schema.
 - Embedding corpus data in an OCI image triggers a separate, explicitly
   identified image variant.
+- Removing or materially loosening edge request/connection limits requires a
+  new public-abuse and capacity review.
 
 ## Classified Architecture Review
 
@@ -147,6 +179,10 @@ Nix flake ──► frontend package
 **Accepted tradeoffs**
 
 - The initial service has single-instance availability and no failover.
+- Anonymous public access relies on an operator-managed reverse proxy with
+  request-rate and connection limits plus the application's bounded query
+  concurrency; the application does not implement accounts or distributed rate
+  limiting.
 - Whole-artifact rebuilding is preferred over incremental mutation.
 - Results are limited to 200 collocations per particle until a present consumer
   justifies pagination.
@@ -157,18 +193,20 @@ Nix flake ──► frontend package
 
 - Spec 2 records the production host class and proves memory/query limits with
   its curated benchmark before public release.
-- Spec 3 records corpus license/redistribution status and resolvable immutable
+- Spec 3 first proves reacquisition or a validated legacy conversion for every
+  corpus, then records license/redistribution status and resolvable immutable
   source revisions before publishing each corpus.
-- Spec 5 selects and proves the exact common CPU/CUDA/ROCm PyTorch matrix before
+- Spec 4 selects and proves the exact common CPU/CUDA/ROCm PyTorch matrix before
   advertising accelerator support.
 
 ## Decision Log
 
-| Decision | Status | Date | Reversibility | Evidence / reason | Revisit trigger |
-|---|---|---|---|---|---|
-| Use six ordered capability specs | Accepted | 2026-08-12 | Easy | Separates defects, protocol, data lifecycle, refactor, upgrades, and packaging | Specs repeatedly require coupled changes |
-| Treat the database as rebuildable | Accepted | 2026-08-12 | Moderate | Owner confirmed greenfield and one-time conversion is acceptable | Rebuild time or source availability becomes unacceptable |
-| Change frontend/backend atomically | Accepted | 2026-08-12 | Moderate | Owner confirmed no external API consumers | First external consumer appears |
-| Target an anonymous read-only single instance | Accepted | 2026-08-12 | Moderate | Owner confirmed intended runtime | Authentication, writes, or horizontal scaling is required |
-| Make Nix authoritative | Accepted | 2026-08-12 | Moderate | Owner selected Nix for production | Deployment platform cannot consume Nix outputs |
-| Derive OCI from Nix server package | Accepted | 2026-08-12 | Easy | Prevents two competing production definitions | Measured OCI constraints require a specialized builder |
+| Decision                                              | Status   | Date       | Reversibility | Evidence / reason                                                                                                                               | Revisit trigger                                                             |
+| ----------------------------------------------------- | -------- | ---------- | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| Use six capability specs with explicit phase gates    | Accepted | 2026-08-12 | Easy          | Separates defects, protocol, data lifecycle, refactor, upgrades, and packaging without forcing unsafe total ordering                            | Specs repeatedly require coupled changes                                    |
+| Replace the database only after a recoverability gate | Accepted | 2026-08-12 | Moderate      | Greenfield replacement is acceptable, but TED/Wiki inputs are not presently available in the working tree and remote dataset code is prohibited | Every corpus has a durable pinned source and conversion fallback is retired |
+| Rank over the requested corpus set and metric         | Accepted | 2026-08-12 | Moderate      | Client-side refinement of a globally truncated page omits valid top results                                                                     | Cursor pagination or a new analytical ranking is required                   |
+| Change frontend/backend atomically                    | Accepted | 2026-08-12 | Moderate      | Owner confirmed no external API consumers                                                                                                       | First external consumer appears                                             |
+| Target an anonymous read-only single instance         | Accepted | 2026-08-12 | Moderate      | Owner confirmed intended runtime                                                                                                                | Authentication, writes, or horizontal scaling is required                   |
+| Make Nix authoritative                                | Accepted | 2026-08-12 | Moderate      | Owner selected Nix for production                                                                                                               | Deployment platform cannot consume Nix outputs                              |
+| Derive OCI from Nix server package                    | Accepted | 2026-08-12 | Easy          | Prevents two competing production definitions                                                                                                   | Measured OCI constraints require a specialized builder                      |

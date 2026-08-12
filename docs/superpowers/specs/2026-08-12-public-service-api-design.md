@@ -1,6 +1,6 @@
 # Safe Public Service and Typed API Design
 
-**Status:** Draft for written review
+**Status:** Revised draft after written review
 
 **Date:** 2026-08-12
 **Boundary:** Anonymous public reads, API protocol, runtime database ownership,
@@ -31,10 +31,12 @@ honest contract atomically.
 
 ## Non-Goals
 
-- Authentication, accounts, cookies, write routes, rate-limit infrastructure,
-  multi-instance coordination, API backward compatibility, or cursor pagination.
+- Authentication, accounts, cookies, write routes, application-level distributed
+  rate-limit infrastructure, multi-instance coordination, API backward
+  compatibility, or cursor pagination. Edge limits and bounded in-process query
+  concurrency remain release requirements.
 - Production corpus acquisition/building; Spec 3 owns the real artifact.
-- Full frontend state decomposition; Spec 4 owns that refactor.
+- Full frontend state decomposition; Spec 5 owns that refactor.
 
 ## Runtime Ownership
 
@@ -106,23 +108,35 @@ Parameters:
 
 - `term`: required, 1–64 Unicode code points.
 - `pos`: required enum `noun | verb`.
+- `corpusId`: repeatable stable corpus ID. Absence means all corpora; duplicates
+  are normalized; an empty or unknown value is `400`.
+- `rankBy`: required enum `raw | meanPerMillion`.
 - `limitPerParticle`: default 100, integer 1–200.
 
 At most the configured eight particle groups are returned. Each group contains
-`particle`, `totalMatchingCollocations`, bounded `items`, and
-`corpusDistribution`. Each item contains `noun`, `particle`, `verb`,
-`rawFrequency`, `frequencyPerMillion`, and contributions containing `corpusId`,
-`rawFrequency`, and `frequencyPerMillion`.
+`particle`, `totalMatchingCollocations`, `returnedCount`, bounded `items`, and
+`corpusDistribution`. `totalMatchingCollocations` is the count of distinct
+collocation triples matching the term, particle, and selected corpus set before
+the item limit. Each item contains `noun`, `particle`, `verb`,
+`totalRawFrequency`, `meanFrequencyPerMillion`, and contributions containing
+`corpusId`, `rawFrequency`, and `frequencyPerMillion`.
 
-Items order by the selected overall normalized frequency descending, raw
-frequency descending, then noun/particle/verb lexically. The API always returns
-the same stable order for equal data.
+The server applies corpus selection, computes both aggregate metrics, orders by
+the requested metric, and only then applies `limitPerParticle`. Raw ranking uses
+total raw frequency descending then mean per-million descending; normalized
+ranking uses mean per-million descending then total raw frequency descending.
+Both finish with noun/particle/verb lexical order. Client-side filtering or
+reranking of a server-truncated page is not part of the contract.
+The response echoes canonical `selectedCorpusIds`, `rankBy`, and
+`databaseBuildId`, so stale or mismatched data cannot be presented as the result
+of a newer selection.
 
 ### `GET /api/examples`
 
 Parameters:
 
 - `noun`, `particle`, `verb`: required, each 1–64 Unicode code points.
+- `corpusId`: repeatable with the same selection semantics as collocations.
 - `limit`: default 5, integer 1–20.
 
 Examples order by corpus ID, source ID, and sentence ID. Each result contains
@@ -138,10 +152,19 @@ frequencyPerMillion(c) =
     rawFrequency(c) / corpusCollocationCount(c) × 1,000,000
 ```
 
-A collocation's overall per-million frequency is the sum of its per-corpus
-frequencies. This gives each included corpus equal rate semantics. The server
-returns numeric facts only. The frontend computes filtering, selected-corpus
-totals, widths, offsets, colors, and tooltip layout.
+For selected corpus set `S`, a missing contribution has rate zero:
+
+```text
+totalRawFrequency = sum(rawFrequency(c) for c in S)
+meanFrequencyPerMillion =
+    sum(frequencyPerMillion(c) for c in S) / |S|
+```
+
+The arithmetic mean gives each selected corpus equal weight without making the
+metric grow merely because another corpus was selected. It is deliberately
+distinct from a pooled rate, which weights corpora by their collocation counts.
+The server returns selection-specific numeric facts and ranking. The frontend
+computes only presentation geometry, colors, and tooltip layout.
 
 The wire contract removes `normalizedWidth`, `normalizedOffset`, `rawWidth`,
 `rawOffset`, `total_normalized`, and `total_raw`.
@@ -163,7 +186,9 @@ Every non-success JSON response uses:
 - `400` for a validly encoded but invalid semantic combination.
 - `404` for an explicitly addressed resource that does not exist.
 - `422` for parameter validation, converted to the common envelope.
+- `429` for application admission-capacity exhaustion.
 - `503` for database absence/incompatibility/unavailability.
+- `504` for an interrupted query deadline.
 - `500` for unexpected failure without SQL, filesystem paths, tracebacks, or
   corpus content.
 
@@ -192,17 +217,30 @@ document, and filter all response fields as recommended by FastAPI:
 - Accept a syntactically valid `X-Request-ID` of at most 128 safe ASCII
   characters or generate a request ID.
 - Structured logs include timestamp, level, request ID, route template, status,
-  duration, database build ID, and result count.
+  duration, database build ID, result count, corpus IDs, and ranking mode.
 - Logs exclude raw query terms, corpus text, sentence text, SQL, and local paths.
-- Per-query timeout target is 2 seconds. Timeout maps to a stable service error
-  without leaving an unusable connection in circulation.
+- Search diagnostics include a code-point length bucket and a truncated HMAC of
+  the query under a random process-start key. This permits within-process
+  correlation without persistent query identifiers; the key and raw term are
+  never logged. Length buckets are `1`, `2–4`, `5–8`, `9–16`, `17–32`, and
+  `33–64` code points.
+- Each DuckDB query has a hard 2-second execution deadline. The blocking query
+  owns a request-local connection in one worker; a watchdog calls that
+  connection's documented `interrupt()` at the deadline. The handler waits for
+  the worker to finish, cancels/joins the watchdog, and closes rather than reuses
+  the connection on every outcome. Timeout maps to the stable
+  `query_timeout` service error.
 - Every valid response must remain below 1 MiB when serialized.
 - The initial capacity gate runs a curated search set at 10 concurrent clients;
-  p95 API latency must remain below 2 seconds on the documented production host
-  class. The benchmark records host CPU, memory, DuckDB settings, dataset build
-  ID, and query set so the number is reproducible.
+  p95 end-to-end API latency must remain below 1 second on the documented
+  production host class. The benchmark records host CPU, memory, DuckDB settings,
+  dataset build ID, and query set so the number is reproducible.
 - DuckDB memory and thread settings are explicit production configuration rather
   than machine-dependent defaults.
+- The application admits at most 16 concurrent DuckDB search/example workers;
+  excess work receives `429 capacity_exceeded` with `Retry-After: 1` rather than
+  an unbounded queue. Production internet traffic must additionally pass through
+  the edge limits in Spec 6.
 
 ## OpenAPI and TypeScript
 
@@ -218,6 +256,9 @@ runtime generated-client framework is added.
 - Contract tests validate every success and error shape.
 - Boundary tests cover empty, maximum, over-maximum, Unicode, slash-containing,
   wildcard-containing, and invalid enum inputs.
+- Ranking tests construct a collocation that is outside the global top N but
+  inside a selected corpus's top N, and prove selection and `rankBy` happen
+  before truncation. Aggregate mean tests include absent contributions as zero.
 - A concurrency smoke test issues parallel requests and proves connections are
   not shared unsafely.
 - Response-cardinality and serialized-size tests exercise maximum valid limits.
@@ -237,6 +278,10 @@ runtime generated-client framework is added.
 - No corpus/API content reaches an HTML interpreter or structured logs.
 - Every maximum valid request remains below the response-size cap and respects
   cardinality bounds.
+- Corpus selection and ranking changes return the true selection-specific top N,
+  totals, and examples rather than a refinement of a global page.
+- Timeout tests interrupt a deliberately long query, close its connection, and
+  prove the next request succeeds on a new connection.
 - The curated concurrency benchmark meets the documented p95 target or the
   service is not released with those resource settings.
 
@@ -250,11 +295,13 @@ not supported.
 
 ## Decision Log
 
-| Decision | Status | Reason | Revisit trigger |
-|---|---|---|---|
-| No API version namespace | Accepted | No external consumers; atomic deployment | First external consumer |
-| Per-million normalization | Accepted | Interpretable cross-corpus rate | Domain analysis requires another denominator |
-| Limit to 200 items per particle | Accepted | Bounds public work without unused pagination | Present consumer needs deeper results |
-| Request-local read-only connections | Accepted | Matches DuckDB Python concurrency guidance | Measured connection overhead becomes material |
-| No production CORS | Accepted | Frontend and API are same-origin | Separate trusted frontend origin is deployed |
-| OpenAPI-generated compile-time types only | Accepted | Prevents drift without runtime client machinery | Multiple clients need richer generation |
+| Decision                                            | Status   | Reason                                                                                            | Revisit trigger                                              |
+| --------------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| No API version namespace                            | Accepted | No external consumers; atomic deployment                                                          | First external consumer                                      |
+| Per-corpus rate plus equal-weight selected mean     | Accepted | Keeps the per-million denominator honest and avoids aggregate magnitude scaling with corpus count | Domain analysis prefers pooled corpus-size weighting         |
+| Selection and ranking happen before limiting        | Accepted | A globally truncated response cannot produce correct selection-specific top N client-side         | Cursor pagination or unbounded result transfer is introduced |
+| Limit to 200 items per particle                     | Accepted | Bounds public work without unused pagination                                                      | Present consumer needs deeper results                        |
+| Request-local read-only connections                 | Accepted | Matches DuckDB Python concurrency guidance                                                        | Measured connection overhead becomes material                |
+| No production CORS                                  | Accepted | Frontend and API are same-origin                                                                  | Separate trusted frontend origin is deployed                 |
+| OpenAPI-generated compile-time types only           | Accepted | Prevents drift without runtime client machinery                                                   | Multiple clients need richer generation                      |
+| Interrupt and discard timed-out request connections | Accepted | DuckDB exposes connection interruption but no declarative per-query timeout                       | Selected DuckDB release provides a safer native deadline     |

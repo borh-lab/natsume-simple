@@ -1,6 +1,6 @@
 # Frontend State and Component Simplification Design
 
-**Status:** Draft for written review
+**Status:** Revised draft after written review
 
 **Date:** 2026-08-12
 **Boundary:** Svelte application structure and browser behavior after the typed API
@@ -43,14 +43,14 @@ lifecycle, pure domain projections, and presentation.
 
 ## Components
 
-| Component | Purpose | Inputs | Outputs | Dependencies | State / time / identity |
-|---|---|---|---|---|---|
-| API client | HTTP transport and error parsing | Typed method args, abort signal | Typed response or typed public error | `fetch`, generated schema | Stateless; request ID returned with errors |
-| Search controller | Coordinate page transitions | User commands, API client | Reactive page view state | Svelte 5 runes | Owns current request generation and abort controller |
-| Domain projections | Compute visible facts | API values, selected corpora, display mode | New immutable view values | None | Pure values; no time/state |
-| Example cache | Bound example request state | Build ID and collocation identity | Per-key request/result state | API client | Page-local LRU; identity includes database build |
-| Page | Compose layout/components | Controller view state | User-visible page | Components | No duplicated domain state |
-| Presentation components | Render and emit intent | Typed values/callbacks | DOM events/intents | Svelte | Local ephemeral UI state only |
+| Component               | Purpose                          | Inputs                                            | Outputs                              | Dependencies              | State / time / identity                              |
+| ----------------------- | -------------------------------- | ------------------------------------------------- | ------------------------------------ | ------------------------- | ---------------------------------------------------- |
+| API client              | HTTP transport and error parsing | Typed method args, abort signal                   | Typed response or typed public error | `fetch`, generated schema | Stateless; request ID returned with errors           |
+| Search controller       | Coordinate page transitions      | User commands, API client                         | Reactive page view state             | Svelte 5 runes            | Owns current request generation and abort controller |
+| Domain projections      | Compute presentation facts       | Selection-specific API values and corpus metadata | New immutable view values            | None                      | Pure values; no time/state                           |
+| Example cache           | Bound example request state      | Build ID and collocation identity                 | Per-key request/result state         | API client                | Page-local LRU; identity includes database build     |
+| Page                    | Compose layout/components        | Controller view state                             | User-visible page                    | Components                | No duplicated domain state                           |
+| Presentation components | Render and emit intent           | Typed values/callbacks                            | DOM events/intents                   | Svelte                    | Local ephemeral UI state only                        |
 
 ## Typed API Client
 
@@ -61,6 +61,9 @@ lifecycle, pure domain projections, and presentation.
 - `fetch`, abort signal propagation, `response.ok`, JSON content-type checking,
   and common error-envelope parsing.
 - Methods `getCorpora`, `getSuggestions`, `getCollocations`, and `getExamples`.
+
+`getCollocations` always sends selected corpus IDs and `rankBy`; `getExamples`
+sends the same corpus selection.
 
 It owns no Svelte state, display mode, colors, filtering, retries, notifications,
 or cache. Unexpected/non-JSON responses become a stable client error without
@@ -89,7 +92,7 @@ submit ──► abort previous ──► loading(generation N)
   ├─ latest success + empty ──► empty
   ├─ latest expected failure ──► error, retain last successful result
   └─ stale completion ──► ignored
-select corpus / display mode ──► recompute locally, no request
+select corpus / display mode ──► abort previous ──► request selection + rankBy
 ```
 
 Only the current generation may change visible request state. Aborted requests
@@ -99,24 +102,27 @@ must not imply the old results belong to the new term.
 
 The controller is instantiated by the page, not exported as a process-global
 singleton. This prevents state leaking across component tests or future SSR.
+Corpus/display changes are debounced only enough to coalesce one interaction
+turn; they never locally reinterpret a globally truncated page. While the new
+request runs, the prior result is visibly stale and cannot be labelled with the
+new selection.
 
 ## Pure Domain Projections
 
 `src/lib/domain/search.ts` provides typed pure functions for:
 
-- Filtering contributions by selected corpus IDs.
-- Recomputing visible raw/per-million totals.
-- Sorting by selected metric, raw fallback, then lexical tuple.
+- Asserting/deriving display totals from the server's selected contributions.
+- Preserving the server's selection-specific ranking and lexical ties.
 - Grouping/retaining configured particle order.
 - Computing stacked-bar percentages and offsets.
 - Counting visible results.
 - Assigning stable corpus color slots from corpus metadata order.
 
 Functions return new arrays/objects and never sort or otherwise mutate API-owned
-arrays. With no selected corpora, visible totals and percentages are zero and no
-division occurs. For a non-zero stack, final percentage totals equal 100 within
-a documented floating-point tolerance; the last segment may absorb rounding for
-pixel display only.
+arrays. The UI requires at least one selected corpus; deselecting the last corpus
+is disabled and explained accessibly. For a non-zero stack, final percentage
+totals equal 100 within a documented floating-point tolerance; the last segment
+may absorb rounding for pixel display only.
 
 ## Safe Sentence Segmentation
 
@@ -180,7 +186,8 @@ options, summary, and menu content instead of duplicating markup.
 
 1. Characterization tests from Spec 1 pin current behavior.
 2. Adopt generated API types and handwritten client without changing layout.
-3. Extract pure projections and compare results against current computations.
+3. Extract pure presentation projections and compare results against the new
+   selection-specific API contract.
 4. Introduce the page-scoped controller behind existing UI.
 5. Convert component store props to values/callbacks.
 6. Reuse the mobile/desktop content and delete the duplicate implementation.
@@ -195,11 +202,11 @@ colors, or network timing.
 
 ### Pure unit/property tests
 
-- Filtering never mutates API responses.
-- Raw/per-million sorting and lexical ties are deterministic.
-- Selected contributions alone determine visible totals.
+- Presentation projections never mutate API responses.
+- Server raw/mean-per-million order and lexical ties remain unchanged in the UI.
+- Selected contributions reconcile with server totals.
 - Percentage stacks reconcile to 100 within tolerance for positive totals.
-- Empty corpus selection yields zero without `NaN`/division.
+- The last selected corpus cannot be deselected.
 - Corpus color slots remain stable for fixed metadata order.
 - Highlight segmentation preserves every original code point exactly once and
   cannot produce markup.
@@ -211,6 +218,7 @@ colors, or network timing.
 - Form submission, disabled/loading labels, and errors.
 - Suggestion keyboard navigation and dismissal.
 - Corpus selection and display-mode intents.
+- Corpus/display changes abort stale work and request the new corpus set/rank.
 - Menu/disclosure ARIA state.
 - Example loading/empty/error/success rendering.
 - Malicious text remains text.
@@ -242,10 +250,11 @@ Against the fixture backend:
 
 ## Decision Log
 
-| Decision | Status | Reason | Revisit trigger |
-|---|---|---|---|
-| Page-scoped controller | Accepted | Coordinated state without process-global leakage/framework | Multiple routes need shared search state |
-| Pure projection module | Accepted | Strong cheap tests and no Svelte/store coupling | Profiling proves allocations are material |
-| Values/callbacks for component interfaces | Accepted | Honest, independently testable components | A component genuinely owns shared mutable state |
-| Bounded page-local LRU | Accepted | Prevents repeat fetches without persistent invalidation complexity | Usage shows cache is unnecessary or insufficient |
-| Retain last success on error with stale label | Accepted | User can inspect prior data without mistaking query identity | User research prefers clearing immediately |
+| Decision                                      | Status   | Reason                                                                        | Revisit trigger                                         |
+| --------------------------------------------- | -------- | ----------------------------------------------------------------------------- | ------------------------------------------------------- |
+| Page-scoped controller                        | Accepted | Coordinated state without process-global leakage/framework                    | Multiple routes need shared search state                |
+| Pure projection module                        | Accepted | Strong cheap tests and no Svelte/store coupling                               | Profiling proves allocations are material               |
+| Values/callbacks for component interfaces     | Accepted | Honest, independently testable components                                     | A component genuinely owns shared mutable state         |
+| Bounded page-local LRU                        | Accepted | Prevents repeat fetches without persistent invalidation complexity            | Usage shows cache is unnecessary or insufficient        |
+| Server owns selection-specific ranking        | Accepted | Client-side filtering cannot recover items omitted by server top-N truncation | API provides an unbounded or cursor-complete result set |
+| Retain last success on error with stale label | Accepted | User can inspect prior data without mistaking query identity                  | User research prefers clearing immediately              |

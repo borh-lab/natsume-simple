@@ -1,6 +1,6 @@
 # Executable Quality Baseline Design
 
-**Status:** Draft for written review
+**Status:** Revised draft after written review
 
 **Date:** 2026-08-12
 **Boundary:** Repository checks and current behavior; no new public API or
@@ -22,15 +22,15 @@ changing the tree it is meant to assess.
 
 ## Evidence Ledger
 
-| Claim | Type | Evidence | Confidence | Impact |
-|---|---|---|---|---|
-| Backend suite is red | Observation | `uv run pytest -q`: 6 pass, 2 fail | High | Refactors/upgrades lack a trustworthy baseline |
-| Generic loader iterates a path string as characters | Observation | `_load_sentences(List[Path])` receives `row["file_path"]` string; warnings name `a`, `r`, `t`, etc. | High | Generic corpus yields no sentences |
-| Japanese normalization changed under current model output | Observation | GiNZA emits `突入`, `し`, `ちゃう`; current loop concatenates them | High | Established normalization fixture fails |
-| Expected `突入する` behavior was intentionally recorded | Observation | Doctest and history preserve the expectation across a span-return refactor | High | Updating the expected value would silently change domain behavior |
-| Frontend static checking is red | Observation | `npm run check`: 53 errors | High | Wire and component props are inconsistent |
-| Frontend tests prove little | Observation | Arithmetic unit test and `h1` browser assertion | High | Green tests would not protect search behavior |
-| CI is incomplete and mutating | Observation | Workflow calls Nix wrappers whose lint commands use write/fix modes | High | CI result is not a clean-checkout proof |
+| Claim                                                     | Type        | Evidence                                                                                            | Confidence | Impact                                                            |
+| --------------------------------------------------------- | ----------- | --------------------------------------------------------------------------------------------------- | ---------- | ----------------------------------------------------------------- |
+| Backend suite is red                                      | Observation | `uv run pytest -q`: 6 pass, 2 fail                                                                  | High       | Refactors/upgrades lack a trustworthy baseline                    |
+| Generic loader iterates a path string as characters       | Observation | `_load_sentences(List[Path])` receives `row["file_path"]` string; warnings name `a`, `r`, `t`, etc. | High       | Generic corpus yields no sentences                                |
+| Japanese normalization changed under current model output | Observation | GiNZA emits `突入`, `し`, `ちゃう`; current loop concatenates them                                  | High       | Established normalization fixture fails                           |
+| Expected `突入する` behavior was intentionally recorded   | Observation | Doctest and history preserve the expectation across a span-return refactor                          | High       | Updating the expected value would silently change domain behavior |
+| Frontend static checking is red                           | Observation | `npm run check`: 53 errors                                                                          | High       | Wire and component props are inconsistent                         |
+| Frontend tests prove little                               | Observation | Arithmetic unit test and `h1` browser assertion                                                     | High       | Green tests would not protect search behavior                     |
+| CI is incomplete and mutating                             | Observation | Workflow calls Nix wrappers whose lint commands use write/fix modes                                 | High       | CI result is not a clean-checkout proof                           |
 
 ## Goals
 
@@ -104,10 +104,26 @@ removed: unused `results`, `d`, `computeDerivedData`, `getMax`,
 duplicate inline mobile markup or the unused `MobileMenu` implementation. The
 surviving mobile implementation is shared by the page.
 
-Live component props and the current live API shape receive accurate types.
-Missing `$lib/types` is either defined for a live concept or eliminated with the
-dead caller. JavaScript Svelte components with typed props migrate to
-`lang="ts"`; `unknown` is not suppressed with broad `any` casts.
+The tracked legacy `static/index.html` and `static/app.js` are removed after the
+baseline proves no runtime path serves them; the server mounts only
+`natsume-frontend/build` and the legacy page's CDN-loaded Vega application has no
+consumer.
+
+The current frontend receives the narrowest honest annotations needed for
+`svelte-check` to pass. Missing `$lib/types` is defined only for a live concept or
+eliminated with its dead caller. This spec does not exhaustively model response
+fields or component interfaces that Specs 2 and 5 replace; transitional unknown
+data is narrowed at its use site, never hidden by project-wide `any` declarations
+or disabled checking.
+
+### Model-free and model-dependent checks
+
+Default tests exercise normalization policy from small captured token-observation
+fixtures and require no GiNZA model. A separately marked `nlp_model` integration
+tier loads the locked `ja-ginza` package and proves that actual model output maps
+to the same normalization table. The model tier performs no runtime download and
+runs as a release/scheduled gate through a declared Nix output in Spec 6; it is
+not part of ordinary `nix flake check`.
 
 ### Test fixtures
 
@@ -128,8 +144,8 @@ The baseline exposes check-only commands for:
 ruff format --check
 ruff check
 mypy
-pytest
-prettier/biome check
+pytest -m "not nlp_model"
+prettier --check
 eslint
 svelte-check
 vitest --run
@@ -145,15 +161,23 @@ Playwright browser installation is an explicit environment/bootstrap concern.
 CI installs the pinned browser before the test and caches it by Playwright
 version; a missing browser is an environment failure, not an ignored test.
 
+Prettier owns frontend formatting and ESLint owns frontend linting. Biome is
+removed from the frontend gate and configuration rather than retained as a
+second owner. Spec 1 also replaces mutating Nix wrappers with check-only
+commands, makes the development-shell hook setup-free, and adds a minimal
+`checks` output delegating to this baseline. Spec 6 later replaces those command
+wrappers with full derivations and production closures.
+
 ## Test Claims
 
 - Generic metadata paths load the intended files and never iterate characters.
-- The normalization table above remains stable under the pinned NLP model.
+- The normalization table remains stable in model-free policy fixtures and the
+  separately declared pinned-model integration tier.
 - Existing endpoint queries compose through a real temporary DuckDB connection.
 - Frontend corpus filtering and normalization selection retain characterized
   behavior.
-- Frontend component props and current wire values type-check without escape
-  hatches.
+- Live frontend use sites type-check without project-wide escape hatches; fields
+  already scheduled for removal need no polished transitional public model.
 - The production frontend bundle is created.
 - The browser happy path performs a search and expands an example against the
   fixture backend.
@@ -167,6 +191,8 @@ version; a missing browser is an environment failure, not an ignored test.
 - Backend tests include no model-download-on-import behavior.
 - Unit and integration tests require neither `data/corpus.db` nor a network
   corpus download.
+- Ordinary `nix flake check` requires no large NLP model; the explicit model
+  integration output is green before release or an NLP dependency update.
 - The two confirmed defects have focused regression tests and separate commits.
 - Placeholder arithmetic and `h1`-only tests are removed when stronger tests
   cover their test layers.
@@ -184,9 +210,12 @@ than suppressing or weakening the new check.
 
 ## Decision Log
 
-| Decision | Status | Reason | Revisit trigger |
-|---|---|---|---|
-| Preserve documented Japanese normalized lemmas | Accepted | History and doctests show intentional domain behavior | Domain owner explicitly changes normalization policy |
-| Use generated fixture databases | Accepted | Fast, deterministic, schema-visible integration seam | Fixture construction becomes slower than a validated binary fixture |
-| Remove only proven combined-mode remnants | Accepted | Avoids mixing a rewrite into baseline repair | Characterization shows a supposedly dead path is reachable |
-| Require non-mutating CI | Accepted | A check must observe, not repair, the submitted tree | None |
+| Decision                                                     | Status   | Reason                                                                                                                         | Revisit trigger                                                     |
+| ------------------------------------------------------------ | -------- | ------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------- |
+| Preserve documented Japanese normalized lemmas               | Accepted | History and doctests show intentional domain behavior                                                                          | Domain owner explicitly changes normalization policy                |
+| Use generated fixture databases                              | Accepted | Fast, deterministic, schema-visible integration seam                                                                           | Fixture construction becomes slower than a validated binary fixture |
+| Remove only proven combined-mode remnants                    | Accepted | Avoids mixing a rewrite into baseline repair                                                                                   | Characterization shows a supposedly dead path is reachable          |
+| Require non-mutating CI                                      | Accepted | A check must observe, not repair, the submitted tree                                                                           | None                                                                |
+| Prettier plus ESLint own frontend checks                     | Accepted | They are the repository's Svelte-aware configured stack; current Biome Svelte support is experimental and duplicates ownership | The selected stack becomes unsupported or demonstrably inferior     |
+| Split model-free policy from model integration               | Accepted | Ordinary checks stay small while release evidence still covers actual GiNZA output                                             | The model becomes cheap enough for every default check              |
+| Baseline owns non-mutating wrappers and minimal flake checks | Accepted | Its acceptance criteria otherwise depend circularly on Spec 6                                                                  | Full derivations land in Spec 6                                     |

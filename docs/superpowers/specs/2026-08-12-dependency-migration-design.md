@@ -1,6 +1,6 @@
 # Major-Version Dependency Migration Design
 
-**Status:** Draft for written review
+**Status:** Revised draft after written review
 
 **Date:** 2026-08-12
 **Boundary:** Direct dependency ownership, compatibility cohorts, lockfiles,
@@ -44,14 +44,14 @@ compatibility matrix.
 
 Python dependency sets:
 
-| Set | Present consumers | Excluded from |
-|---|---|---|
-| `server` | FastAPI app and DuckDB queries | Builder/NLP/notebook-only packages |
-| `builder` | Acquisition, segmentation, extraction, artifact validation | FastAPI serving extras |
-| `accelerator-cuda` | Optional CUDA builder | CPU/server/ROCm |
-| `accelerator-rocm` | Optional ROCm builder | CPU/server/CUDA |
-| `test` | Static analysis and automated tests | Production closures |
-| `notebook` | Interactive research | CI and production closures |
+| Set                | Present consumers                                          | Excluded from                      |
+| ------------------ | ---------------------------------------------------------- | ---------------------------------- |
+| `server`           | FastAPI app and DuckDB queries                             | Builder/NLP/notebook-only packages |
+| `builder`          | Acquisition, segmentation, extraction, artifact validation | FastAPI serving extras             |
+| `accelerator-cuda` | Optional CUDA builder                                      | CPU/server/ROCm                    |
+| `accelerator-rocm` | Optional ROCm builder                                      | CPU/server/CUDA                    |
+| `test`             | Static analysis and automated tests                        | Production closures                |
+| `notebook`         | Interactive research                                       | CI and production closures         |
 
 `python-fasthtml` is removed because no code consumes it. Deprecated
 `tool.uv.dev-dependencies` moves to `[dependency-groups]`. The builder's CPU
@@ -61,10 +61,12 @@ accidentally present only through accelerator extras.
 Frontend removals before upgrades:
 
 - `@sveltejs/adapter-auto`, because configuration uses `adapter-static`.
-- Lodash, replacing its only debounce use with a small local lifecycle-aware
-  helper or controller timing owned by Spec 4.
-- Any duplicate formatter/linter whose file ownership is superseded by the
-  selected check stack.
+- Lodash, replacing its only debounce use in Cohort 1 with a minimal local
+  lifecycle-aware helper; Spec 5 may later move timing into the controller.
+- Biome and `biome.json`, removed by Spec 1. Prettier owns formatting and ESLint
+  owns Svelte-aware linting. Biome 2.5.5 is present in the Nix environment, but
+  its [Svelte support remains experimental](https://biomejs.dev/internals/language-support/)
+  and would duplicate file ownership rather than replace both tools here.
 
 Every retained direct dependency is documented by at least one production,
 build, or test consumer.
@@ -88,13 +90,24 @@ Upgrade together:
 - Latest Svelte 5 and SvelteKit 2 versions compatible with those tools.
 
 Vite 8 uses Rolldown and requires Node 20.19+, 22.12+, or 24+; the Nix-selected
-Node version must fall in the upstream-supported range. Migration follows the
-official Vite guide rather than relying only on a successful bundle:
-<https://vite.dev/guide/migration.html>.
+Node version must fall in the upstream-supported range. The Vite 5-to-8 and
+Vitest 2-to-4 jumps cross multiple major boundaries. Implementation inventories
+and applies the breaking changes for every intermediate major in order, using
+each official migration/release guide; the latest guide alone is not treated as
+cumulative evidence. A successful bundle without the full gate is insufficient.
 
 TypeScript is pinned to the newest stable release explicitly supported by the
 selected SvelteKit peer range. At design time, that means 6.x rather than
 TypeScript 7. The exact version is recorded when implementation resolves peers.
+
+Registry evidence on 2026-08-12 confirms Vite 8.2.1, Vitest 4.1.10,
+`@sveltejs/vite-plugin-svelte` 7.3.0, ESLint 10.8.1, TypeScript 7.0.2,
+eslint-plugin-svelte 3.22.0, globals 17.10.0, prettier-plugin-svelte 4.1.1,
+Tailwind CSS 4.3.3, datasets 5.0.1, pytest 9.1.1, and DuckDB 1.5.5 are published.
+The selected SvelteKit peer range supports TypeScript 5.3 or 6, and current
+typescript-eslint requires TypeScript below 6.1, so TypeScript 7 is intentionally
+deferred rather than assumed unavailable. Versions are re-resolved at cohort
+implementation time.
 
 ### Cohort 3: frontend lint and format majors
 
@@ -102,6 +115,9 @@ Upgrade ESLint 10, eslint-plugin-svelte 3, globals 17, and
 prettier-plugin-svelte 4 as a configuration cohort. Rule/config changes are
 reviewed. Existing violations are fixed or consciously documented; broad rule
 disabling is not an upgrade success condition.
+
+ESLint 9-to-10, TypeScript 5-to-6, and each plugin major are likewise reviewed
+against every crossed major's official migration notes and peer ranges.
 
 ### Cohort 4: Tailwind CSS 4
 
@@ -122,6 +138,12 @@ before and after.
 Upgrade datasets 3 to 5, NumPy 1 to 2, pytest 8 to 9, and supported current
 releases of Polars, spaCy, GiNZA/ja-ginza, wtpsplit, and their direct runtime
 requirements.
+
+This cohort cannot begin until Spec 3 Gate 3A proves every corpus can be
+reacquired without dataset remote code or converted from the legacy database.
+Datasets 4 removed dataset-script/remote-code loading; the target 5.x release is
+therefore a deliberate adapter migration, not a compatible parameter update.
+See the [official datasets releases](https://github.com/huggingface/datasets/releases).
 
 Acceptance requires:
 
@@ -150,6 +172,8 @@ are locked. CPU is the mandatory full CI baseline. CUDA and ROCm each receive:
 - Nix derivation evaluation/build where hardware is not required.
 - Import and device-discovery smoke test on scheduled matching hardware.
 - A tiny extraction fixture on scheduled matching hardware before release.
+- Repeated ordered-relational comparison required by Spec 3 before that
+  accelerator profile is allowed to publish a corpus.
 
 An accelerator is not advertised as supported solely because CPU resolves.
 
@@ -163,6 +187,9 @@ An accelerator is not advertised as supported solely because CPU resolves.
   packages and NLP wheels support a newer version as a separate cohort.
 - No prerelease dependencies enter production unless a recorded decision names
   the missing stable capability, owner, expiry trigger, and rollback.
+- The incumbent manifest range `@sveltejs/vite-plugin-svelte@^4.0.0-next.6` is
+  explicitly transitional even though the lock resolved stable `4.0.0`; Cohort 1
+  replaces the prerelease range with a stable constraint before other upgrades.
 - Package engines and peer dependencies are treated as constraints, not warnings.
 
 ## Lockfile Contract
@@ -209,7 +236,8 @@ Every cohort runs:
 
 - Clean lock/install or Nix dependency materialization.
 - All Spec 1 checks.
-- Relevant Spec 2–4 integration/browser contracts.
+- Relevant Spec 2, 3, and 5 integration/browser contracts available at that
+  cohort boundary.
 - `nix flake check` and affected explicit package builds.
 - Direct dependency/peer/engine inspection.
 - Security audit comparison.
@@ -218,6 +246,18 @@ Every cohort runs:
 The data/NLP and accelerator cohorts additionally run their specialized fixture
 and scheduled hardware gates. The next cohort does not begin until the current
 one is green and committed.
+
+### Execution order relative to capability specs
+
+- Cohorts 1–4 run after the Spec 1 baseline and before frontend Spec 5, using
+  Spec 2's generated wire contract once available. The component refactor is
+  therefore implemented and verified once on the target frontend toolchain.
+- Cohort 5 runs after Spec 2's serving characterization.
+- Cohort 6 runs only after Spec 3 Gate 3A and fixture artifact contracts.
+- Cohort 7 follows Cohort 6 and the CPU builder package.
+
+Spec 1 uses narrow transitional types only; it does not perfect the wire and
+component models that Specs 2 and 5 replace.
 
 ## Acceptance Criteria
 
@@ -241,10 +281,12 @@ an exposed unmitigated advisory; otherwise roll forward with a focused fix.
 
 ## Decision Log
 
-| Decision | Status | Reason | Revisit trigger |
-|---|---|---|---|
-| Upgrade in seven cohorts | Accepted | Isolates compatible ecosystems and behavioral risk | A cohort proves internally too broad |
-| Prune before upgrading | Accepted | No value in modernizing unused machinery | A removed dependency gains a present consumer |
-| Hold TypeScript to supported peer range | Accepted | Latest unsupported is not modernization | SvelteKit supports the next major |
-| Treat NLP goldens as domain behavior | Accepted | Model changes can silently alter corpus facts | Domain owner approves a changed policy |
-| CPU full CI; scheduled GPU evidence | Accepted | Practical baseline without pretending GPU support | Hosted matching GPU CI becomes economical |
+| Decision                                    | Status   | Reason                                                               | Revisit trigger                                                             |
+| ------------------------------------------- | -------- | -------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| Upgrade in seven cohorts                    | Accepted | Isolates compatible ecosystems and behavioral risk                   | A cohort proves internally too broad                                        |
+| Prune before upgrading                      | Accepted | No value in modernizing unused machinery                             | A removed dependency gains a present consumer                               |
+| Hold TypeScript to supported peer range     | Accepted | Latest unsupported is not modernization                              | SvelteKit supports the next major                                           |
+| Treat NLP goldens as domain behavior        | Accepted | Model changes can silently alter corpus facts                        | Domain owner approves a changed policy                                      |
+| CPU full CI; scheduled GPU evidence         | Accepted | Practical baseline without pretending GPU support                    | Hosted matching GPU CI becomes economical                                   |
+| Prettier and ESLint replace Biome           | Accepted | Clear ownership and mature Svelte-specific behavior                  | Biome's Svelte support is stable and can replace both with equivalent rules |
+| Frontend cohorts precede component refactor | Accepted | Avoids rebuilding the new component architecture on obsolete tooling | A cohort cannot pass without the refactor                                   |
