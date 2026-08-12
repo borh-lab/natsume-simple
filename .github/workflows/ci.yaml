@@ -27,8 +27,8 @@ jobs:
         run: nix run .#lint
       - name: Run backend tests
         run: nix run .#run-tests
-      - name: Check frontend
-        run: nix run .#frontend-check
+      - name: Check flake outputs
+        run: nix flake check --no-write-lock-file
       - name: Run browser tests
         run: nix run .#playwright-check
       - name: Upload browser failure artifacts
