@@ -44,6 +44,7 @@ def sample_corpus(temp_data_dir):
     return corpus_dir
 
 
+@pytest.mark.nlp_model
 def test_model_loading():
     try:
         nlp = spacy.load("ja_ginza_electra")

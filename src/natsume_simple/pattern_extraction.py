@@ -41,15 +41,15 @@ logger = logging.getLogger(__name__)
 
 def load_nlp_model(
     model_name: Optional[str] = None,
-) -> Tuple[spacy.language.Language, Token]:
+) -> spacy.language.Language:
     """
-    Load and return the NLP model and a constant する token.
+    Load and return the NLP model.
 
     Args:
         model_name (Optional[str]): The name of the model to load. If None, tries to load 'ja_ginza_bert_large' first, then falls back to 'ja_ginza'.
 
     Returns:
-        Tuple[spacy.language.Language, Token]: The loaded NLP model and a constant する token.
+        spacy.language.Language: The loaded NLP model.
     """
 
     if torch.cuda.is_available() or torch.backends.mps.is_available():
@@ -70,9 +70,7 @@ def load_nlp_model(
         except Exception:
             nlp = spacy.load("ja_ginza")
 
-    suru_token = nlp("する")[0]
-
-    return nlp, suru_token
+    return nlp
 
 
 def simple_lemma(token: Token) -> str:
@@ -101,33 +99,28 @@ def simple_lemma(token: Token) -> str:
         return token.norm_
 
 
-def normalize_verb_span(
-    tokens: Doc | Span, suru_token: Token
-) -> tuple[Optional[str], int, int]:
+def normalize_verb_span(tokens: Doc | Span) -> tuple[Optional[str], int, int]:
     """
     Normalize a verb span.
 
     Args:
         tokens (Doc | Span): The input tokens.
-        suru_token (Token): The constant する token.
-
     Returns:
         Optional[str]: The normalized verb string, or None if normalization fails.
 
     Examples:
         >>> nlp = spacy.load("ja_ginza")
-        >>> doc, suru_token = nlp("飛び立つでしょう"), nlp("する")[0]
-        >>> normalize_verb_span(doc, suru_token)
+        >>> normalize_verb_span(nlp("飛び立つでしょう"))
         ('飛び立つ', 0, 4)
-        >>> normalize_verb_span(nlp("考えられませんでした"), suru_token)
+        >>> normalize_verb_span(nlp("考えられませんでした"))
         ('考えられる', 0, 4)
-        >>> normalize_verb_span(nlp("扱うかです"), suru_token)
+        >>> normalize_verb_span(nlp("扱うかです"))
         ('扱う', 0, 2)
-        >>> normalize_verb_span(nlp("突入しちゃう"), suru_token)
+        >>> normalize_verb_span(nlp("突入しちゃう"))
         ('突入する', 0, 6)
-        >>> normalize_verb_span(nlp("で囲んである"), suru_token)
+        >>> normalize_verb_span(nlp("で囲んである"))
         ('囲む', 1, 6)
-        >>> normalize_verb_span(nlp("たらしめている"), suru_token)
+        >>> normalize_verb_span(nlp("たらしめている"))
         ('たらしめる', 0, 7)
     """
     # Chain filtering steps together
@@ -194,7 +187,6 @@ def normalize_verb_span(
                 logger.debug(
                     f"Adding suru token to: {normalized_tokens} in {tokens}/{clean_tokens}"
                 )
-                normalized_tokens.append(suru_token)
                 synthetic_suru = True
                 break
             elif token.tag_.startswith("動詞") or re.match(
@@ -221,7 +213,7 @@ def normalize_verb_span(
             normalized_tokens.append(next_token)
 
     logger.debug(f"Normalized tokens: {[t.text for t in normalized_tokens]}")
-    if len(normalized_tokens) == 1:
+    if len(normalized_tokens) == 1 and not synthetic_suru:
         return (
             simple_lemma(normalized_tokens[0]),
             normalized_tokens[0].idx,
@@ -234,14 +226,18 @@ def normalize_verb_span(
         )
         return (None, -1, -1)
 
+    if synthetic_suru:
+        stem = normalized_tokens[0]
+        return (
+            f"{stem.text}する",
+            stem.idx,
+            source_span_end(stem.idx + len(stem.text)),
+        )
+
     stem = normalized_tokens[0]
     affixes = normalized_tokens[1:-1]
     suffix = normalized_tokens[-1]
-    source_end = (
-        normalized_tokens[-2].idx + len(normalized_tokens[-2].text)
-        if synthetic_suru
-        else suffix.idx + len(suffix.text)
-    )
+    source_end = suffix.idx + len(suffix.text)
     source_end = source_span_end(source_end, include_contracted=contracted_suru)
 
     return (
@@ -255,9 +251,7 @@ def normalize_verb_span(
     )
 
 
-def npv_matcher(
-    doc: Doc, suru_token: Token
-) -> List[Tuple[str, str, str, int, int, int, int, int, int]]:
+def npv_matcher(doc: Doc) -> List[Tuple[str, str, str, int, int, int, int, int, int]]:
     """
     Extract NPV (Noun-Particle-Verb) patterns from a document with character positions.
 
@@ -299,9 +293,7 @@ def npv_matcher(
                 if fixed_expression_match
                 else ginza.bunsetu_span(verb)
             )
-            vp_string, v_begin, v_end = normalize_verb_span(
-                verb_bunsetu_span, suru_token
-            )
+            vp_string, v_begin, v_end = normalize_verb_span(verb_bunsetu_span)
             if not vp_string:
                 logger.error(
                     f"Error normalizing verb phrase: {verb_bunsetu_span} in document {doc}"
@@ -333,7 +325,6 @@ def npv_matcher(
 def process_sentence(
     doc: Doc,
     sentence_id: int,
-    suru_token: Token,
 ) -> Tuple[
     List[Tuple[int, int, str, str, str, Optional[str], str]],
     List[Tuple[int, str, str, str, int, int, int, int, int, int]],
@@ -368,7 +359,7 @@ def process_sentence(
         )
 
     # Extract NPV patterns
-    patterns = npv_matcher(doc, suru_token)
+    patterns = npv_matcher(doc)
 
     return word_entries, [(sentence_id, *p) for p in patterns]
 
@@ -376,7 +367,6 @@ def process_sentence(
 def process_corpus(
     sentences: List[Tuple[str, int]],
     nlp: spacy.language.Language,
-    suru_token: Token,
     conn: duckdb.DuckDBPyConnection,
     batch_size: int = 2000,  # Use this only for spaCy's pipe
     debug: bool = False,
@@ -394,7 +384,7 @@ def process_corpus(
                 logger.warning(f"Skipping sentence {sentence_id}: No dependency parse")
                 continue
             # Process sentence
-            word_entries, patterns = process_sentence(doc, sentence_id, suru_token)
+            word_entries, patterns = process_sentence(doc, sentence_id)
 
             # Add word information to collector
             span_to_id = {}
@@ -483,7 +473,7 @@ def main(
         clean: If True, clean existing pattern data before processing
         debug: If True, write intermediate CSV files for debugging
     """
-    nlp, suru_token = load_nlp_model(model_name)
+    nlp = load_nlp_model(model_name)
 
     conn = duckdb.connect(str(data_dir / "corpus.db"))
 
@@ -537,7 +527,7 @@ def main(
         logger.info(f"Found {len(sentences)} sentences to process")
 
         # Process everything in one pass
-        process_corpus(sentences, nlp, suru_token, conn, batch_size, debug=debug)
+        process_corpus(sentences, nlp, conn, batch_size, debug=debug)
 
         logger.info(f"Processed {len(sentences)} sentences")
     finally:
