@@ -3,16 +3,12 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from natsume_simple import server
+from natsume_simple.api import create_app
 from tests.database_fixture import build_search_artifact
 
 
 def fixture_client(tmp_path: Path) -> TestClient:
     artifact_dir = build_search_artifact(tmp_path / "artifact")
-    create_app = getattr(server, "create_app", None)
-    assert callable(create_app), (
-        "the API needs an artifact-configured application factory"
-    )
     return TestClient(create_app(artifact_dir))
 
 
