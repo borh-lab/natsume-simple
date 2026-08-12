@@ -14,9 +14,49 @@ from natsume_simple.corpus_pipeline import (
     build_corpus_artifact,
     enforce_rejection_limits,
     extract_collocations,
+    prepare_jnlp_archive,
     segment_documents,
 )
 from tests.token_observations import EXTRACTION_OBSERVATIONS, observed_doc
+
+
+def test_jnlp_archive_preparation_uses_declared_converters(tmp_path: Path, monkeypatch):
+    import subprocess
+    import zipfile
+
+    archive = tmp_path / "jnlp.zip"
+    with zipfile.ZipFile(archive, "w") as bundle:
+        bundle.writestr("NLP_LATEX_CORPUS/file_DB.xls", "metadata")
+        bundle.writestr("NLP_LATEX_CORPUS/V01/lesson.tex", "教材です。")
+
+    commands: list[list[str]] = []
+
+    def run(command: list[str], *, check: bool):
+        assert check
+        commands.append(command)
+        if command[0] == "pandoc":
+            destination = Path(command[command.index("-o") + 1])
+            destination.write_text("教材です。", encoding="utf-8")
+        return subprocess.CompletedProcess(command, 0)
+
+    monkeypatch.setattr("natsume_simple.corpus_pipeline.subprocess.run", run)
+
+    root = prepare_jnlp_archive(archive, tmp_path / "prepared")
+
+    assert root == tmp_path / "prepared" / "NLP_LATEX_CORPUS"
+    assert (root / "V01" / "lesson.txt").read_text() == "教材です。"
+    assert [command[0] for command in commands] == ["nkf", "pandoc"]
+
+
+def test_jnlp_archive_preparation_rejects_parent_paths(tmp_path: Path):
+    import zipfile
+
+    archive = tmp_path / "unsafe.zip"
+    with zipfile.ZipFile(archive, "w") as bundle:
+        bundle.writestr("../outside.tex", "unsafe")
+
+    with pytest.raises(ValueError, match="unsafe archive member"):
+        prepare_jnlp_archive(archive, tmp_path / "prepared")
 
 
 def test_jnlp_adapter_reads_metadata_and_counts_missing_plaintext(tmp_path: Path):

@@ -3,6 +3,8 @@ from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, replace
 import hashlib
 from pathlib import Path
+import subprocess
+import zipfile
 
 import polars as pl
 from spacy.tokens import Doc
@@ -40,6 +42,53 @@ class AdaptationResult:
 class ExtractionResult:
     occurrences: tuple[CollocationOccurrence, ...]
     rejections: dict[str, int]
+
+
+def prepare_jnlp_archive(archive: Path, output_directory: Path) -> Path:
+    """Extract a local JNLP archive and convert each LaTeX source to plain text."""
+    if output_directory.exists():
+        raise FileExistsError(output_directory)
+
+    with zipfile.ZipFile(archive) as bundle:
+        for member in bundle.infolist():
+            member_path = Path(member.filename)
+            if member_path.is_absolute() or ".." in member_path.parts:
+                raise ValueError(f"unsafe archive member: {member.filename}")
+        output_directory.mkdir(parents=True)
+        bundle.extractall(output_directory)
+
+    metadata_files = sorted(output_directory.rglob("file_DB.xls"))
+    if len(metadata_files) != 1:
+        raise ValueError("JNLP archive must contain exactly one file_DB.xls")
+    corpus_root = metadata_files[0].parent
+
+    for source in sorted(corpus_root.rglob("*.tex")):
+        subprocess.run(
+            ["nkf", "-w", "--overwrite", "--in-place", str(source)], check=True
+        )
+        try:
+            subprocess.run(
+                [
+                    "pandoc",
+                    "--quiet",
+                    "--from",
+                    "latex+east_asian_line_breaks",
+                    "--to",
+                    "plain",
+                    "--wrap=none",
+                    "--strip-comments",
+                    "-N",
+                    "-s",
+                    str(source),
+                    "-o",
+                    str(source.with_suffix(".txt")),
+                ],
+                check=True,
+            )
+        except subprocess.CalledProcessError:
+            # The adapter records the missing plaintext with a bounded reason count.
+            continue
+    return corpus_root
 
 
 def adapt_jnlp_directory(

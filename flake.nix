@@ -148,18 +148,14 @@
                     [
                       uv-wrapped
                       help-command
-                      ensure-database
                       run-tests
                       frontend-check
                       playwright-check
                       lint
-                      prepare-data
-                      extract-patterns
                       build-frontend
                       watch-frontend
                       watch-dev-server
                       watch-prod-server
-                      run-all
                     ]
                   );
                   path-string = (lib.concatStringsSep "/bin:" local-packages) + "/bin";
@@ -228,17 +224,6 @@
             passthru.meta = {
               category = "Setup";
               description = "Initialize Python environment and dependencies";
-            };
-          };
-          packages.ensure-database = pkgs.writeShellApplication {
-            name = "ensure-database";
-            runtimeInputs = runtime-packages;
-            text = ''
-              curl https://nlp.lang.osaka-u.ac.jp/files/corpus.db -o data/corpus.db
-            '';
-            passthru.meta = {
-              category = "Setup";
-              description = "Ensure database exists and is up-to-date";
             };
           };
           packages.run-tests = pkgs.writeShellApplication {
@@ -338,55 +323,6 @@
             passthru.meta = {
               category = "Server";
               description = "Start backend server in production mode";
-            };
-          };
-          packages.prepare-data = pkgs.writeShellApplication {
-            name = "prepare-data";
-            runtimeInputs = runtime-packages ++ [
-              pkgs.nkf
-              pkgs.pandoc
-            ];
-            text = ''
-              # Process all standard corpora
-              ${uv-run} python src/natsume_simple/data.py --corpus-type all
-            '';
-            passthru.meta = {
-              category = "Data";
-              description = "Prepare corpus data and load into database";
-            };
-          };
-          packages.extract-patterns = pkgs.writeShellApplication {
-            name = "extract-patterns";
-            runtimeInputs = runtime-packages;
-            text = ''
-              # Extract patterns from all unprocessed sentences and save to database
-              ${uv-run} python src/natsume_simple/pattern_extraction.py \
-                  --data-dir data \
-                  --model ja_ginza \
-                  --unprocessed-only
-
-              # Example for processing specific corpus or sample:
-              # ${uv-run} python src/natsume_simple/pattern_extraction.py \
-              #     --data-dir data \
-              #     --model ja_ginza \
-              #     --corpus ted \
-              #     --sample 0.1
-            '';
-            passthru.meta = {
-              category = "Data";
-              description = "Extract patterns (collocations)";
-            };
-          };
-          packages.run-all = pkgs.writeShellApplication {
-            name = "run-all";
-            runtimeInputs = runtime-packages;
-            text = ''
-              ${config.packages.prepare-data}/bin/prepare-data
-              ${config.packages.watch-prod-server}/bin/watch-prod-server
-            '';
-            passthru.meta = {
-              category = "Main";
-              description = "Initialize database, prepare data, extract patterns and start server";
             };
           };
           packages.default = config.packages.watch-prod-server;

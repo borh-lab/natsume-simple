@@ -101,19 +101,11 @@ The following commands are available after entering the development environment:
 - `watch-prod-server` - Start backend server in production mode
 
 ### Setup
-- `ensure-database` - Ensure database exists and is up-to-date
 - `initial-setup` - Initialize Python environment and dependencies
-
-### Data Management
-- `prepare-data` - Prepare corpus data and load into database
-- `extract-patterns` - Extract patterns (collocations)
 
 ### Testing & QC
 - `lint` - Run all linters and formatters
 - `run-tests` - Run the test suite with pytest
-
-### Main
-- `run-all` - Initialize database, prepare data, extract patterns and start server
 
 ### Environment Variables
 - `ACCELERATOR` - Current accelerator type (cpu/cuda)
@@ -123,59 +115,13 @@ Type `h` to see this command overview again
 
 Note: The default command (`nix run`) will start the backend server in production mode (`watch-prod-server`).
 
-## Python Module CLI Examples
+## Corpus pipeline
 
-### Data Processing (data.py)
-
-```bash
-# Process all standard corpora
-python src/natsume_simple/data.py --corpus-type all --data-dir data
-
-# Process specific corpus types
-python src/natsume_simple/data.py --corpus-type jnlp --name "自然言語処理" --data-dir data
-python src/natsume_simple/data.py --corpus-type ted --name "TED" --data-dir data
-python src/natsume_simple/data.py --corpus-type wikipedia --name "Wikipedia" --data-dir data
-
-# Process generic corpus with custom directory
-python src/natsume_simple/data.py --corpus-type generic --name "my-corpus" --dir path/to/corpus --data-dir data
-```
-
-### Pattern Extraction (pattern_extraction.py)
-
-```bash
-# Process all unprocessed sentences
-python src/natsume_simple/pattern_extraction.py --data-dir data
-
-# Process specific corpus with options
-python src/natsume_simple/pattern_extraction.py \
-    --data-dir data \
-    --model ja_ginza \
-    --corpus ted \
-    --sample 0.1 \
-    --batch-size 1000 \
-    --clean \
-    --debug
-
-# Process only unprocessed sentences
-python src/natsume_simple/pattern_extraction.py \
-    --data-dir data \
-    --unprocessed-only
-
-```
-
-### Database Management (database.py)
-
-```bash
-# Show row counts for all tables
-python src/natsume_simple/database.py \
-    --data-dir data \
-    --action show-counts
-
-# Clean pattern data while preserving corpus data
-python src/natsume_simple/database.py \
-    --data-dir data \
-    --action clean-patterns
-```
+The offline pipeline in `corpus_pipeline.py` converts a local JNLP archive,
+adapts converted JNLP and pinned local Wikipedia Parquet files, segments and
+extracts them, and writes a fresh immutable schema-v1 artifact. It never updates
+the deployed DuckDB file in place. The small executable walkthrough is covered
+by `tests/test_corpus_adapters.py` and `tests/test_teaching_examples.py`.
 
 ### Server (api.py)
 
@@ -230,8 +176,7 @@ nix develop --print-build-logs
 
 ```
 .
-├── data/                        # コーパスとパターン抽出結果
-│   └── corpus.db                # データベース（ensure-databaseで取得可）
+├── data/                        # ローカルのコーパス入力
 │
 ├── notebooks/                   # 分析・可視化用Jupyterノートブック
 │   ├── pattern_extraction.ipynb # パターン抽出処理の開発用
@@ -249,7 +194,6 @@ nix develop --print-build-logs
 │   ├── artifact_builder.py      # DuckDBアーティファクト生成
 │   ├── artifact_registry.py     # 公開・ロールバック
 │   ├── corpus_pipeline.py       # コーパス変換パイプライン
-│   ├── database.py              # 旧データベース関連（移行中）
 │   ├── data.py                  # データ処理
 │   └── pattern_extraction.py    # パターン抽出ロジック
 │
