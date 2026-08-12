@@ -287,7 +287,7 @@ is sealed.
 - Source adapter versions/configuration.
 - Sentence splitter name, version, model checksum, and configuration.
 - NLP model name, package/model checksum, and extraction-policy version.
-- Execution backend (`cpu | cuda | rocm`), numeric precision, deterministic
+- Execution backend (`cpu | cuda`), numeric precision, deterministic
   settings, relevant runtime versions, device class, and all thread/process
   counts that can affect extraction output.
 - Serving schema version.
@@ -324,8 +324,8 @@ validation reports rather than conceals. The API exposes the instance ID as
 `databaseBuildId`.
 
 The initial publishable extraction profile is CPU, float32, deterministic mode,
-and fixed thread/process counts. CUDA/ROCm packages may build diagnostic
-artifacts with distinct recorded execution profiles, but an accelerated profile
+and fixed thread/process counts. The CUDA package may build diagnostic artifacts
+with a distinct recorded execution profile, but an accelerated profile
 becomes publishable only after repeated fixture and representative-sample builds
 prove identical ordered relational exports under its declared deterministic
 settings. Resolver success or a single extraction smoke test is not publication

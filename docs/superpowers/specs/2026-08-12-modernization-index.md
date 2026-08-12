@@ -112,7 +112,7 @@ completion record linking the implementation commits and surviving ADRs.
 | Notebook forked the extraction contract                         | Its distinct normalization/extraction cases migrate first; then it imports the tested module and retains exploration           | 1                    |
 | JNLP conversion relied on ambient executables                    | Gate 3A runs `nkf`/`pandoc` end-to-end; Spec 6 includes both in the declared builder closure                                    | 3 and 6              |
 | Generated changelog had no release consumer                     | The stale file and `git-cliff` are removed until a release process names a changelog deliverable                                | 1                    |
-| Development entry points duplicated environment ownership       | Default Codespaces delegates to Nix; Dockerfile/rootless retire; in-flight ROCm survives only as Cohort 7's tested evidence harness | 4 and 6           |
+| Development entry points duplicated environment ownership       | Default Codespaces delegates to Nix; Dockerfile and rootless/ROCm variants retire                                               | 4 and 6              |
 
 Review follow-ups also assign legacy static deletion to Spec 1, acknowledge the
 incumbent prerelease manifest range, require cumulative intermediate-major
@@ -172,7 +172,7 @@ Nix flake ──► frontend package
 - Corpus text is never interpreted as HTML.
 - Frontend and backend share a checked OpenAPI-derived contract.
 - The minimal production server and OCI image contain no notebook, Node.js,
-  corpus acquisition, NLP model, Torch, CUDA, or ROCm closure.
+  corpus acquisition, NLP model, Torch, or CUDA closure.
 - A learner can follow acquisition, transformation, persistence, and serving in
   source order and run the executable examples without the production corpus.
 
@@ -227,7 +227,7 @@ Nix flake ──► frontend package
 - Spec 3 first proves reacquisition or a validated legacy conversion for every
   corpus, then records license/redistribution status and resolvable immutable
   source revisions before publishing each corpus.
-- Spec 4 selects and proves the exact common CPU/CUDA/ROCm PyTorch matrix before
+- Spec 4 selects and proves the exact common CPU/CUDA NLP matrix before
   advertising accelerator support.
 
 ## Decision Log

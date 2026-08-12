@@ -11,15 +11,15 @@ security policy, and accelerator support evidence
 Python, npm, and Nix inputs have aged together without a complete behavioral
 gate. The installed npm graph reports high/critical advisories, and major
 updates are available across Vite, Vitest, Tailwind, ESLint and related plugins.
-The Python graph spans serving, corpus acquisition, NLP, notebooks, and three
-accelerator variants in one project environment. A global update would make it
+The Python graph spans serving, corpus acquisition, NLP, notebooks, CPU, and
+incompatible CUDA/ROCm variants in one project environment. A global update would make it
 impossible to attribute failures and could silently change Japanese extraction
 behavior.
 
 The repository already contains uncommitted owner work updating Nix inputs and
-moving accelerator packages toward Torch 2.6. This spec does not discard or
-overwrite that work; implementation first reconciles it with the accepted
-compatibility matrix.
+moving accelerator packages toward Torch 2.6. The owner has rejected the ROCm
+path after review; implementation removes only ROCm-specific files, dependency
+hunks, and lock entries while preserving unrelated in-flight updates.
 
 ## Goals
 
@@ -28,7 +28,7 @@ compatibility matrix.
 - Remove dependencies without a present consumer before upgrading them.
 - Separate server, builder, accelerator, test, and notebook closures.
 - Group upgrades by compatibility and behavioral blast radius.
-- Make every supported CPU/CUDA/ROCm claim evidence-backed.
+- Make every supported CPU/CUDA claim evidence-backed.
 - Enforce lockfile and high/critical advisory policy.
 
 ## Non-Goals
@@ -48,8 +48,7 @@ Python dependency sets:
 | ------------------ | ---------------------------------------------------------- | ---------------------------------- |
 | `server`           | FastAPI app and DuckDB queries                             | Builder/NLP/notebook-only packages |
 | `builder`          | Acquisition, segmentation, extraction, artifact validation | FastAPI serving extras             |
-| `accelerator-cuda` | Optional CUDA builder                                      | CPU/server/ROCm                    |
-| `accelerator-rocm` | Optional ROCm builder                                      | CPU/server/CUDA                    |
+| `accelerator-cuda` | CUDA additions for the optional accelerated builder        | Server and default CPU closure     |
 | `test`             | Static analysis and automated tests                        | Production closures                |
 | `notebook`         | Interactive research                                       | CI and production closures         |
 
@@ -155,18 +154,27 @@ Acceptance requires:
 - Any intentional NLP behavior change is reviewed as a semantic patch before
   updating golden results.
 
-### Cohort 7: accelerator matrix
+### Cohort 7: CUDA accelerator profile
 
-Select a PyTorch 2.x version whose official indices provide supported artifacts
-for:
+Select mutually compatible spaCy, Thinc, CuPy, transformer/PyTorch, and model
+versions for:
 
 - CPU on required host platforms.
 - One explicitly named CUDA runtime on supported Linux systems.
-- One explicitly named ROCm runtime on supported Linux systems.
 
-CUDA and ROCm are mutually exclusive extras. Index URLs, exact Torch build
-versions, companion packages, environment markers, and supported architectures
-are locked. CPU is the mandatory full CI baseline. CUDA and ROCm each receive:
+spaCy documents CUDA GPU support through CuPy, and Thinc's documented backends
+are NumPy, CuPy/CUDA, AppleOps, and MPS—not ROCm. A ROCm PyTorch wheel therefore
+does not establish a supported spaCy/GiNZA extraction path. The ROCm extra,
+lockfile entries, Nix output, devcontainer, and support claims are removed.
+Apple acceleration is not advertised by this Linux-focused project; supported
+Apple hosts use CPU unless a future owner supplies a separate end-to-end case.
+
+- <https://spacy.io/usage>
+- <https://thinc.ai/docs/api-backends>
+
+CUDA index URLs, exact builds, companion packages, environment markers, and
+supported architectures are locked. CPU is the mandatory full CI baseline. The
+CUDA profile receives:
 
 - Resolver/lock validation.
 - Nix derivation evaluation/build where hardware is not required.
@@ -174,14 +182,6 @@ are locked. CPU is the mandatory full CI baseline. CUDA and ROCm each receive:
 - A tiny extraction fixture on scheduled matching hardware before release.
 - Repeated ordered-relational comparison required by Spec 3 before that
   accelerator profile is allowed to publish a corpus.
-
-The in-flight `.devcontainer/rocm/devcontainer.json` may be retained as the
-declared ROCm scheduled-evidence environment for this cohort. Adoption requires
-bringing it under version control, making it a thin consumer of the Nix ROCm
-builder rather than another dependency definition, and running the smoke and
-fixture jobs above on matching hardware. If the cohort obtains equivalent
-evidence elsewhere, the owner deletes the untracked variant; general cleanup
-does not pre-emptively remove owner work in progress.
 
 An accelerator is not advertised as supported solely because CPU resolves.
 
@@ -272,13 +272,13 @@ component models that Specs 2 and 5 replace.
 ## Acceptance Criteria
 
 - Every retained direct dependency has a named current consumer.
-- Server closure excludes builder, notebook, Torch, CUDA, and ROCm dependencies.
+- Server closure excludes builder, notebook, Torch, and CUDA dependencies.
 - Notebook closure is absent from ordinary CI and production builds.
 - Frontend uses supported Node/Vite/Svelte/TypeScript peer combinations.
 - Data/NLP fixture behavior is reviewed rather than blindly re-recorded.
 - The executable backend walkthrough remains readable and every boundary-mapped
   behavior target is preserved across every cohort.
-- CPU/CUDA/ROCm support statements match resolver, build, and scheduled hardware
+- CPU/CUDA support statements match resolver, build, and scheduled hardware
   evidence.
 - Final npm graph has no unaccepted high/critical advisory.
 - All three lockfiles are current, reproducible, and generated by owning tools.
@@ -300,5 +300,6 @@ an exposed unmitigated advisory; otherwise roll forward with a focused fix.
 | Hold TypeScript to supported peer range     | Accepted | Latest unsupported is not modernization                              | SvelteKit supports the next major                                           |
 | Treat NLP goldens as domain behavior        | Accepted | Model changes can silently alter corpus facts                        | Domain owner approves a changed policy                                      |
 | CPU full CI; scheduled GPU evidence         | Accepted | Practical baseline without pretending GPU support                    | Hosted matching GPU CI becomes economical                                   |
+| Remove ROCm support                         | Accepted | spaCy/Thinc expose no supported ROCm backend; a ROCm Torch wheel cannot prove GiNZA extraction | spaCy/Thinc document a supported ROCm backend and the full fixture passes |
 | Prettier and ESLint replace Biome           | Accepted | Clear ownership and mature Svelte-specific behavior                  | Biome's Svelte support is stable and can replace both with equivalent rules |
 | Frontend cohorts precede component refactor | Accepted | Avoids rebuilding the new component architecture on obsolete tooling | A cohort cannot pass without the refactor                                   |

@@ -53,8 +53,6 @@ For every supported system where dependencies exist:
   pinned `nkf` and `pandoc` executables required by the JNLP adapter.
 - `corpus-builder-cuda`: supported Linux systems only when Cohort 7 resolves and
   builds.
-- `corpus-builder-rocm`: supported Linux systems only when Cohort 7 resolves and
-  builds.
 - `container`: x86_64-linux OCI image derived from `server`.
 - `default`: `server`, unless the owner later chooses another explicit operator
   experience.
@@ -121,7 +119,7 @@ The server package contains:
 It does not contain:
 
 - Node/npm, compilers, notebooks, datasets, Polars builder tools, spaCy, GiNZA,
-  wtpsplit, Torch, CUDA, or ROCm.
+  wtpsplit, Torch, or CUDA.
 - A writable application data directory.
 - The production corpus artifact.
 
@@ -240,12 +238,9 @@ a second hand-written list of mutable wrappers.
 - One default `.devcontainer/devcontainer.json` remains the Codespaces/local
   editor entry into the flake and does not become a production image definition.
   It uses a standard upstream base image directly; the one-line Dockerfile and
-  unconsumed tracked rootless variant are removed. The owner's untracked ROCm
-  work is not cleanup scope: Cohort 7 may adopt it as the named scheduled-ROCm
-  evidence environment. If adopted, it is committed, reduced to a thin consumer
-  of the same Nix ROCm output, and smoke-tested on matching hardware; if Cohort 7
-  obtains that evidence elsewhere, the owner deletes it. It never becomes a
-  second dependency definition.
+  tracked rootless variant are removed. The rejected untracked ROCm devcontainer
+  is also removed with its dependency/lock changes; it does not become a second
+  setup definition.
 
 ## Test Strategy
 
@@ -279,9 +274,7 @@ a second hand-written list of mutable wrappers.
 - Direct server and image expose identical application behavior for the fixture.
 - Entering a development shell causes no checkout mutation or automatic setup.
 - The documented default devcontainer reaches the same flake interface; no
-  tracked rootless variant or Dockerfile dependency definition remains. Any
-  retained ROCm devcontainer is only a tested Cohort 7 evidence harness over the
-  Nix ROCm output.
+  rootless/ROCm variant or Dockerfile dependency definition remains.
 - README/help accurately describe the real flake interface.
 
 ## Rollback
@@ -302,5 +295,5 @@ no separate Dockerfile rollback path.
 | Focused non-mutating shells                         | Accepted | Keeps dependency ownership clear and entry predictable                        | Contributor evidence shows union shell is sufficient                              |
 | x86_64 Linux image initially                        | Accepted | Current public-host target                                                    | Deployment requires another architecture                                          |
 | Require bounded public edge                         | Accepted | Anonymous expensive queries need overload protection even on one instance     | Authentication, multi-instance limiting, or measured capacity changes the control |
-| Keep one general devcontainer; conditionally adopt ROCm harness | Accepted | Default owns Codespaces; in-flight ROCm work survives only if Cohort 7 uses it to produce scheduled hardware evidence | Cohort 7 chooses another evidence environment or gains a distinct supported workflow |
+| Keep one devcontainer that delegates to Nix         | Accepted | Default owns the documented Codespaces/local editor path; rootless/ROCm variants add unsupported setup ownership | A distinct supported environment gains a named user and smoke test |
 | Keep large-model integration outside default checks | Accepted | Default checks remain small while release evidence owns the real pinned model | Model closure becomes appropriate for every check                                 |
