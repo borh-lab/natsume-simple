@@ -69,6 +69,10 @@
             uv-wrapped
             pkgs.nodejs
           ];
+          playwright-browsers = pkgs.playwright-driver.browsers.override {
+            withFirefox = false;
+            withWebkit = false;
+          };
           development-packages = [
             pkgs.bashInteractive
             pkgs.nkf
@@ -96,6 +100,42 @@
             };
           };
 
+          checks.source-quality =
+            pkgs.runCommand "natsume-source-quality"
+              {
+                nativeBuildInputs = [
+                  pkgs.nixfmt
+                  pkgs.ruff
+                ];
+                src = ./.;
+              }
+              ''
+                cp -r "$src" source
+                chmod -R u+w source
+                cd source
+                nixfmt --check flake.nix help.nix
+                ruff format --check
+                ruff check src tests
+                touch "$out"
+              '';
+
+          checks.frontend = pkgs.buildNpmPackage {
+            pname = "natsume-frontend-check";
+            version = "0.0.1";
+            src = ./natsume-frontend;
+            npmDepsHash = "sha256-nkej+QbG35LrpNUZwSMxkAgB4lmmEJcJ2tD5dNV3SjI=";
+            dontNpmBuild = true;
+            doCheck = true;
+            checkPhase = ''
+              npm run check
+              npm run test:unit -- --run
+              npm run build
+            '';
+            installPhase = ''
+              touch "$out"
+            '';
+          };
+
           devShells = {
             default = pkgs.mkShell {
               nativeBuildInputs = development-packages ++ runtime-packages;
@@ -111,6 +151,7 @@
                       ensure-database
                       run-tests
                       frontend-check
+                      playwright-check
                       lint
                       prepare-data
                       extract-patterns
@@ -139,6 +180,7 @@
                       eval "$(direnv hook bash)"
 
                       export PC_PORT_NUM=10011
+                      export PLAYWRIGHT_BROWSERS_PATH=${playwright-browsers}
 
                       h
                     '';
@@ -222,6 +264,19 @@
             passthru.meta = {
               category = "Testing & QC";
               description = "Type-check, test, and build the frontend";
+            };
+          };
+          packages.playwright-check = pkgs.writeShellApplication {
+            name = "playwright-check";
+            runtimeInputs = runtime-packages;
+            text = ''
+              export PLAYWRIGHT_BROWSERS_PATH=${playwright-browsers}
+              cd natsume-frontend
+              npm run test:integration
+            '';
+            passthru.meta = {
+              category = "Testing & QC";
+              description = "Run browser tests against the fixture service";
             };
           };
           packages.lint = pkgs.writeShellApplication {

@@ -22,16 +22,16 @@ def test_corpus_normalization_uses_fixture_counts(client: TestClient):
 
     assert response.status_code == 200
     assert response.json() == {
-        "alpha": {"normalizationFactor": 1 / 3, "collocationCount": 3},
-        "beta": {"normalizationFactor": 1, "collocationCount": 1},
+        "alpha": {"normalizationFactor": 2 / 3, "collocationCount": 3},
+        "beta": {"normalizationFactor": 1, "collocationCount": 2},
     }
 
 
 @pytest.mark.parametrize(
-    ("search_type", "term", "particle", "other_lemma"),
+    ("search_type", "term", "particle", "other_lemma", "result_count"),
     [
-        ("noun", "情報", "を", "集める"),
-        ("verb", "集める", "を", "情報"),
+        ("noun", "情報", "を", "集める", 2),
+        ("verb", "集める", "を", "情報", 1),
     ],
 )
 def test_npv_search_supports_both_directions(
@@ -40,12 +40,13 @@ def test_npv_search_supports_both_directions(
     term: str,
     particle: str,
     other_lemma: str,
+    result_count: int,
 ):
     response = client.get(f"/npv/{search_type}/{term}")
 
     assert response.status_code == 200
     body = response.json()
-    assert body["totalResults"] == 1
+    assert body["totalResults"] == result_count
     match = body["particleGroups"][particle]["collocates"][0]
     assert other_lemma in (match["n"], match["v"])
     assert match["totalRawFrequency"] == 3

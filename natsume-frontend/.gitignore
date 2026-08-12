@@ -5,6 +5,8 @@ node_modules
 .vercel
 /.svelte-kit
 /build
+/playwright-report
+/test-results
 
 # OS
 .DS_Store

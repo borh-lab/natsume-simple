@@ -293,6 +293,8 @@ devenv.local.nix
 
 # Frontend build
 natsume-frontend/build/
+natsume-frontend/playwright-report/
+natsume-frontend/test-results/
 
 # Data files
 
