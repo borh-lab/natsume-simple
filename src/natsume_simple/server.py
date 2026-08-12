@@ -492,6 +492,25 @@ class ExamplesResponse(BaseModel):
     databaseBuildId: str
 
 
+class PublicApiError(Exception):
+    def __init__(self, status_code: int, code: str, message: str):
+        self.status_code = status_code
+        self.code = code
+        self.message = message
+
+
+def select_corpora(requested: list[str] | None, known: set[str]) -> list[str]:
+    if requested is None:
+        return sorted(known)
+
+    selected = sorted(set(requested))
+    if any(not corpus_id for corpus_id in selected) or not set(selected) <= known:
+        raise PublicApiError(
+            400, "invalid_parameter", "corpusId must name a known corpus"
+        )
+    return selected
+
+
 def create_app(artifact_dir: Path) -> FastAPI:
     @asynccontextmanager
     async def artifact_lifespan(api: FastAPI):
@@ -535,6 +554,19 @@ def create_app(artifact_dir: Path) -> FastAPI:
                 "error": {
                     "code": "invalid_parameter",
                     "message": "Request parameters are invalid",
+                    "requestId": request.state.request_id,
+                }
+            },
+        )
+
+    @api.exception_handler(PublicApiError)
+    async def public_api_error(request: Request, error: PublicApiError):
+        return JSONResponse(
+            status_code=error.status_code,
+            content={
+                "error": {
+                    "code": error.code,
+                    "message": error.message,
                     "requestId": request.state.request_id,
                 }
             },
@@ -625,7 +657,7 @@ def create_app(artifact_dir: Path) -> FastAPI:
                 "SELECT corpus_id, collocation_count FROM corpus_stats ORDER BY corpus_id"
             ).fetchall()
             corpus_counts = {row[0]: row[1] for row in corpus_rows}
-            selected = sorted(set(corpusId or corpus_counts))
+            selected = select_corpora(corpusId, set(corpus_counts))
 
             term_column = "noun" if pos == "noun" else "verb"
             placeholders = ", ".join("?" for _ in selected)
@@ -745,7 +777,7 @@ def create_app(artifact_dir: Path) -> FastAPI:
                 row[0]
                 for row in conn.execute("SELECT id FROM corpus ORDER BY id").fetchall()
             ]
-            selected = sorted(set(corpusId or all_corpora))
+            selected = select_corpora(corpusId, set(all_corpora))
             placeholders = ", ".join("?" for _ in selected)
             rows = conn.execute(
                 f"""

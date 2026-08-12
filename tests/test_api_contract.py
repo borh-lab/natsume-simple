@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
 from natsume_simple import server
@@ -147,4 +148,33 @@ def test_examples_return_selected_plain_text_and_typed_spans(tmp_path: Path):
         ],
         "selectedCorpusIds": ["beta"],
         "databaseBuildId": "fixture-build-001",
+    }
+
+
+@pytest.mark.parametrize("corpus_id", ["unknown", ""])
+@pytest.mark.parametrize("route", ["collocations", "examples"])
+def test_corpus_selection_rejects_unknown_and_empty_ids(
+    tmp_path: Path, route: str, corpus_id: str
+):
+    params = (
+        {"term": "情報", "pos": "noun", "rankBy": "meanPerMillion"}
+        if route == "collocations"
+        else {"noun": "情報", "particle": "を", "verb": "集める"}
+    )
+    params["corpusId"] = corpus_id
+
+    with fixture_client(tmp_path) as client:
+        response = client.get(
+            f"/api/{route}",
+            params=params,
+            headers={"X-Request-ID": "bad-corpus-selection"},
+        )
+
+    assert response.status_code == 400
+    assert response.json() == {
+        "error": {
+            "code": "invalid_parameter",
+            "message": "corpusId must name a known corpus",
+            "requestId": "bad-corpus-selection",
+        }
     }
