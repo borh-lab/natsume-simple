@@ -17,13 +17,10 @@
 	import { afterUpdate, onMount, setContext } from 'svelte';
 	import './../tailwind.css';
 	import Loading from '$lib/components/Loading.svelte';
-	import resolveConfig from 'tailwindcss/resolveConfig';
-	import tailwindConfig from '../../tailwind.config.js';
+	import colors from 'tailwindcss/colors';
 
 	// Icons
 	import ZondiconsCheveronDown from '~icons/zondicons/cheveron-down';
-
-	const twFullConfig = resolveConfig(tailwindConfig);
 
 	import { themeManager } from '$lib/theme.svelte';
 
@@ -48,30 +45,30 @@
 
 	// Define colors (keep these outside any function)
 	const highlightColors = [
-		twFullConfig.theme.colors.red[200],
-		twFullConfig.theme.colors.purple[200],
-		twFullConfig.theme.colors.green[200],
-		twFullConfig.theme.colors.blue[200],
-		twFullConfig.theme.colors.yellow[200],
-		twFullConfig.theme.colors.pink[200]
+		colors.red[200],
+		colors.purple[200],
+		colors.green[200],
+		colors.blue[200],
+		colors.yellow[200],
+		colors.pink[200]
 	];
 
 	const highlightColorsDark = [
-		twFullConfig.theme.colors.red[800],
-		twFullConfig.theme.colors.purple[800],
-		twFullConfig.theme.colors.green[800],
-		twFullConfig.theme.colors.blue[800],
-		twFullConfig.theme.colors.yellow[800],
-		twFullConfig.theme.colors.pink[800]
+		colors.red[800],
+		colors.purple[800],
+		colors.green[800],
+		colors.blue[800],
+		colors.yellow[800],
+		colors.pink[800]
 	];
 
 	const solidColors = [
-		twFullConfig.theme.colors.red[500],
-		twFullConfig.theme.colors.purple[500],
-		twFullConfig.theme.colors.green[500],
-		twFullConfig.theme.colors.blue[500],
-		twFullConfig.theme.colors.yellow[500],
-		twFullConfig.theme.colors.pink[500]
+		colors.red[500],
+		colors.purple[500],
+		colors.green[500],
+		colors.blue[500],
+		colors.yellow[500],
+		colors.pink[500]
 	];
 
 	// Create a mapping of corpus to color index when corpusNorm is first loaded

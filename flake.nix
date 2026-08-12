@@ -123,7 +123,7 @@
             pname = "natsume-frontend-check";
             version = "0.0.1";
             src = ./natsume-frontend;
-            npmDepsHash = "sha256-nkej+QbG35LrpNUZwSMxkAgB4lmmEJcJ2tD5dNV3SjI=";
+            npmDepsHash = "sha256-EzpXV1g9dpjpwSBoqKMZPWB4LUg5/HDuf2uurWMrE1s=";
             dontNpmBuild = true;
             doCheck = true;
             checkPhase = ''
