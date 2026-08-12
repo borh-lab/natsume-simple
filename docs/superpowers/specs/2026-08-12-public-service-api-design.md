@@ -119,9 +119,10 @@ Parameters:
 - `term`: required, 1–64 Unicode code points.
 - `pos`: required enum `noun | verb`.
 - `corpusId`: repeatable stable corpus ID. Absence means all corpora; duplicates
-  are normalized; an empty or unknown value is `400`.
+  are normalized; an empty or unknown value or more than three selected corpora
+  is `400`.
 - `rankBy`: required enum `raw | meanPerMillion`.
-- `limitPerParticle`: default 100, integer 1–200.
+- `limitPerParticle`: default 100, integer 1–150.
 
 At most the configured eight particle groups are returned. Each group contains
 `particle`, `totalMatchingCollocations`, `returnedCount`, bounded `items`, and
@@ -188,7 +189,7 @@ Every non-success JSON response uses:
 {
   "error": {
     "code": "invalid_parameter",
-    "message": "limitPerParticle must be between 1 and 200",
+    "message": "limitPerParticle must be between 1 and 150",
     "requestId": "01..."
   }
 }
@@ -241,6 +242,15 @@ document, and filter all response fields as recommended by FastAPI:
   thread or join lifecycle. Timeout maps to the stable `query_timeout` service
   error.
 - Every valid response must remain below 1 MiB when serialized.
+- The immutable artifact makes this limit structural: a published schema-v1
+  artifact contains at most three corpora, corpus IDs are at most 32 ASCII
+  characters, labels and normalized lemmas are at most 64 code points, source
+  titles are at most 512 code points, and sentences are at most 4,096 code
+  points. Builder validation rejects rather than truncates an over-bound fact.
+  With those bounds, the measured eight-particle/150-item/three-contribution
+  collocation fixture is about 809 KiB and the 20-example maximum is about
+  274 KiB under FastAPI's actual JSON serialization. A conservative structural
+  model using widest expected integer/float encodings is about 905 KiB.
 - The initial capacity gate runs a curated search set at 10 concurrent clients;
   p95 end-to-end API latency must remain below 1 second on the documented
   production host class. The benchmark records host CPU, memory, DuckDB settings,
@@ -328,7 +338,7 @@ not supported.
 | No API version namespace                            | Accepted | No external consumers; atomic deployment                                                          | First external consumer                                      |
 | Per-corpus rate plus equal-weight selected mean     | Accepted | Keeps the per-million denominator honest and avoids aggregate magnitude scaling with corpus count | Domain analysis prefers pooled corpus-size weighting         |
 | Selection and ranking happen before limiting        | Accepted | A globally truncated response cannot produce correct selection-specific top N client-side         | Cursor pagination or unbounded result transfer is introduced |
-| Limit to 200 items per particle                     | Accepted | Bounds public work without unused pagination                                                      | Present consumer needs deeper results                        |
+| Limit to 150 items per particle                     | Accepted | The former 200-item fixture measured about 1,077 KiB (1,204 KiB conservative model); 150 measures about 809 KiB | Present consumer needs deeper results and pagination is designed |
 | Request-local read-only connections                 | Accepted | Matches DuckDB Python concurrency guidance                                                        | Measured connection overhead becomes material                |
 | No production CORS                                  | Accepted | Frontend and API are same-origin                                                                  | Separate trusted frontend origin is deployed                 |
 | OpenAPI-generated compile-time types only           | Accepted | Prevents drift without runtime client machinery                                                   | Multiple clients need richer generation                      |

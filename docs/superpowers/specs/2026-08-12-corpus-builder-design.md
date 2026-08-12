@@ -198,27 +198,31 @@ Exactly one row:
 
 ### `corpus`
 
-- `id TEXT PRIMARY KEY`.
-- `label TEXT NOT NULL`.
+- `id TEXT PRIMARY KEY`, 1–32 ASCII characters.
+- `label TEXT NOT NULL`, 1–64 Unicode code points.
+- A publishable schema-v1 artifact contains one to three corpora; adding a
+  fourth requires re-sizing the public response contract.
 
 ### `source`
 
 - Surrogate `id` primary key.
 - `corpus_id` foreign key.
-- `external_id`, `title`, optional metadata, and `content_sha256`.
+- `external_id`, `title` of at most 512 Unicode code points, optional metadata,
+  and `content_sha256`.
 - Unique `(corpus_id, external_id)`.
 
 ### `sentence`
 
 - Surrogate `id` primary key.
 - `source_id` foreign key.
-- `ordinal` and `text`.
+- `ordinal` and non-empty `text` of at most 4,096 Unicode code points.
 - Unique `(source_id, ordinal)`.
 
 ### `collocation_occurrence`
 
 - `sentence_id` foreign key.
-- Normalized noun, particle and verb.
+- Non-empty normalized noun and verb of at most 64 Unicode code points, plus a
+  configured particle.
 - Six span offsets.
 - `extractor_id`.
 - Unique on sentence, three lemmas, six offsets, and extractor identity.
@@ -338,6 +342,8 @@ Publication requires all of the following:
 - Exactly one compatible `build_metadata` row.
 - All foreign keys and stable identity uniqueness constraints hold.
 - Every sentence belongs to exactly one source/corpus.
+- Corpus count and all serving-text lengths satisfy the schema-v1 bounds;
+  over-bound source facts are rejected with reason counts rather than truncated.
 - Every occurrence references a sentence and has valid spans.
 - Every normalized lemma/particle is non-empty and every particle is configured.
 - Recorded corpus and lemma counts are non-negative and equal exact
