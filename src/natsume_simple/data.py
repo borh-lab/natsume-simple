@@ -1,4 +1,5 @@
 import argparse
+import logging
 import re
 import subprocess
 import urllib.request
@@ -18,10 +19,8 @@ from natsume_simple.database import (
     init_database,
     insert_sources_batch,
 )
-from natsume_simple.log import setup_logger
-from natsume_simple.utils import set_random_seed
 
-logger = setup_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class CorpusEntry(BaseModel):
@@ -211,27 +210,6 @@ def is_japanese(line: str, min_length: int = 200) -> bool:
     # For longer strings, require at least 50% Japanese characters
     japanese_char_count = sum(1 for c in line if is_japanese_char(c))
     return (japanese_char_count / len(line)) >= 0.5
-
-
-def filter_non_japanese(dir: Path, min_length: int = 200) -> Iterator[str]:
-    """Filter out non-Japanese text from converted files.
-
-    This function reads text files and filters out lines that are likely not Japanese text.
-
-    Args:
-        dir: Path to directory containing text files to filter
-        min_length: Minimum length of lines to keep (default: 200)
-
-    Yields:
-        Lines of text that pass the Japanese text filters, stripped of whitespace on the end
-    """
-    files = dir.rglob("*.txt")
-    for file in files:
-        with open(file, encoding="utf-8", errors="replace") as f:
-            for line in f:
-                line = line.rstrip()
-                if is_japanese(line, min_length):
-                    yield line
 
 
 class JNLPCorpusLoader(BaseCorpusLoader):
@@ -568,14 +546,12 @@ def prepare_corpora(data_dir: Path) -> Dict[str, int]:
 
 
 if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    )
     parser = argparse.ArgumentParser(
         description="Prepare and load corpora for use in NLP tasks.",
-    )
-    parser.add_argument(
-        "--seed",
-        type=int,
-        default=42,
-        help="Random seed for reproducibility (default: 42)",
     )
     parser.add_argument(
         "--data-dir",
@@ -601,9 +577,6 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
-
-    set_random_seed(args.seed)
-    logger.info(f"Random seed set to {args.seed}")
 
     # Create data directory if it doesn't exist
     args.data_dir.mkdir(parents=True, exist_ok=True)

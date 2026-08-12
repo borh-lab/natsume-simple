@@ -1,9 +1,9 @@
 import argparse
+import logging
 import re
-from collections.abc import Iterator
-from itertools import chain, dropwhile, takewhile, tee
+from itertools import chain, dropwhile, pairwise, takewhile
 from pathlib import Path
-from typing import Any, Iterable, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 import duckdb
 import ginza  # type: ignore
@@ -35,10 +35,8 @@ from natsume_simple.database import (
     clean_pattern_data,
     create_indices,
 )
-from natsume_simple.log import setup_logger
-from natsume_simple.utils import set_random_seed
 
-logger = setup_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 def load_nlp_model(
@@ -75,28 +73,6 @@ def load_nlp_model(
     suru_token = nlp("する")[0]
 
     return nlp, suru_token
-
-
-def pairwise(iterable: Iterable[Any]) -> Iterator[Tuple[Any, Any]]:
-    """Create pairwise iterator from an iterable.
-
-    Args:
-        iterable (Iterable[Any]): The input iterable.
-
-    Returns:
-        Iterator[Tuple[Any, Any]]: An iterator of pairs.
-
-    Examples:
-        >>> list(pairwise([1, 2, 3, 4]))
-        [(1, 2), (2, 3), (3, 4)]
-        >>> list(pairwise("abc"))
-        [('a', 'b'), ('b', 'c')]
-        >>> list(pairwise([]))
-        []
-    """
-    a, b = tee(iterable)
-    next(b, None)
-    return zip(a, b)
 
 
 def simple_lemma(token: Token) -> str:
@@ -485,9 +461,6 @@ def process_corpus(
         raise e
 
 
-nlp, suru_token = load_nlp_model()
-
-
 def main(
     data_dir: Path,
     model_name: Optional[str] = None,
@@ -510,9 +483,7 @@ def main(
         clean: If True, clean existing pattern data before processing
         debug: If True, write intermediate CSV files for debugging
     """
-    global nlp, suru_token
-    if model_name:
-        nlp, suru_token = load_nlp_model(model_name)
+    nlp, suru_token = load_nlp_model(model_name)
 
     conn = duckdb.connect(str(data_dir / "corpus.db"))
 
@@ -574,6 +545,10 @@ def main(
 
 
 if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    )
     parser = argparse.ArgumentParser(description="Extract NPV patterns from corpora.")
     parser.add_argument(
         "--clean",
@@ -613,21 +588,12 @@ if __name__ == "__main__":
         help="Number of sentences to process in each batch (default: 1000)",
     )
     parser.add_argument(
-        "--seed",
-        type=int,
-        default=42,
-        help="Random seed for reproducibility (default: 42)",
-    )
-    parser.add_argument(
         "--debug",
         action="store_true",
         help="Enable debug mode to write intermediate CSV files",
     )
 
     args = parser.parse_args()
-
-    set_random_seed(args.seed)
-    logger.info(f"Random seed set to {args.seed}")
 
     main(
         args.data_dir,

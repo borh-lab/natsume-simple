@@ -67,11 +67,6 @@ conn = load_db()
 corpus_stats = calculate_corpus_stats(conn)
 
 
-@app.get("/corpus/stats")
-def get_corpus_stats() -> Dict[str, Dict[str, float]]:
-    return corpus_stats
-
-
 @app.get("/corpus/norm")
 def get_corpus_norm() -> Dict[str, Dict[str, float]]:
     """Return both normalization factors and collocation counts for each corpus."""

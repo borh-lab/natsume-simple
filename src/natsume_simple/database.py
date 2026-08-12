@@ -1,15 +1,14 @@
 import datetime
+import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, TypeAlias
 
 import duckdb
 import polars as pl
 
-from natsume_simple.log import setup_logger
-
 WordKey: TypeAlias = Tuple[str, str, Optional[str], str, str, str, int]
 
-logger = setup_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 def _make_word_key(
@@ -261,6 +260,10 @@ def get_table_counts(conn: duckdb.DuckDBPyConnection) -> Dict[str, int]:
 if __name__ == "__main__":
     import argparse
 
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    )
     parser = argparse.ArgumentParser(description="Database management operations")
     parser.add_argument(
         "--data-dir",

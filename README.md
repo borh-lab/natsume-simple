@@ -161,10 +161,6 @@ python src/natsume_simple/pattern_extraction.py \
     --data-dir data \
     --unprocessed-only
 
-# Set custom random seed
-python src/natsume_simple/pattern_extraction.py \
-    --data-dir data \
-    --seed 42
 ```
 
 ### Database Management (database.py)
@@ -191,34 +187,17 @@ uvicorn src.natsume_simple.server:app --reload
 uvicorn src.natsume_simple.server:app
 
 # Available API endpoints:
-# GET /corpus/stats - Get corpus statistics
 # GET /corpus/norm - Get normalization factors
 # GET /npv/{search_type}/{term} - Search for collocations
 # GET /sentences/{n}/{p}/{v}/{limit} - Get example sentences
 # GET /search/{query} - Search for terms
 
 # Example API calls:
-curl http://localhost:8000/corpus/stats
+curl http://localhost:8000/corpus/norm
 curl http://localhost:8000/npv/noun/本
 curl http://localhost:8000/npv/verb/読む
 curl http://localhost:8000/sentences/本/を/読む/5
 curl http://localhost:8000/search/読
-```
-
-### Utility Modules (no CLI interface)
-
-The following modules provide functionality used by other modules but don't have direct CLI interfaces:
-
-- `log.py` - Logging configuration
-- `utils.py` - Utility functions like random seed setting
-
-Example usage in Python code:
-```python
-from natsume_simple.log import setup_logger
-from natsume_simple.utils import set_random_seed
-
-logger = setup_logger(__name__)
-set_random_seed(42)
 ```
 
 ## Nix Flake Usage
