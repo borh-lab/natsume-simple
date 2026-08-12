@@ -116,7 +116,7 @@ The following commands are available after entering the development environment:
 - `run-all` - Initialize database, prepare data, extract patterns and start server
 
 ### Environment Variables
-- `ACCELERATOR` - Current accelerator type (cpu/cuda/rocm)
+- `ACCELERATOR` - Current accelerator type (cpu/cuda)
 - `PC_PORT_NUM` - Process compose port (default: 10011)
 
 Type `h` to see this command overview again

@@ -22,8 +22,8 @@ dependencies = [
     "pydantic>=2.10.5",
 ]
 
-[tool.uv]
-dev-dependencies = [
+[dependency-groups]
+dev = [
     "ipykernel>=6.29.5",
     "ipywidgets>=8.1.5",
     "jupyter>=1.1.1",
@@ -33,42 +33,33 @@ dev-dependencies = [
     "pytest>=8.3.3",
     "ruff>=0.7.4",
 ]
+
+[tool.uv]
 conflicts = [
     [
         { extra = "cpu" },
         { extra = "cuda" },
-        { extra = "rocm" },
     ],
 ]
 
 [project.optional-dependencies]
 cpu = [
-    "torch>=2.5.1",
+    "torch>=2.6.0",
 ]
 cuda = [
-    "torch>=2.5.1",
+    "torch==2.6.0+cu126",
     "onnxruntime-gpu>=1.20.1",
     "cupy-cuda12x>=13.3.0",
 ]
-rocm = [
-    "torch==2.5.1+rocm6.2",
-    "pytorch_triton_rocm==3.1.0",
-    "cupy-rocm-5-0",
-]
 backend = [
     "fastapi[standard]>=0.115.0",
-    "python-fasthtml>=0.8.0",
 ]
 
 [tool.uv.sources]
 torch = [
     { index = "pytorch-cpu", extra = "cpu" },
     { index = "pytorch-cuda", extra = "cuda" },
-    { index = "pytorch-rocm", extra = "rocm" },
-    # { index = "pytorch-rocm", extra = "rocm", marker = "platform_system == 'Linux'" },
 ]
-# pytorch-triton-rocm = { index = "pytorch-rocm", extra = "rocm", marker = "platform_system == 'Linux'" }
-pytorch-triton-rocm = { index = "pytorch-rocm", extra = "rocm" }
 
 [[tool.uv.index]]
 name = "pytorch-cpu"
@@ -76,13 +67,8 @@ url = "https://download.pytorch.org/whl/cpu"
 explicit = true
 
 [[tool.uv.index]]
-name = "pytorch-rocm"
-url = "https://download.pytorch.org/whl/rocm6.2"
-explicit = true
-
-[[tool.uv.index]]
 name = "pytorch-cuda"
-url = "https://download.pytorch.org/whl/cu124"
+url = "https://download.pytorch.org/whl/cu126"
 explicit = true
 
 [build-system]
