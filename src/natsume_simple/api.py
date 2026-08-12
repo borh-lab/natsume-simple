@@ -58,6 +58,11 @@ class SuggestionsResponse(BaseModel):
 class CorpusContributionResponse(BaseModel):
     corpusId: str
     rawFrequency: int
+
+
+class CorpusDistributionResponse(BaseModel):
+    corpusId: str
+    rawFrequency: int
     frequencyPerMillion: float
 
 
@@ -75,7 +80,7 @@ class ParticleGroupResponse(BaseModel):
     totalMatchingCollocations: int
     returnedCount: int
     items: list[CollocationItemResponse]
-    corpusDistribution: list[CorpusContributionResponse]
+    corpusDistribution: list[CorpusDistributionResponse]
 
 
 class CollocationsResponse(BaseModel):
@@ -508,13 +513,17 @@ def create_app(artifact_dir: Path) -> FastAPI:
 
         by_particle: dict[str, list[CollocationItemResponse]] = {}
         for (noun, particle, verb), raw_by_corpus in by_triple.items():
+            rates_by_corpus = {
+                corpus_id: raw_by_corpus[corpus_id]
+                / corpus_counts[corpus_id]
+                * 1_000_000
+                for corpus_id in selected
+                if corpus_id in raw_by_corpus
+            }
             contributions = [
                 CorpusContributionResponse(
                     corpusId=corpus_id,
                     rawFrequency=raw_by_corpus[corpus_id],
-                    frequencyPerMillion=(
-                        raw_by_corpus[corpus_id] / corpus_counts[corpus_id] * 1_000_000
-                    ),
                 )
                 for corpus_id in selected
                 if corpus_id in raw_by_corpus
@@ -524,10 +533,7 @@ def create_app(artifact_dir: Path) -> FastAPI:
                 particle=particle,
                 verb=verb,
                 totalRawFrequency=sum(raw_by_corpus.values()),
-                meanFrequencyPerMillion=(
-                    sum(item.frequencyPerMillion for item in contributions)
-                    / len(selected)
-                ),
+                meanFrequencyPerMillion=(sum(rates_by_corpus.values()) / len(selected)),
                 contributions=contributions,
             )
             by_particle.setdefault(particle, []).append(item)
@@ -557,24 +563,23 @@ def create_app(artifact_dir: Path) -> FastAPI:
                         item.verb,
                     )
                 )
-            distribution = [
-                CorpusContributionResponse(
-                    corpusId=corpus_id,
-                    rawFrequency=sum(
-                        contribution.rawFrequency
-                        for item in items
-                        for contribution in item.contributions
-                        if contribution.corpusId == corpus_id
-                    ),
-                    frequencyPerMillion=sum(
-                        contribution.frequencyPerMillion
-                        for item in items
-                        for contribution in item.contributions
-                        if contribution.corpusId == corpus_id
-                    ),
+            distribution = []
+            for corpus_id in selected:
+                raw_frequency = sum(
+                    contribution.rawFrequency
+                    for item in items
+                    for contribution in item.contributions
+                    if contribution.corpusId == corpus_id
                 )
-                for corpus_id in selected
-            ]
+                distribution.append(
+                    CorpusDistributionResponse(
+                        corpusId=corpus_id,
+                        rawFrequency=raw_frequency,
+                        frequencyPerMillion=(
+                            raw_frequency / corpus_counts[corpus_id] * 1_000_000
+                        ),
+                    )
+                )
             returned_items = items[:limitPerParticle]
             particle_groups.append(
                 ParticleGroupResponse(

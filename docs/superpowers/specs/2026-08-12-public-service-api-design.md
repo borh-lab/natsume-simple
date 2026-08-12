@@ -42,11 +42,13 @@ honest contract atomically.
 
 FastAPI lifespan resolves an explicit artifact-directory configuration, reads
 `manifest.json`, verifies supported schema version and database identity, and
-opens the database in DuckDB read-only mode before readiness becomes true. It
-closes owned resources on shutdown. Importing the module does not open a database.
-Failed validation leaves the process live for orchestration diagnostics but
-stores no usable database path; readiness and every database-backed route then
-return the sanitized `503 database_unavailable` envelope.
+verifies that the immutable artifact contains one to three corpora before
+readiness becomes true. It closes owned resources on shutdown. Importing the
+module does not open a database. Failed validation emits one structured
+`artifact_rejected` event with a stable reason code but no local path, leaves the
+process live for orchestration diagnostics, and stores no usable database path;
+readiness and every database-backed route then return the sanitized
+`503 database_unavailable` envelope.
 
 A single FastAPI dependency opens and yields a request-local read-only DuckDB
 connection, then closes it. Connections are never shared concurrently across
@@ -119,8 +121,8 @@ Parameters:
 - `term`: required, 1–64 Unicode code points.
 - `pos`: required enum `noun | verb`.
 - `corpusId`: repeatable stable corpus ID. Absence means all corpora; duplicates
-  are normalized; an empty or unknown value or more than three selected corpora
-  is `400`.
+  are normalized; an empty or unknown value is `400`. Artifact validation
+  guarantees that the complete known set contains at most three corpora.
 - `rankBy`: required enum `raw | meanPerMillion`.
 - `limitPerParticle`: default 100, integer 1–150.
 
@@ -130,7 +132,12 @@ At most the configured eight particle groups are returned. Each group contains
 collocation triples matching the term, particle, and selected corpus set before
 the item limit. Each item contains `noun`, `particle`, `verb`,
 `totalRawFrequency`, `meanFrequencyPerMillion`, and contributions containing
-`corpusId`, `rawFrequency`, and `frequencyPerMillion`.
+`corpusId` and `rawFrequency`. The client derives an item's per-corpus display
+rate from that raw count and `/api/corpora`'s `collocationCount`; serializing the
+same derived value on every contribution would consume response-size headroom.
+The group-level `corpusDistribution` retains both raw and per-million values
+because it describes the complete pre-limit result set and cannot be derived
+from the bounded items sent to the client.
 
 The server applies corpus selection, computes both aggregate metrics, orders by
 the requested metric, and only then applies `limitPerParticle`. Raw ranking uses
@@ -175,8 +182,9 @@ meanFrequencyPerMillion =
 The arithmetic mean gives each selected corpus equal weight without making the
 metric grow merely because another corpus was selected. It is deliberately
 distinct from a pooled rate, which weights corpora by their collocation counts.
-The server returns selection-specific numeric facts and ranking. The frontend
-computes only presentation geometry, colors, and tooltip layout.
+The server returns selection-specific aggregate facts and ranking. The frontend
+derives only the exact per-contribution rate above plus presentation geometry,
+colors, and tooltip layout; it does not rerank.
 
 The wire contract removes `normalizedWidth`, `normalizedOffset`, `rawWidth`,
 `rawOffset`, `total_normalized`, and `total_raw`.
@@ -248,9 +256,12 @@ document, and filter all response fields as recommended by FastAPI:
   titles are at most 512 code points, and sentences are at most 4,096 code
   points. Builder validation rejects rather than truncates an over-bound fact.
   With those bounds, the measured eight-particle/150-item/three-contribution
-  collocation fixture is about 809 KiB and the 20-example maximum is about
+  collocation fixture is about 724 KiB and the 20-example maximum is about
   274 KiB under FastAPI's actual JSON serialization. A conservative structural
-  model using widest expected integer/float encodings is about 905 KiB.
+  model using 32-character corpus IDs and widest expected integer/float
+  encodings is about 864 KiB. The same conservative model at 200 items is about
+  1,150 KiB, so removing the redundant contribution rate does not safely restore
+  the former limit.
 - The initial capacity gate runs a curated search set at 10 concurrent clients;
   p95 end-to-end API latency must remain below 1 second on the documented
   production host class. The benchmark records host CPU, memory, DuckDB settings,
@@ -296,7 +307,9 @@ generator; frontend protocol cutover cannot precede that resolution.
 - Malicious corpus fixtures include tags, entities, quotes, event-handler-like
   text, and malformed spans; browser assertions prove no executable nodes appear.
 - Readiness tests cover missing manifest, checksum mismatch, unsupported schema,
-  unreadable database, and successful trivial query.
+  unreadable database, invalid corpus count, and successful trivial query. Each
+  rejection asserts its structured reason code without exposing the artifact
+  path.
 
 ## Acceptance Criteria
 
@@ -338,7 +351,7 @@ not supported.
 | No API version namespace                            | Accepted | No external consumers; atomic deployment                                                          | First external consumer                                      |
 | Per-corpus rate plus equal-weight selected mean     | Accepted | Keeps the per-million denominator honest and avoids aggregate magnitude scaling with corpus count | Domain analysis prefers pooled corpus-size weighting         |
 | Selection and ranking happen before limiting        | Accepted | A globally truncated response cannot produce correct selection-specific top N client-side         | Cursor pagination or unbounded result transfer is introduced |
-| Limit to 150 items per particle                     | Accepted | The former 200-item fixture measured about 1,077 KiB (1,204 KiB conservative model); 150 measures about 809 KiB | Present consumer needs deeper results and pagination is designed |
+| Limit to 150 items per particle                     | Accepted | Removing the derived item contribution rate lowers the measured 150-item fixture to about 724 KiB, but the 32-character-ID structural model at 200 remains about 1,150 KiB | Present consumer needs deeper results and pagination is designed |
 | Request-local read-only connections                 | Accepted | Matches DuckDB Python concurrency guidance                                                        | Measured connection overhead becomes material                |
 | No production CORS                                  | Accepted | Frontend and API are same-origin                                                                  | Separate trusted frontend origin is deployed                 |
 | OpenAPI-generated compile-time types only           | Accepted | Prevents drift without runtime client machinery                                                   | Multiple clients need richer generation                      |

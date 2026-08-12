@@ -300,9 +300,15 @@ def test_collocations_select_and_rank_before_applying_the_limit(tmp_path: Path):
                 {
                     "corpusId": "beta",
                     "rawFrequency": 2,
-                    "frequencyPerMillion": 500_000,
                 }
             ],
+        }
+    ]
+    assert particle["corpusDistribution"] == [
+        {
+            "corpusId": "beta",
+            "rawFrequency": 3,
+            "frequencyPerMillion": 750_000,
         }
     ]
 

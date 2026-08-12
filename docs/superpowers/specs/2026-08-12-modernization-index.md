@@ -182,7 +182,7 @@ Nix flake ──► frontend package
   artifact rollout, and availability ownership.
 - Online corpus writes require a new persistence and synchronization design.
 - An external API consumer requires explicit compatibility/versioning policy.
-- A consumer needing more than 200 collocations per particle triggers cursor
+- A consumer needing more than 150 collocations per particle triggers cursor
   pagination design.
 - A supported token-level research workflow triggers a separate analytical
   artifact rather than widening the serving schema.
@@ -212,7 +212,7 @@ Nix flake ──► frontend package
   concurrency; the application does not implement accounts or distributed rate
   limiting.
 - Whole-artifact rebuilding is preferred over incremental mutation.
-- Results are limited to 200 collocations per particle until a present consumer
+- Results are limited to 150 collocations per particle until a present consumer
   justifies pagination.
 - CPU is the mandatory full CI path; accelerator claims require scheduled
   matching-hardware evidence rather than every-commit full runs.
