@@ -124,6 +124,23 @@ class CollocationOccurrence:
     extractor_id: str
 
 
+@dataclass(frozen=True)
+class ArtifactRecords:
+    corpora: tuple[CorpusRecord, ...]
+    sources: tuple[SourceDocument, ...]
+    sentences: tuple[SentenceRecord, ...]
+    occurrences: tuple[CollocationOccurrence, ...]
+
+
+@dataclass(frozen=True)
+class BuildMetadata:
+    artifact_instance_id: str
+    identity_inputs: dict[str, Any]
+    built_at: datetime
+    content_license: str
+    attribution: str
+
+
 def create_schema_v1(connection: duckdb.DuckDBPyConnection) -> None:
     """Create the complete serving schema in an empty DuckDB database."""
     connection.execute(SCHEMA_SQL)
@@ -132,177 +149,227 @@ def create_schema_v1(connection: duckdb.DuckDBPyConnection) -> None:
 def build_artifact(
     output_directory: Path,
     *,
-    artifact_instance_id: str,
-    corpora: list[CorpusRecord],
-    sources: list[SourceDocument],
-    sentences: list[SentenceRecord],
-    occurrences: list[CollocationOccurrence],
-    identity_inputs: dict[str, Any],
-    built_at: datetime,
-    content_license: str,
-    attribution: str,
+    records: ArtifactRecords,
+    metadata: BuildMetadata,
 ) -> Path:
     """Persist canonical records into one validated, immutable artifact."""
-    staging = output_directory.with_name(f"{output_directory.name}.staging")
-    if output_directory.exists() or staging.exists():
-        raise ArtifactBuildError("artifact_path_exists")
+    ordered = _order_and_validate(records, metadata.artifact_instance_id)
+    staging = _reserve_staging(output_directory)
+    database_path = staging / "corpus.duckdb"
 
-    ordered_corpora = sorted(corpora, key=lambda corpus: corpus.id)
-    ordered_sources = sorted(
-        sources, key=lambda source: (source.corpus_id, source.external_id)
-    )
-    ordered_sentences = sorted(
-        sentences,
-        key=lambda sentence: (*sentence.source_identity, sentence.ordinal),
-    )
-    ordered_occurrences = sorted(
-        occurrences,
-        key=lambda occurrence: (
-            *occurrence.source_identity,
-            occurrence.sentence_ordinal,
-            occurrence.noun,
-            occurrence.particle,
-            occurrence.verb,
-            occurrence.noun_span,
-            occurrence.particle_span,
-            occurrence.verb_span,
-            occurrence.extractor_id,
+    with duckdb.connect(str(database_path)) as connection:
+        create_schema_v1(connection)
+        _persist_relations(connection, ordered, metadata)
+        _derive_aggregates(connection)
+        _validate_persisted_facts(connection)
+
+    _write_artifact_files(staging, database_path, ordered, metadata)
+    return _publish(staging, output_directory)
+
+
+def _order_and_validate(
+    records: ArtifactRecords, artifact_instance_id: str
+) -> ArtifactRecords:
+    ordered = ArtifactRecords(
+        corpora=tuple(sorted(records.corpora, key=lambda corpus: corpus.id)),
+        sources=tuple(
+            sorted(
+                records.sources,
+                key=lambda source: (source.corpus_id, source.external_id),
+            )
+        ),
+        sentences=tuple(
+            sorted(
+                records.sentences,
+                key=lambda sentence: (*sentence.source_identity, sentence.ordinal),
+            )
+        ),
+        occurrences=tuple(
+            sorted(
+                records.occurrences,
+                key=lambda occurrence: (
+                    *occurrence.source_identity,
+                    occurrence.sentence_ordinal,
+                    occurrence.noun,
+                    occurrence.particle,
+                    occurrence.verb,
+                    occurrence.noun_span,
+                    occurrence.particle_span,
+                    occurrence.verb_span,
+                    occurrence.extractor_id,
+                ),
+            )
         ),
     )
     _validate_records(
         artifact_instance_id,
-        ordered_corpora,
-        ordered_sources,
-        ordered_sentences,
-        ordered_occurrences,
+        ordered.corpora,
+        ordered.sources,
+        ordered.sentences,
+        ordered.occurrences,
     )
+    return ordered
 
+
+def _reserve_staging(output_directory: Path) -> Path:
+    staging = output_directory.with_name(f"{output_directory.name}.staging")
+    if output_directory.exists() or staging.exists():
+        raise ArtifactBuildError("artifact_path_exists")
     staging.mkdir()
-    database_path = staging / "corpus.duckdb"
+    return staging
+
+
+def _persist_relations(
+    connection: duckdb.DuckDBPyConnection,
+    records: ArtifactRecords,
+    metadata: BuildMetadata,
+) -> None:
     source_ids = {
         (source.corpus_id, source.external_id): source_id
-        for source_id, source in enumerate(ordered_sources, start=1)
+        for source_id, source in enumerate(records.sources, start=1)
     }
     sentence_ids = {
         (sentence.source_identity, sentence.ordinal): sentence_id
-        for sentence_id, sentence in enumerate(ordered_sentences, start=1)
+        for sentence_id, sentence in enumerate(records.sentences, start=1)
     }
-    extractor_id = ordered_occurrences[0].extractor_id
-    source_identity_inputs = _source_identity_inputs(ordered_sources)
+    extractor_id = records.occurrences[0].extractor_id
+    source_identity_inputs = _source_identity_inputs(records.sources)
     source_manifest_sha256 = _source_manifest_sha256(source_identity_inputs)
-    applied_identity_inputs = {**identity_inputs, "sources": source_identity_inputs}
+    connection.execute(
+        """
+        INSERT INTO build_metadata (
+            schema_version, artifact_instance_id, builder_version, extractor_id,
+            execution_profile_json, source_manifest_sha256, built_at_utc
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        [
+            SCHEMA_VERSION,
+            metadata.artifact_instance_id,
+            str(metadata.identity_inputs.get("builderRevision", "unknown")),
+            extractor_id,
+            json.dumps(
+                metadata.identity_inputs.get("executionProfile", {}),
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ),
+            source_manifest_sha256,
+            metadata.built_at,
+        ],
+    )
+    connection.executemany(
+        "INSERT INTO corpus (id, label) VALUES (?, ?)",
+        [(corpus.id, corpus.label) for corpus in records.corpora],
+    )
+    connection.executemany(
+        """
+        INSERT INTO source (
+            id, corpus_id, external_id, title, year, author, publisher, url,
+            content_sha256
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        [
+            (
+                source_ids[(source.corpus_id, source.external_id)],
+                source.corpus_id,
+                source.external_id,
+                source.title,
+                source.year,
+                source.author,
+                source.publisher,
+                source.url,
+                source.content_sha256,
+            )
+            for source in records.sources
+        ],
+    )
+    connection.executemany(
+        """
+        INSERT INTO sentence (id, source_id, ordinal, text)
+        VALUES (?, ?, ?, ?)
+        """,
+        [
+            (
+                sentence_ids[(sentence.source_identity, sentence.ordinal)],
+                source_ids[sentence.source_identity],
+                sentence.ordinal,
+                sentence.text,
+            )
+            for sentence in records.sentences
+        ],
+    )
+    connection.executemany(
+        """
+        INSERT INTO collocation_occurrence (
+            sentence_id, noun, particle, verb, n_begin, n_end, p_begin, p_end,
+            v_begin, v_end, extractor_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        [
+            (
+                sentence_ids[(occurrence.source_identity, occurrence.sentence_ordinal)],
+                occurrence.noun,
+                occurrence.particle,
+                occurrence.verb,
+                *occurrence.noun_span,
+                *occurrence.particle_span,
+                *occurrence.verb_span,
+                occurrence.extractor_id,
+            )
+            for occurrence in records.occurrences
+        ],
+    )
 
-    with duckdb.connect(str(database_path)) as connection:
-        create_schema_v1(connection)
-        connection.execute(
-            "INSERT INTO build_metadata VALUES (?, ?, ?, ?, ?, ?, ?)",
-            [
-                SCHEMA_VERSION,
-                artifact_instance_id,
-                str(identity_inputs.get("builderRevision", "unknown")),
-                extractor_id,
-                json.dumps(
-                    identity_inputs.get("executionProfile", {}),
-                    ensure_ascii=False,
-                    sort_keys=True,
-                    separators=(",", ":"),
-                ),
-                source_manifest_sha256,
-                built_at,
-            ],
-        )
-        connection.executemany(
-            "INSERT INTO corpus VALUES (?, ?)",
-            [(corpus.id, corpus.label) for corpus in ordered_corpora],
-        )
-        connection.executemany(
-            "INSERT INTO source VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            [
-                (
-                    source_ids[(source.corpus_id, source.external_id)],
-                    source.corpus_id,
-                    source.external_id,
-                    source.title,
-                    source.year,
-                    source.author,
-                    source.publisher,
-                    source.url,
-                    source.content_sha256,
-                )
-                for source in ordered_sources
-            ],
-        )
-        connection.executemany(
-            "INSERT INTO sentence VALUES (?, ?, ?, ?)",
-            [
-                (
-                    sentence_ids[(sentence.source_identity, sentence.ordinal)],
-                    source_ids[sentence.source_identity],
-                    sentence.ordinal,
-                    sentence.text,
-                )
-                for sentence in ordered_sentences
-            ],
-        )
-        connection.executemany(
-            "INSERT INTO collocation_occurrence VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            [
-                (
-                    sentence_ids[
-                        (occurrence.source_identity, occurrence.sentence_ordinal)
-                    ],
-                    occurrence.noun,
-                    occurrence.particle,
-                    occurrence.verb,
-                    *occurrence.noun_span,
-                    *occurrence.particle_span,
-                    *occurrence.verb_span,
-                    occurrence.extractor_id,
-                )
-                for occurrence in ordered_occurrences
-            ],
-        )
-        connection.execute(
-            """
-            INSERT INTO corpus_stats
-            SELECT c.id,
-                   count(DISTINCT src.id)::INTEGER,
-                   count(DISTINCT s.id)::INTEGER,
-                   count(o.sentence_id)::INTEGER
-            FROM corpus c
-            LEFT JOIN source src ON src.corpus_id = c.id
-            LEFT JOIN sentence s ON s.source_id = src.id
-            LEFT JOIN collocation_occurrence o ON o.sentence_id = s.id
-            GROUP BY c.id
-            ORDER BY c.id
-            """
-        )
-        connection.execute(
-            """
-            INSERT INTO lemma_frequency
-            SELECT part_of_speech, lemma, count(*)::INTEGER
-            FROM (
-                SELECT 'noun' AS part_of_speech, noun AS lemma
-                FROM collocation_occurrence
-                UNION ALL
-                SELECT 'verb' AS part_of_speech, verb AS lemma
-                FROM collocation_occurrence
-            ) lemmas
-            GROUP BY part_of_speech, lemma
-            ORDER BY part_of_speech, lemma
-            """
-        )
-        _validate_persisted_facts(connection)
 
-    relation_counts = {
-        "corpus": len(ordered_corpora),
-        "source": len(ordered_sources),
-        "sentence": len(ordered_sentences),
-        "collocationOccurrence": len(ordered_occurrences),
-    }
+def _derive_aggregates(connection: duckdb.DuckDBPyConnection) -> None:
+    connection.execute(
+        """
+        INSERT INTO corpus_stats (
+            corpus_id, source_count, sentence_count, collocation_count
+        )
+        SELECT c.id,
+               count(DISTINCT src.id)::INTEGER,
+               count(DISTINCT s.id)::INTEGER,
+               count(o.sentence_id)::INTEGER
+        FROM corpus c
+        LEFT JOIN source src ON src.corpus_id = c.id
+        LEFT JOIN sentence s ON s.source_id = src.id
+        LEFT JOIN collocation_occurrence o ON o.sentence_id = s.id
+        GROUP BY c.id
+        ORDER BY c.id
+        """
+    )
+    connection.execute(
+        """
+        INSERT INTO lemma_frequency (part_of_speech, lemma, occurrence_count)
+        SELECT part_of_speech, lemma, count(*)::INTEGER
+        FROM (
+            SELECT 'noun' AS part_of_speech, noun AS lemma
+            FROM collocation_occurrence
+            UNION ALL
+            SELECT 'verb' AS part_of_speech, verb AS lemma
+            FROM collocation_occurrence
+        ) lemmas
+        GROUP BY part_of_speech, lemma
+        ORDER BY part_of_speech, lemma
+        """
+    )
+
+
+def _write_artifact_files(
+    staging: Path,
+    database_path: Path,
+    records: ArtifactRecords,
+    metadata: BuildMetadata,
+) -> None:
+    relation_counts = _relation_counts(records)
     database_sha256 = hashlib.sha256(database_path.read_bytes()).hexdigest()
+    applied_identity_inputs = {
+        **metadata.identity_inputs,
+        "sources": _source_identity_inputs(records.sources),
+    }
     manifest = {
-        "artifactInstanceId": artifact_instance_id,
+        "artifactInstanceId": metadata.artifact_instance_id,
         "schemaVersion": SCHEMA_VERSION,
         "databaseSha256": database_sha256,
         "identityInputs": applied_identity_inputs,
@@ -323,21 +390,33 @@ def build_artifact(
         encoding="utf-8",
     )
     (staging / "LICENSE-CONTENT.txt").write_text(
-        content_license.rstrip() + "\n", encoding="utf-8"
+        metadata.content_license.rstrip() + "\n", encoding="utf-8"
     )
     (staging / "ATTRIBUTION.md").write_text(
-        attribution.rstrip() + "\n", encoding="utf-8"
+        metadata.attribution.rstrip() + "\n", encoding="utf-8"
     )
+
+
+def _relation_counts(records: ArtifactRecords) -> dict[str, int]:
+    return {
+        "corpus": len(records.corpora),
+        "source": len(records.sources),
+        "sentence": len(records.sentences),
+        "collocationOccurrence": len(records.occurrences),
+    }
+
+
+def _publish(staging: Path, output_directory: Path) -> Path:
     staging.rename(output_directory)
     return output_directory
 
 
 def _validate_records(
     artifact_instance_id: str,
-    corpora: list[CorpusRecord],
-    sources: list[SourceDocument],
-    sentences: list[SentenceRecord],
-    occurrences: list[CollocationOccurrence],
+    corpora: tuple[CorpusRecord, ...],
+    sources: tuple[SourceDocument, ...],
+    sentences: tuple[SentenceRecord, ...],
+    occurrences: tuple[CollocationOccurrence, ...],
 ) -> None:
     if not artifact_instance_id:
         raise ArtifactBuildError("artifact_instance_id_invalid")
@@ -424,7 +503,9 @@ def _validate_records(
             raise ArtifactBuildError("corpus_empty")
 
 
-def _source_identity_inputs(sources: list[SourceDocument]) -> list[dict[str, str]]:
+def _source_identity_inputs(
+    sources: tuple[SourceDocument, ...],
+) -> list[dict[str, str]]:
     return [
         {
             "contentSha256": source.content_sha256,
