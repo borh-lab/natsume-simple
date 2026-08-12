@@ -138,8 +138,10 @@ Upgrade datasets 3 to 5, NumPy 1 to 2, pytest 8 to 9, and supported current
 releases of Polars, spaCy, GiNZA/ja-ginza, wtpsplit, and their direct runtime
 requirements.
 
-This cohort cannot begin until Spec 3 Gate 3A proves every corpus can be
-reacquired without dataset remote code or converted from the legacy database.
+This cohort cannot begin until Spec 3 Gate 3A proves every planned public corpus
+can be reacquired without dataset remote code or converted from the legacy
+database, and records an explicit exclusion outcome for every inventoried
+remainder.
 Datasets 4 removed dataset-script/remote-code loading; the target 5.x release is
 therefore a deliberate adapter migration, not a compatible parameter update.
 See the [official datasets releases](https://github.com/huggingface/datasets/releases).
@@ -293,13 +295,13 @@ an exposed unmitigated advisory; otherwise roll forward with a focused fix.
 
 ## Decision Log
 
-| Decision                                    | Status   | Reason                                                               | Revisit trigger                                                             |
-| ------------------------------------------- | -------- | -------------------------------------------------------------------- | --------------------------------------------------------------------------- |
-| Upgrade in seven cohorts                    | Accepted | Isolates compatible ecosystems and behavioral risk                   | A cohort proves internally too broad                                        |
-| Prune before upgrading                      | Accepted | No value in modernizing unused machinery                             | A removed dependency gains a present consumer                               |
-| Hold TypeScript to supported peer range     | Accepted | Latest unsupported is not modernization                              | SvelteKit supports the next major                                           |
-| Treat NLP goldens as domain behavior        | Accepted | Model changes can silently alter corpus facts                        | Domain owner approves a changed policy                                      |
-| CPU full CI; scheduled GPU evidence         | Accepted | Practical baseline without pretending GPU support                    | Hosted matching GPU CI becomes economical                                   |
-| Remove ROCm support                         | Accepted | spaCy/Thinc expose no supported ROCm backend; a ROCm Torch wheel cannot prove GiNZA extraction | spaCy/Thinc document a supported ROCm backend and the full fixture passes |
-| Prettier and ESLint replace Biome           | Accepted | Clear ownership and mature Svelte-specific behavior                  | Biome's Svelte support is stable and can replace both with equivalent rules |
-| Frontend cohorts precede component refactor | Accepted | Avoids rebuilding the new component architecture on obsolete tooling | A cohort cannot pass without the refactor                                   |
+| Decision                                    | Status   | Reason                                                                                         | Revisit trigger                                                             |
+| ------------------------------------------- | -------- | ---------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| Upgrade in seven cohorts                    | Accepted | Isolates compatible ecosystems and behavioral risk                                             | A cohort proves internally too broad                                        |
+| Prune before upgrading                      | Accepted | No value in modernizing unused machinery                                                       | A removed dependency gains a present consumer                               |
+| Hold TypeScript to supported peer range     | Accepted | Latest unsupported is not modernization                                                        | SvelteKit supports the next major                                           |
+| Treat NLP goldens as domain behavior        | Accepted | Model changes can silently alter corpus facts                                                  | Domain owner approves a changed policy                                      |
+| CPU full CI; scheduled GPU evidence         | Accepted | Practical baseline without pretending GPU support                                              | Hosted matching GPU CI becomes economical                                   |
+| Remove ROCm support                         | Accepted | spaCy/Thinc expose no supported ROCm backend; a ROCm Torch wheel cannot prove GiNZA extraction | spaCy/Thinc document a supported ROCm backend and the full fixture passes   |
+| Prettier and ESLint replace Biome           | Accepted | Clear ownership and mature Svelte-specific behavior                                            | Biome's Svelte support is stable and can replace both with equivalent rules |
+| Frontend cohorts precede component refactor | Accepted | Avoids rebuilding the new component architecture on obsolete tooling                           | A cohort cannot pass without the refactor                                   |

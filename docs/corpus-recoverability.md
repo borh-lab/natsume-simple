@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-12
 **Gate status:** Blocked
-**Scope:** Read-only evidence for the legacy JNLP, TED, and Wikipedia corpora
+**Scope:** Evidence for the legacy JNLP, TED, and Wikipedia corpora
 
 This record implements Gate 3A from the corpus-builder design. It distinguishes
 integrity, technical reacquisition, identity recovery, and permission to publish;
@@ -32,10 +32,14 @@ The only inspected legacy database is the untracked `data/corpus.db`:
 | Wikipedia     |     971 |   216,568 |      218,323 |
 | 自然言語処理  |     459 |   134,395 |      262,565 |
 
-All inspection used DuckDB read-only connections. No conversion has begun. The
-required checksum-verified backup outside this repository and outside artifact
-retention paths does not yet exist; the operator must name its durable target
-before any conversion command may read the seed for export.
+All inspection used DuckDB read-only connections. No conversion has begun. A
+distinct read-only local safety copy now exists outside the repository at
+`~/Backups/natsume-simple/corpus-7326a9fa…05c0eca.db`; its `SHA256SUMS` check
+passes. This protects against accidental modification or deletion of the working
+copy, but it is on the same machine and is not the durable off-machine or
+content-addressed backup required before conversion. The operator must still
+name that durable target before any conversion command may read the seed for
+export.
 
 ## JNLP LaTeX corpus
 
@@ -93,13 +97,26 @@ The [Wikimedia dump license guide](https://dumps.wikimedia.org/legal.html) says
 text is generally available under CC BY-SA 4.0 and GFDL, subject to the
 controlling Terms of Use and content-specific exceptions. A public service must
 retain article identity/URL and provide attribution, license, modification, and
-takedown information. The upstream dataset metadata's older license labels are
-recorded as source metadata, not treated as the controlling legal conclusion.
+takedown information. Because the serving database contains extracted and
+segmented Wikipedia text, this project conservatively treats the published
+database and corpus-derived content as CC BY-SA 4.0 rather than MIT. The
+repository's software remains MIT. The upstream dataset metadata's older
+license labels are recorded as source metadata, not treated as the controlling
+legal conclusion.
 
 ## TED / IWSLT
 
-**Disposition:** Technical sources identified; Gate 3A and public publication
-blocked.
+**Disposition:** Excluded from the planned public release; synthetic local
+fixtures only.
+
+TED accounts for 224,898 of 226,328 legacy source rows but only 233,222
+sentences: the loader created approximately one pseudo-source per subtitle
+segment. It also accounts for 443,875 of 924,763 legacy collocations. Carrying
+those rows into schema v1 would preserve neither the intended document-level
+source model nor efficient source joins. The planned public release therefore
+contains JNLP and Wikipedia. Its corpus selector and per-million mean operate
+over those two corpora; TED is not silently treated as a pending third public
+corpus.
 
 The 2014–2016 WIT³ archive and 2017 Japanese-English training archive have
 immutable revisions, sizes, and SHA-256 values in the source lock. A local
@@ -113,8 +130,10 @@ Reacquisition cannot recreate the legacy source identities. The existing loader
 falls back to `hash(example["translation"]["en"])`; Python hash randomization
 makes those IDs process-specific. Reacquired sentence content can be compared,
 but identity preservation requires conversion from the backed-up legacy seed or
-a legacy-backed mapping. The new adapter should use stable upstream talk IDs and
-record that as a deliberate identity correction.
+a legacy-backed mapping. If TED is licensed and deliberately reintroduced, its
+adapter must model a talk as `SourceDocument`, subtitle segments as ordered text
+units/sentences, and the stable upstream talk ID as `external_id`. That is an
+explicit granularity and identity correction, not a legacy-preserving rebuild.
 
 Publication permission is unresolved. The 2017 archive names TED copyright and
 CC BY-NC-ND 3.0; upstream WIT³ metadata conflicts between BY-NC and BY-NC-ND.
@@ -124,20 +143,37 @@ does not permit distribution of adapted material. TED's current
 also say that educational use does not include external research datasets and
 that dataset/analysis/ML uses require a separate written license. Whether an
 earlier grant controls these archived inputs needs qualified review or written
-TED permission. Until then the builder may use a synthetic TED fixture, but no
-public artifact may include TED-derived data.
+TED permission. Until then no public or locally distributed artifact may include
+TED-derived data; tests use synthetic TED-shaped fixtures only.
+
+The unverified 1.67 GB WIT³ representative extraction and a legacy identity
+mapping are unfinished engineering, not owner inputs. They are removed from the
+critical path by the two-corpus product decision. Both become mandatory before
+any future decision to reintroduce TED.
 
 ## Gate conclusion
 
-Gate 3A is not passed:
+Gate 3A is not yet passed for the planned JNLP + Wikipedia public release.
+
+### Owner or external decisions
 
 - the legacy seed lacks the required durable verified backup;
 - the exact local JNLP archive lacks a resolvable durable location and stronger
-  exact-snapshot license evidence;
-- WIT³ representative extraction has not been run;
-- TED public derived-output permission is unresolved; and
-- exact TED legacy identities require conversion or a backed-seed mapping.
+  exact-snapshot license evidence.
+
+### Unfinished engineering
+
+- the full 634-file JNLP conversion proof has not run;
+- the pinned Wikipedia adapter still needs its committed representative fixture;
+  and
+- the applicable JNLP/Wikipedia gate checks must be rerun together.
+
+### Conditional TED work
+
+TED is not a dependency of the planned release. Reintroducing it would require
+qualified license review or written permission, the 1.67 GB WIT³ extraction,
+and talk-level identity reconciliation.
 
 Schema-v1 fixture work may continue. Production corpus conversion, replacement,
-and public publication remain blocked until the applicable items above have
-recorded evidence.
+and public publication remain blocked until every applicable JNLP/Wikipedia item
+above has recorded evidence.

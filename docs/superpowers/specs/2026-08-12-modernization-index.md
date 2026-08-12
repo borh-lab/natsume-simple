@@ -43,7 +43,7 @@ change atomically. There are no external API consumers to preserve.
 | Developer             | Change backend/frontend with fast feedback                      | Red baseline and checks that omit or mutate important surfaces                     | Fixture-backed, non-mutating checks covering types, protocol, behavior, and build outputs   |
 | Dependency maintainer | Upgrade major versions without losing domain behavior           | One broad environment and trivial tests obscure compatibility regressions          | Independently verified compatibility cohorts and accelerator evidence                       |
 | Service operator      | Run and roll back one public instance                           | Runtime setup scripts and no minimal production artifact                           | Nix server package and derived non-root OCI image consuming a read-only artifact            |
-| Student or instructor | Read, run, and explain the corpus-to-query path                  | Production concerns can obscure the walkthrough and silently erase doctests        | Small modules with executable examples at each taught transformation boundary                |
+| Student or instructor | Read, run, and explain the corpus-to-query path                 | Production concerns can obscure the walkthrough and silently erase doctests        | Small modules with executable examples at each taught transformation boundary               |
 
 ## Glossary
 
@@ -94,7 +94,7 @@ completion record linking the implementation commits and surviving ADRs.
 | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ | -------------------- |
 | Selection-specific top N was impossible after global truncation | `corpusId` and `rankBy` are server inputs; selection/ranking precede limiting and UI toggles refetch                           | 2 and 5              |
 | Equivalent builds collided on one directory                     | Flat unique no-overwrite instance directories; structured provenance and execution profile remain manifest metadata            | 3                    |
-| Rebuildability was assumed                                      | Gate 3A requires a passing reacquire or validated conversion outcome for every corpus                                          | 3                    |
+| Rebuildability was assumed                                      | Gate 3A requires reacquire/convert for every public corpus and an explicit exclusion outcome for any inventoried remainder     | 3                    |
 | Large NLP model had no check owner                              | Default checks use model-free observations; an explicit locked model derivation is a release/scheduled gate                    | 1 and 6              |
 | Formatter ownership was undecided                               | Prettier formats and ESLint lints; duplicate Biome ownership is removed                                                        | 1 and 4              |
 | Baseline and Nix specs owned the same mutation cleanup          | Spec 1 owns non-mutating wrappers/shell and minimal checks; Spec 6 owns derivations and closures                               | 1 and 6              |
@@ -103,16 +103,16 @@ completion record linking the implementation commits and surviving ADRs.
 | Aggregate rate name/meaning was ambiguous                       | Per-corpus `frequencyPerMillion` and selected `meanFrequencyPerMillion` are distinct                                           | 2                    |
 | p95 equalled timeout and cancellation was unspecified           | p95 is below 1 second; an event-loop timer interrupts and the request discards its local connection                            | 2                    |
 | Determinism criterion partly restated ID construction           | Repeated builds compare ordered relational exports and structured input fields independently                                   | 3                    |
-| Educational purpose was absent                                  | Student/instructor is an actor; walkthrough readability and executable examples are global constraints                          | 1–6                  |
-| Example cache omitted corpus selection                          | Cross-result caching is removed; component keys follow corpus/example identity while rank-only reorders preserve state           | 5                    |
-| Persisted aggregates created avoidable drift                    | Immutable build-time corpus/lemma facts are reconciled once; only filtered collocation frequency remains a view                 | 3                    |
-| Identity nesting complicated retention and cache invalidation   | Artifact directories are flat and the instance ID is the wire `databaseBuildId`                                                 | 2 and 3              |
+| Educational purpose was absent                                  | Student/instructor is an actor; walkthrough readability and executable examples are global constraints                         | 1–6                  |
+| Example cache omitted corpus selection                          | Cross-result caching is removed; component keys follow corpus/example identity while rank-only reorders preserve state         | 5                    |
+| Persisted aggregates created avoidable drift                    | Immutable build-time corpus/lemma facts are reconciled once; only filtered collocation frequency remains a view                | 3                    |
+| Identity nesting complicated retention and cache invalidation   | Artifact directories are flat and the instance ID is the wire `databaseBuildId`                                                | 2 and 3              |
 | Semantic build hash lost its structural consumers               | Structured manifest inputs serve equivalence comparison directly; the instance ID remains the only build identifier            | 3                    |
-| Small dead helpers and duplicate wrappers remained              | Spec 1 deletes dead seed/filter/route surfaces and uses stdlib pairing/logging; the live normalization helper waits for Spec 2  | 1 and 2              |
+| Small dead helpers and duplicate wrappers remained              | Spec 1 deletes dead seed/filter/route surfaces and uses stdlib pairing/logging; the live normalization helper waits for Spec 2 | 1 and 2              |
 | Notebook forked the extraction contract                         | Its distinct normalization/extraction cases migrate first; then it imports the tested module and retains exploration           | 1                    |
-| JNLP conversion relied on ambient executables                    | Gate 3A runs `nkf`/`pandoc` end-to-end; Spec 6 includes both in the declared builder closure                                    | 3 and 6              |
-| Generated changelog had no release consumer                     | The stale file and `git-cliff` are removed until a release process names a changelog deliverable                                | 1                    |
-| Development entry points duplicated environment ownership       | Default Codespaces delegates to Nix; Dockerfile and rootless/ROCm variants retire                                               | 4 and 6              |
+| JNLP conversion relied on ambient executables                   | Gate 3A runs `nkf`/`pandoc` end-to-end; Spec 6 includes both in the declared builder closure                                   | 3 and 6              |
+| Generated changelog had no release consumer                     | The stale file and `git-cliff` are removed until a release process names a changelog deliverable                               | 1                    |
+| Development entry points duplicated environment ownership       | Default Codespaces delegates to Nix; Dockerfile and rootless/ROCm variants retire                                              | 4 and 6              |
 
 Review follow-ups also assign legacy static deletion to Spec 1, acknowledge the
 incumbent prerelease manifest range, require cumulative intermediate-major
@@ -212,6 +212,9 @@ Nix flake ──► frontend package
   concurrency; the application does not implement accounts or distributed rate
   limiting.
 - Whole-artifact rebuilding is preferred over incremental mutation.
+- The planned public artifact contains JNLP and Wikipedia. TED remains
+  synthetic-fixture-only unless a new license/product decision and talk-level
+  adapter are approved.
 - Results are limited to 150 collocations per particle until a present consumer
   justifies pagination.
 - CPU is the mandatory full CI path; accelerator claims require scheduled
@@ -225,20 +228,22 @@ Nix flake ──► frontend package
 - Spec 2 records the production host class and proves memory/query limits with
   its curated benchmark before public release.
 - Spec 3 first proves reacquisition or a validated legacy conversion for every
-  corpus, then records license/redistribution status and resolvable immutable
-  source revisions before publishing each corpus.
+  planned public corpus, explicitly excludes TED, then records per-corpus and
+  artifact-level license/redistribution status plus resolvable immutable source
+  revisions before publication.
 - Spec 4 selects and proves the exact common CPU/CUDA NLP matrix before
   advertising accelerator support.
 
 ## Decision Log
 
-| Decision                                              | Status   | Date       | Reversibility | Evidence / reason                                                                                                                               | Revisit trigger                                                             |
-| ----------------------------------------------------- | -------- | ---------- | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
-| Use six capability specs with explicit phase gates    | Accepted | 2026-08-12 | Easy          | Separates defects, protocol, data lifecycle, refactor, upgrades, and packaging without forcing unsafe total ordering                            | Specs repeatedly require coupled changes                                    |
-| Replace the database only after a recoverability gate | Accepted | 2026-08-12 | Moderate      | Greenfield replacement is acceptable, but TED/Wiki inputs are not presently available in the working tree and remote dataset code is prohibited | Every corpus has a durable pinned source and conversion fallback is retired |
-| Rank over the requested corpus set and metric         | Accepted | 2026-08-12 | Moderate      | Client-side refinement of a globally truncated page omits valid top results                                                                     | Cursor pagination or a new analytical ranking is required                   |
-| Change frontend/backend atomically                    | Accepted | 2026-08-12 | Moderate      | Owner confirmed no external API consumers                                                                                                       | First external consumer appears                                             |
-| Target an anonymous read-only single instance         | Accepted | 2026-08-12 | Moderate      | Owner confirmed intended runtime                                                                                                                | Authentication, writes, or horizontal scaling is required                   |
-| Make Nix authoritative                                | Accepted | 2026-08-12 | Moderate      | Owner selected Nix for production                                                                                                               | Deployment platform cannot consume Nix outputs                              |
-| Derive OCI from Nix server package                    | Accepted | 2026-08-12 | Easy          | Prevents two competing production definitions                                                                                                   | Measured OCI constraints require a specialized builder                      |
-| Preserve the executable teaching walkthrough         | Accepted | 2026-08-12 | Moderate      | `AGENDA.md`, module doctests, pytest configuration, and Codespaces setup identify learning as a present consumer                                | The repository is no longer used for instruction                            |
+| Decision                                              | Status   | Date       | Reversibility | Evidence / reason                                                                                                                         | Revisit trigger                                                                    |
+| ----------------------------------------------------- | -------- | ---------- | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| Use six capability specs with explicit phase gates    | Accepted | 2026-08-12 | Easy          | Separates defects, protocol, data lifecycle, refactor, upgrades, and packaging without forcing unsafe total ordering                      | Specs repeatedly require coupled changes                                           |
+| Replace the database only after a recoverability gate | Accepted | 2026-08-12 | Moderate      | Greenfield replacement is acceptable, but public inputs require durable sources and remote dataset code is prohibited                     | Every public corpus has a durable pinned source and conversion fallback is retired |
+| Release JNLP and Wikipedia; exclude TED               | Accepted | 2026-08-12 | Moderate      | TED is 48% of legacy collocations but lacks clear public derived-output permission; its loader also made subtitle segments pseudo-sources | Written permission and a talk-level adapter are available                          |
+| Rank over the requested corpus set and metric         | Accepted | 2026-08-12 | Moderate      | Client-side refinement of a globally truncated page omits valid top results                                                               | Cursor pagination or a new analytical ranking is required                          |
+| Change frontend/backend atomically                    | Accepted | 2026-08-12 | Moderate      | Owner confirmed no external API consumers                                                                                                 | First external consumer appears                                                    |
+| Target an anonymous read-only single instance         | Accepted | 2026-08-12 | Moderate      | Owner confirmed intended runtime                                                                                                          | Authentication, writes, or horizontal scaling is required                          |
+| Make Nix authoritative                                | Accepted | 2026-08-12 | Moderate      | Owner selected Nix for production                                                                                                         | Deployment platform cannot consume Nix outputs                                     |
+| Derive OCI from Nix server package                    | Accepted | 2026-08-12 | Easy          | Prevents two competing production definitions                                                                                             | Measured OCI constraints require a specialized builder                             |
+| Preserve the executable teaching walkthrough          | Accepted | 2026-08-12 | Moderate      | `AGENDA.md`, module doctests, pytest configuration, and Codespaces setup identify learning as a present consumer                          | The repository is no longer used for instruction                                   |

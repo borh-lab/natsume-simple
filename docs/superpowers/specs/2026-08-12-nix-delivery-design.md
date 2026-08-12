@@ -173,8 +173,10 @@ overload protection.
 ## Artifact Mount and Startup
 
 Required configuration identifies an artifact directory containing both
-`manifest.json` and `corpus.duckdb`. The mount is read-only. Startup fails and
-readiness remains false for:
+`manifest.json` and `corpus.duckdb`. Public distribution of a production
+artifact also keeps its declared `LICENSE-CONTENT.txt` and `ATTRIBUTION.md`
+beside the database; the database is not covered by the software package's MIT
+license. The mount is read-only. Startup fails and readiness remains false for:
 
 - Missing mount/directory/files.
 - Manifest/database checksum or artifact-instance-ID mismatch.
@@ -287,13 +289,13 @@ no separate Dockerfile rollback path.
 
 ## Decision Log
 
-| Decision                                            | Status   | Reason                                                                        | Revisit trigger                                                                   |
-| --------------------------------------------------- | -------- | ----------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| Nix is authoritative                                | Accepted | Owner-selected production interface and reproducible closures                 | Target platform cannot consume Nix artifacts                                      |
-| OCI derives from server                             | Accepted | One runtime definition and behavior                                           | Measured image constraints require specialized layering                           |
-| Database is a mount, not default image content      | Accepted | Data refresh independent of app build                                         | Deployment strongly prefers self-contained immutable images                       |
-| Focused non-mutating shells                         | Accepted | Keeps dependency ownership clear and entry predictable                        | Contributor evidence shows union shell is sufficient                              |
-| x86_64 Linux image initially                        | Accepted | Current public-host target                                                    | Deployment requires another architecture                                          |
-| Require bounded public edge                         | Accepted | Anonymous expensive queries need overload protection even on one instance     | Authentication, multi-instance limiting, or measured capacity changes the control |
-| Keep one devcontainer that delegates to Nix         | Accepted | Default owns the documented Codespaces/local editor path; rootless/ROCm variants add unsupported setup ownership | A distinct supported environment gains a named user and smoke test |
-| Keep large-model integration outside default checks | Accepted | Default checks remain small while release evidence owns the real pinned model | Model closure becomes appropriate for every check                                 |
+| Decision                                            | Status   | Reason                                                                                                           | Revisit trigger                                                                   |
+| --------------------------------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| Nix is authoritative                                | Accepted | Owner-selected production interface and reproducible closures                                                    | Target platform cannot consume Nix artifacts                                      |
+| OCI derives from server                             | Accepted | One runtime definition and behavior                                                                              | Measured image constraints require specialized layering                           |
+| Database is a mount, not default image content      | Accepted | Data refresh independent of app build                                                                            | Deployment strongly prefers self-contained immutable images                       |
+| Focused non-mutating shells                         | Accepted | Keeps dependency ownership clear and entry predictable                                                           | Contributor evidence shows union shell is sufficient                              |
+| x86_64 Linux image initially                        | Accepted | Current public-host target                                                                                       | Deployment requires another architecture                                          |
+| Require bounded public edge                         | Accepted | Anonymous expensive queries need overload protection even on one instance                                        | Authentication, multi-instance limiting, or measured capacity changes the control |
+| Keep one devcontainer that delegates to Nix         | Accepted | Default owns the documented Codespaces/local editor path; rootless/ROCm variants add unsupported setup ownership | A distinct supported environment gains a named user and smoke test                |
+| Keep large-model integration outside default checks | Accepted | Default checks remain small while release evidence owns the real pinned model                                    | Model closure becomes appropriate for every check                                 |

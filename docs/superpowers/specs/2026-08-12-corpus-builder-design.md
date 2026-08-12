@@ -55,15 +55,27 @@ extraction in a clean declared environment. Its adapter currently requires
 success from an ambient developer `PATH` is not evidence. Spec 6 puts both tools
 in the corpus-builder closure.
 
-The spike passes only when every corpus has one of these recorded outcomes:
+The spike passes only when every planned public corpus has one of the first two
+recorded outcomes and every inventoried corpus has one of these recorded
+outcomes:
 
 - **reacquire**: a pinned data-only source and adapter are viable; or
 - **convert**: the existing database is the seed of record and the conversion
-  path below passes its validation fixture.
+  path below passes its validation fixture; or
+- **exclude**: the corpus is absent from public and locally distributed
+  artifacts, its product impact is recorded, and tests use synthetic fixtures.
 
-Failure to obtain either outcome blocks Spec 3 and data/NLP Cohort 6. Owner
+Failure to obtain the required outcome blocks Spec 3 and data/NLP Cohort 6. Owner
 confidence that conversion is acceptable is not evidence that corpus content is
 recoverable.
+
+The planned schema-v1 public release contains JNLP and Wikipedia. TED is an
+`exclude` outcome because its current publication permission is unresolved and
+the legacy loader represented subtitle segments as almost one source per
+sentence. Synthetic TED-shaped fixtures remain useful for three-corpus protocol
+coverage. Reintroducing real TED data requires a new product/license decision
+and a local adapter that models talks as sources, subtitle segments as ordered
+sentences, and stable upstream talk IDs as external identities.
 
 ### One-time legacy conversion
 
@@ -77,8 +89,11 @@ recovered.
 Conversion validation reconciles corpus/source/sentence/occurrence counts,
 checks every span against sentence text, compares a curated set of noun, verb,
 frequency, and example queries against the legacy database, and samples stable
-identities for manual review. Before the spike or conversion, the only legacy
-database is copied to checksum-verified operator backup storage outside any
+identities for manual review. At gate entry, the only legacy database receives a
+checksum-verified second local safety copy outside the
+repository; this protects against accidental deletion without pretending to be
+durable disaster recovery. Before conversion, the same checksum must exist in
+durable off-machine or content-addressed operator backup storage outside any
 builder output or retention path. Conversion is removed only after durable
 pinned sources exist for every converted corpus.
 
@@ -180,7 +195,16 @@ explicit local adapter or separately audited acquisition tool exists.
 
 License/redistribution status is a publication prerequisite. Unknown license is
 not silently represented as permissive; it blocks public artifact publication
-for that corpus while still permitting local fixture work.
+for that corpus while still permitting synthetic fixture work.
+
+The builder also resolves an artifact-level distribution conclusion from the
+selected corpora. The manifest records its status, SPDX expression, scope,
+rationale, evidence links, required attribution files, and modification notice.
+An unresolved or incompatible combination blocks publication. For the planned
+JNLP + Wikipedia artifact, the conservative content/distribution expression is
+`CC-BY-SA-4.0`; this applies to `corpus.duckdb` and corpus-derived outputs and
+does not relicense the MIT software. Download hosting ships the same notice as
+the artifact directory.
 
 ## Serving Schema Version 1
 
@@ -311,6 +335,8 @@ artifacts/<artifact-instance-id>/
   corpus.duckdb
   manifest.json
   validation.json
+  LICENSE-CONTENT.txt
+  ATTRIBUTION.md
 ```
 
 `artifact-instance-id` is an operator-readable UTC basic timestamp plus 128 bits
@@ -319,7 +345,8 @@ Creation uses an atomic exclusive directory operation and refuses any existing
 staging or final path; neither build nor publish overwrites an artifact.
 
 `manifest.json` records the structured identity inputs, instance ID, relation
-counts, corpus counts, license/provenance records, and the completed
+counts, corpus counts, per-corpus license/provenance records, the resolved
+artifact-level distribution conclusion and required notices, and the completed
 `corpus.duckdb` SHA-256. The file checksum is not embedded in the database,
 avoiding a circular identity. Equivalence checks and operator comparisons use
 the recorded fields directly instead of introducing a hash with no independent
@@ -423,8 +450,9 @@ manifest and recorded provenance.
 
 ## Acceptance Criteria
 
-- Gate 3A records a passing reacquire or convert path for JNLP, TED, and Wiki
-  before builder implementation or legacy database replacement begins.
+- Gate 3A records a passing reacquire or convert path for every planned public
+  corpus and an explicit disposition for TED before builder implementation or
+  legacy database replacement begins.
 - A fixture artifact can be built twice into distinct immutable instance paths
   with equal structured identity inputs and relational contents.
 - The built artifact passes all schema, protocol, and query fixture validations.
@@ -433,24 +461,27 @@ manifest and recorded provenance.
 - Failed builds/publications cannot change the artifact used by the server.
 - The serving database contains no general token tables.
 - Manifest provenance and license fields are complete for every publicly
-  published corpus.
+  published corpus; its resolved artifact-level license conclusion covers the
+  database/download as a whole and is not inherited from the software license.
 - Operators can publish and roll back by selecting immutable artifact versions.
 - A learner can run the builder walkthrough examples and trace the corresponding
   implementation without following a framework or repository hierarchy.
 
 ## Decision Log
 
-| Decision                                         | Status   | Reason                                                                                                              | Revisit trigger                                                      |
-| ------------------------------------------------ | -------- | ------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| Whole immutable rebuild                          | Accepted | Greenfield, simple rollback, eliminates duplicate/migration state                                                   | Build time exceeds operational window                                |
-| Separate acquisition from transformation         | Accepted | Reproducibility and remote-code control                                                                             | Inputs cannot legally/technically be cached                          |
-| Serve a projection, not token graph              | Accepted | Public consumers need collocations/examples only                                                                    | Token research becomes a supported product                           |
-| Derive per-million values at query time          | Accepted | Prevents denominator drift                                                                                          | Measured query cost is material                                      |
-| Publish via versioned directory pointer          | Accepted | Database and manifest switch together and roll back cheaply                                                         | Deployment filesystem cannot provide atomic pointer replacement      |
-| Gate replacement on corpus recoverability        | Accepted | TED/Wiki source material is absent locally and the target datasets stack cannot execute the incumbent remote loader | All corpora have durable pinned data-only sources                    |
-| Use one artifact instance identity                | Accepted | Structured manifest fields already support equivalence comparison; a second hashed identity has no independent consumer | A real consumer requires a compact equivalence key                 |
-| Record the execution profile as provenance        | Accepted | Device, precision, and concurrency can change NLP extraction results                                                | Extraction becomes proven invariant across profiles                  |
-| Require applied deterministic controls             | Accepted | A seed flag that controls no actual sampler is not reproducibility evidence                                          | All retained transforms become proven deterministic by construction  |
-| Use explicit sample identities                     | Accepted | Representative builds must select the same records without relying on engine RNG behavior                            | Representative sampling is removed                                  |
-| Materialize hot, artifact-wide aggregate facts    | Accepted | Immutable builder-written corpus/lemma counts avoid repeated full scans; filtered collocation aggregation stays a view | Benchmarks show either recorded table is unnecessary               |
-| Use flat instance directories                    | Accepted | Instance IDs are globally unique; flat layout makes listing and retention one-dimensional                           | Artifact volume requires a measured sharding strategy                |
+| Decision                                       | Status   | Reason                                                                                                                  | Revisit trigger                                                     |
+| ---------------------------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| Whole immutable rebuild                        | Accepted | Greenfield, simple rollback, eliminates duplicate/migration state                                                       | Build time exceeds operational window                               |
+| Separate acquisition from transformation       | Accepted | Reproducibility and remote-code control                                                                                 | Inputs cannot legally/technically be cached                         |
+| Serve a projection, not token graph            | Accepted | Public consumers need collocations/examples only                                                                        | Token research becomes a supported product                          |
+| Derive per-million values at query time        | Accepted | Prevents denominator drift                                                                                              | Measured query cost is material                                     |
+| Publish via versioned directory pointer        | Accepted | Database and manifest switch together and roll back cheaply                                                             | Deployment filesystem cannot provide atomic pointer replacement     |
+| Gate replacement on corpus recoverability      | Accepted | Public inputs need durable immutable resolution; executing the incumbent remote loaders is prohibited                   | All public corpora have durable pinned sources                      |
+| Use one artifact instance identity             | Accepted | Structured manifest fields already support equivalence comparison; a second hashed identity has no independent consumer | A real consumer requires a compact equivalence key                  |
+| Record the execution profile as provenance     | Accepted | Device, precision, and concurrency can change NLP extraction results                                                    | Extraction becomes proven invariant across profiles                 |
+| Require applied deterministic controls         | Accepted | A seed flag that controls no actual sampler is not reproducibility evidence                                             | All retained transforms become proven deterministic by construction |
+| Use explicit sample identities                 | Accepted | Representative builds must select the same records without relying on engine RNG behavior                               | Representative sampling is removed                                  |
+| Materialize hot, artifact-wide aggregate facts | Accepted | Immutable builder-written corpus/lemma counts avoid repeated full scans; filtered collocation aggregation stays a view  | Benchmarks show either recorded table is unnecessary                |
+| Use flat instance directories                  | Accepted | Instance IDs are globally unique; flat layout makes listing and retention one-dimensional                               | Artifact volume requires a measured sharding strategy               |
+| Publish JNLP and Wikipedia without TED         | Accepted | TED's permission is unresolved and its pseudo-source granularity contradicts the schema-v1 source model                 | Permission and a talk-level adapter are approved                    |
+| Resolve the artifact distribution license      | Accepted | Per-corpus fields do not tell an operator how the combined database may be redistributed; software MIT does not apply   | The artifact ceases to include third-party corpus text              |

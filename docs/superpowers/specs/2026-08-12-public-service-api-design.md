@@ -91,8 +91,8 @@ Returns ordered corpus records:
 {
   "corpora": [
     {
-      "id": "ted",
-      "label": "TED",
+      "id": "jnlp",
+      "label": "自然言語処理",
       "collocationCount": 123456,
       "sentenceCount": 234567
     }
@@ -261,7 +261,9 @@ document, and filter all response fields as recommended by FastAPI:
   model using 32-character corpus IDs and widest expected integer/float
   encodings is about 864 KiB. The same conservative model at 200 items is about
   1,150 KiB, so removing the redundant contribution rate does not safely restore
-  the former limit.
+  the former limit. Tightening IDs to 12 characters was measured separately at
+  1,081,309 bytes (about 1,056 KiB) for 200 items, still 32,733 bytes over the
+  cap; identifier headroom is not the binding degree of freedom.
 - The initial capacity gate runs a curated search set at 10 concurrent clients;
   p95 end-to-end API latency must remain below 1 second on the documented
   production host class. The benchmark records host CPU, memory, DuckDB settings,
@@ -269,12 +271,12 @@ document, and filter all response fields as recommended by FastAPI:
 - DuckDB memory and thread settings are explicit production configuration rather
   than machine-dependent defaults.
 - One application-owned AnyIO capacity limiter admits at most 16 concurrent
-DuckDB search/example workers. The handler uses non-blocking acquisition;
-`WouldBlock` becomes `429 capacity_exceeded` with `Retry-After: 1`, and `finally`
-releases the token. Rejecting rather than queueing prevents clients across many
-source IPs from building an unbounded in-process wait queue whose requests have
-already missed the latency budget. This is the global bound; Spec 6's edge
-limits are per client.
+  DuckDB search/example workers. The handler uses non-blocking acquisition;
+  `WouldBlock` becomes `429 capacity_exceeded` with `Retry-After: 1`, and `finally`
+  releases the token. Rejecting rather than queueing prevents clients across many
+  source IPs from building an unbounded in-process wait queue whose requests have
+  already missed the latency budget. This is the global bound; Spec 6's edge
+  limits are per client.
 
 ## OpenAPI and TypeScript
 
@@ -346,17 +348,17 @@ not supported.
 
 ## Decision Log
 
-| Decision                                            | Status   | Reason                                                                                            | Revisit trigger                                              |
-| --------------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
-| No API version namespace                            | Accepted | No external consumers; atomic deployment                                                          | First external consumer                                      |
-| Per-corpus rate plus equal-weight selected mean     | Accepted | Keeps the per-million denominator honest and avoids aggregate magnitude scaling with corpus count | Domain analysis prefers pooled corpus-size weighting         |
-| Selection and ranking happen before limiting        | Accepted | A globally truncated response cannot produce correct selection-specific top N client-side         | Cursor pagination or unbounded result transfer is introduced |
-| Limit to 150 items per particle                     | Accepted | Removing the derived item contribution rate lowers the measured 150-item fixture to about 724 KiB, but the 32-character-ID structural model at 200 remains about 1,150 KiB | Present consumer needs deeper results and pagination is designed |
-| Request-local read-only connections                 | Accepted | Matches DuckDB Python concurrency guidance                                                        | Measured connection overhead becomes material                |
-| No production CORS                                  | Accepted | Frontend and API are same-origin                                                                  | Separate trusted frontend origin is deployed                 |
-| OpenAPI-generated compile-time types only           | Accepted | Prevents drift without runtime client machinery                                                   | Multiple clients need richer generation                      |
-| Gate `openapi-typescript` on TypeScript 6 support    | Deferred | Stable 7.13.0 declares TypeScript 5 only; forcing the peer contract would make the lockfile dishonest | A stable compatible release ships or another generator is selected |
-| Interrupt and discard timed-out request connections | Accepted | DuckDB exposes connection interruption but no declarative per-query timeout                       | Selected DuckDB release provides a safer native deadline     |
-| Use the event-loop timer, not a watchdog thread      | Accepted | The async handler already owns scheduling; a second thread and join lifecycle add no guarantee    | Runtime evidence shows event-loop starvation delays interrupts |
-| Fail fast at the global query bound                  | Accepted | Per-client edge limits do not bound aggregate clients; queueing would violate latency bounds       | Capacity measurements justify a queue or a different limit     |
-| Log only query-length buckets                        | Accepted | No present diagnostic consumer justifies stable query correlation or keyed hashing                 | A concrete incident cannot be diagnosed from existing fields  |
+| Decision                                            | Status   | Reason                                                                                                                                                                     | Revisit trigger                                                    |
+| --------------------------------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| No API version namespace                            | Accepted | No external consumers; atomic deployment                                                                                                                                   | First external consumer                                            |
+| Per-corpus rate plus equal-weight selected mean     | Accepted | Keeps the per-million denominator honest and avoids aggregate magnitude scaling with corpus count                                                                          | Domain analysis prefers pooled corpus-size weighting               |
+| Selection and ranking happen before limiting        | Accepted | A globally truncated response cannot produce correct selection-specific top N client-side                                                                                  | Cursor pagination or unbounded result transfer is introduced       |
+| Limit to 150 items per particle                     | Accepted | Removing the derived item contribution rate lowers the measured 150-item fixture to about 724 KiB, but the 32-character-ID structural model at 200 remains about 1,150 KiB | Present consumer needs deeper results and pagination is designed   |
+| Request-local read-only connections                 | Accepted | Matches DuckDB Python concurrency guidance                                                                                                                                 | Measured connection overhead becomes material                      |
+| No production CORS                                  | Accepted | Frontend and API are same-origin                                                                                                                                           | Separate trusted frontend origin is deployed                       |
+| OpenAPI-generated compile-time types only           | Accepted | Prevents drift without runtime client machinery                                                                                                                            | Multiple clients need richer generation                            |
+| Gate `openapi-typescript` on TypeScript 6 support   | Deferred | Stable 7.13.0 declares TypeScript 5 only; forcing the peer contract would make the lockfile dishonest                                                                      | A stable compatible release ships or another generator is selected |
+| Interrupt and discard timed-out request connections | Accepted | DuckDB exposes connection interruption but no declarative per-query timeout                                                                                                | Selected DuckDB release provides a safer native deadline           |
+| Use the event-loop timer, not a watchdog thread     | Accepted | The async handler already owns scheduling; a second thread and join lifecycle add no guarantee                                                                             | Runtime evidence shows event-loop starvation delays interrupts     |
+| Fail fast at the global query bound                 | Accepted | Per-client edge limits do not bound aggregate clients; queueing would violate latency bounds                                                                               | Capacity measurements justify a queue or a different limit         |
+| Log only query-length buckets                       | Accepted | No present diagnostic consumer justifies stable query correlation or keyed hashing                                                                                         | A concrete incident cannot be diagnosed from existing fields       |

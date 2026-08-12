@@ -2,9 +2,19 @@
   "formatVersion": 1,
   "generatedAt": "2026-08-12",
   "gateStatus": "blocked",
+  "plannedArtifact": {
+    "corpusIds": ["jnlp", "wikipedia-ja-20231101"],
+    "licenseConclusion": {
+      "status": "conditional",
+      "spdxExpression": "CC-BY-SA-4.0",
+      "scope": "corpus.duckdb and corpus-derived distributed content",
+      "reason": "The project conservatively applies Wikipedia's share-alike terms to the combined JNLP and Wikipedia content. Publication remains blocked until source evidence and required notices are complete."
+    }
+  },
   "sources": [
     {
       "corpusId": "jnlp",
+      "plannedPublic": true,
       "status": "blocked",
       "reason": "The exact local snapshot has no durable immutable download location and its embedded readme does not contain the current CC BY 4.0 grant.",
       "candidate": {
@@ -21,6 +31,7 @@
     },
     {
       "corpusId": "wikipedia-ja-20231101",
+      "plannedPublic": true,
       "status": "candidate",
       "candidate": {
         "kind": "parquet-shards",
@@ -111,8 +122,9 @@
     },
     {
       "corpusId": "ted-iwslt-2014-2016",
-      "status": "blocked",
-      "reason": "Representative extraction is unverified, legacy identities are not reproducible, and public derived-output permission is unresolved.",
+      "plannedPublic": false,
+      "status": "excluded",
+      "reason": "The planned public release excludes TED. Reintroduction requires representative extraction, talk-level identity correction, and resolved public derived-output permission.",
       "candidate": {
         "kind": "tar-archive",
         "repository": "IWSLT/ted_talks_iwslt",
@@ -126,8 +138,9 @@
     },
     {
       "corpusId": "ted-iwslt-2017-ja-en",
-      "status": "blocked",
-      "reason": "Legacy identities are not reproducible and public derived-output permission is unresolved.",
+      "plannedPublic": false,
+      "status": "excluded",
+      "reason": "The planned public release excludes TED. Reintroduction requires talk-level identity correction and resolved public derived-output permission.",
       "candidate": {
         "kind": "zip-archive",
         "repository": "IWSLT/iwslt2017",
