@@ -21,6 +21,7 @@ from pydantic import BaseModel
 QUERY_CAPACITY = 16
 QUERY_TIMEOUT_SECONDS = 2.0
 request_logger = logging.getLogger("natsume_simple.api.requests")
+startup_logger = logging.getLogger("natsume_simple.api.startup")
 
 
 class HealthResponse(BaseModel):
@@ -120,6 +121,11 @@ class PublicApiError(Exception):
         self.headers = headers or {}
 
 
+class ArtifactValidationError(Exception):
+    def __init__(self, reason: str):
+        self.reason = reason
+
+
 QueryResult = TypeVar("QueryResult")
 
 
@@ -143,6 +149,63 @@ def database_unavailable() -> PublicApiError:
         503,
         "database_unavailable",
         "The database artifact is unavailable",
+    )
+
+
+def validate_artifact(artifact_dir: Path) -> tuple[Path, dict]:
+    manifest_path = artifact_dir / "manifest.json"
+    try:
+        manifest = json.loads(manifest_path.read_text())
+    except FileNotFoundError as error:
+        raise ArtifactValidationError("manifest_missing") from error
+    except (OSError, json.JSONDecodeError, TypeError) as error:
+        raise ArtifactValidationError("manifest_invalid") from error
+
+    try:
+        if manifest["schemaVersion"] != 1:
+            raise ArtifactValidationError("unsupported_schema")
+        expected_checksum = manifest["databaseSha256"]
+        artifact_instance_id = manifest["artifactInstanceId"]
+    except (KeyError, TypeError) as error:
+        raise ArtifactValidationError("manifest_invalid") from error
+
+    database_path = artifact_dir / "corpus.duckdb"
+    try:
+        checksum = hashlib.sha256(database_path.read_bytes()).hexdigest()
+    except OSError as error:
+        raise ArtifactValidationError("database_unreadable") from error
+    if checksum != expected_checksum:
+        raise ArtifactValidationError("checksum_mismatch")
+
+    try:
+        with duckdb.connect(str(database_path), read_only=True) as connection:
+            metadata = connection.execute(
+                "SELECT schema_version, artifact_instance_id FROM build_metadata"
+            ).fetchone()
+            corpus_count = connection.execute("SELECT count(*) FROM corpus").fetchone()[
+                0
+            ]
+    except duckdb.Error as error:
+        raise ArtifactValidationError("database_unreadable") from error
+
+    if metadata != (1, artifact_instance_id):
+        raise ArtifactValidationError("identity_mismatch")
+    if not 1 <= corpus_count <= 3:
+        raise ArtifactValidationError("invalid_corpus_count")
+    return database_path, manifest
+
+
+def log_artifact_rejection(reason: str) -> None:
+    startup_logger.error(
+        json.dumps(
+            {
+                "timestamp": datetime.now(UTC).isoformat(),
+                "level": "ERROR",
+                "event": "artifact_rejected",
+                "reason": reason,
+            },
+            separators=(",", ":"),
+        )
     )
 
 
@@ -202,10 +265,6 @@ def select_corpora(requested: list[str] | None, known: set[str]) -> list[str]:
         raise PublicApiError(
             400, "invalid_parameter", "corpusId must name a known corpus"
         )
-    if len(selected) > 3:
-        raise PublicApiError(
-            400, "invalid_parameter", "corpusId accepts at most three corpora"
-        )
     return selected
 
 
@@ -240,30 +299,9 @@ def create_app(artifact_dir: Path) -> FastAPI:
         api.state.query_limiter = CapacityLimiter(QUERY_CAPACITY)
 
         try:
-            manifest = json.loads((artifact_dir / "manifest.json").read_text())
-            database_path = artifact_dir / "corpus.duckdb"
-            checksum = hashlib.sha256(database_path.read_bytes()).hexdigest()
-            if manifest["schemaVersion"] != 1 or checksum != manifest["databaseSha256"]:
-                raise RuntimeError("incompatible database artifact")
-
-            with duckdb.connect(str(database_path), read_only=True) as connection:
-                metadata = connection.execute(
-                    "SELECT schema_version, artifact_instance_id FROM build_metadata"
-                ).fetchone()
-            if metadata != (
-                manifest["schemaVersion"],
-                manifest["artifactInstanceId"],
-            ):
-                raise RuntimeError("database identity does not match manifest")
-        except (
-            OSError,
-            KeyError,
-            TypeError,
-            json.JSONDecodeError,
-            duckdb.Error,
-            RuntimeError,
-        ):
-            pass
+            database_path, manifest = validate_artifact(artifact_dir)
+        except ArtifactValidationError as error:
+            log_artifact_rejection(error.reason)
         else:
             api.state.database_path = database_path
             api.state.database_build_id = manifest["artifactInstanceId"]

@@ -3,6 +3,7 @@ import json
 import logging
 from pathlib import Path
 
+import duckdb
 import pytest
 from fastapi.testclient import TestClient
 
@@ -59,11 +60,19 @@ def test_ready_and_corpora_describe_the_deployed_artifact(tmp_path: Path):
 
 
 @pytest.mark.parametrize(
-    "damage", ["missing_manifest", "checksum", "schema", "invalid_database"]
+    ("damage", "reason"),
+    [
+        ("missing_manifest", "manifest_missing"),
+        ("checksum", "checksum_mismatch"),
+        ("schema", "unsupported_schema"),
+        ("invalid_database", "database_unreadable"),
+        ("corpus_count", "invalid_corpus_count"),
+    ],
 )
 def test_invalid_artifact_stays_live_but_never_becomes_ready(
-    tmp_path: Path, damage: str
+    caplog, tmp_path: Path, damage: str, reason: str
 ):
+    caplog.set_level(logging.ERROR, logger="natsume_simple.api.startup")
     artifact_dir = build_search_artifact(tmp_path / "artifact")
     manifest_path = artifact_dir / "manifest.json"
     manifest = json.loads(manifest_path.read_text())
@@ -76,9 +85,19 @@ def test_invalid_artifact_stays_live_but_never_becomes_ready(
     elif damage == "schema":
         manifest["schemaVersion"] = 2
         manifest_path.write_text(json.dumps(manifest))
-    else:
+    elif damage == "invalid_database":
         database_path = artifact_dir / "corpus.duckdb"
         database_path.write_bytes(b"not a DuckDB database")
+        manifest["databaseSha256"] = hashlib.sha256(
+            database_path.read_bytes()
+        ).hexdigest()
+        manifest_path.write_text(json.dumps(manifest))
+    else:
+        database_path = artifact_dir / "corpus.duckdb"
+        with duckdb.connect(str(database_path)) as connection:
+            connection.execute(
+                "INSERT INTO corpus VALUES ('extra', 'Extra'), ('extra2', 'Extra 2')"
+            )
         manifest["databaseSha256"] = hashlib.sha256(
             database_path.read_bytes()
         ).hexdigest()
@@ -97,6 +116,19 @@ def test_invalid_artifact_stays_live_but_never_becomes_ready(
 
     assert_database_unavailable(response, f"broken-{damage}")
     assert_database_unavailable(search_response, f"search-{damage}")
+    startup_record = next(
+        record
+        for record in caplog.records
+        if record.name == "natsume_simple.api.startup"
+    )
+    logged = json.loads(startup_record.message)
+    assert logged == {
+        "timestamp": logged["timestamp"],
+        "level": "ERROR",
+        "event": "artifact_rejected",
+        "reason": reason,
+    }
+    assert str(artifact_dir) not in caplog.text
 
 
 def test_ready_becomes_unavailable_when_database_disappears(tmp_path: Path):

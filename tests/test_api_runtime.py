@@ -34,14 +34,6 @@ def test_query_length_bucket_has_stable_public_boundaries(length: int, expected:
     assert api.query_length_bucket("語" * length) == expected
 
 
-def test_corpus_selection_rejects_more_than_three_corpora():
-    with pytest.raises(PublicApiError) as raised:
-        api.select_corpora(["a", "b", "c", "d"], {"a", "b", "c", "d"})
-
-    assert raised.value.status_code == 400
-    assert raised.value.message == "corpusId accepts at most three corpora"
-
-
 class InterruptibleConnection:
     def __init__(self):
         self.interrupted = Event()
