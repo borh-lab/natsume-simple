@@ -1,11 +1,13 @@
 <script lang="ts">
+	import type { Snippet } from 'svelte';
+
 	let {
 		children,
 		syncScroll,
 		scrollContainer = $bindable(),
 		style = ''
 	}: {
-		children: any;
+		children: Snippet;
 		syncScroll: (e: Event) => void;
 		scrollContainer: HTMLElement;
 		style?: string;

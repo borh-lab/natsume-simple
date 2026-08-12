@@ -1,4 +1,4 @@
-import { browser } from "$app/environment";
+import { browser } from '$app/environment';
 
 export const themeManager = (() => {
 	let darkMode = $state(false);
@@ -7,9 +7,9 @@ export const themeManager = (() => {
 		darkMode = value;
 		if (browser) {
 			if (darkMode) {
-				document.documentElement.classList.add("dark");
+				document.documentElement.classList.add('dark');
 			} else {
-				document.documentElement.classList.remove("dark");
+				document.documentElement.classList.remove('dark');
 			}
 		}
 	}
@@ -23,6 +23,6 @@ export const themeManager = (() => {
 		},
 		set isDarkMode(value: boolean) {
 			setDarkMode(value);
-		},
+		}
 	};
 })();

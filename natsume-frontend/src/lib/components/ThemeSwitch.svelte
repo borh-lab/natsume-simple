@@ -1,5 +1,5 @@
 <script lang="ts">
-import { themeManager } from "$lib/theme.svelte";
+	import { themeManager } from '$lib/theme.svelte';
 </script>
 
 <button

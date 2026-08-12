@@ -1,420 +1,359 @@
 <script lang="ts">
-import CollocationList from "$lib/components/CollocationList.svelte";
-import Search from "$lib/components/Search.svelte";
-import ThemeSwitch from "$lib/components/ThemeSwitch.svelte";
-import Options from "$lib/components/menus/Options.svelte";
-import Stats from "$lib/components/menus/Stats.svelte";
-import {
-	corpusNorm,
-	filteredResultCount,
-	particleGroups,
-	resultCount,
-	results,
-	searchElapsedTime,
-	selectedCorpora,
-	useNormalization,
-} from "$lib/stores/corpus";
-import { type Writable, writable } from "svelte/store";
-
-import { afterUpdate, onMount, setContext, tick } from "svelte";
-import "./../tailwind.css";
-import Loading from "$lib/components/Loading.svelte";
-import MobileMenu from "$lib/components/MobileMenu.svelte";
-import type { DropdownOption } from "$lib/types";
-import resolveConfig from "tailwindcss/resolveConfig";
-import tailwindConfig from "../../tailwind.config.js";
-
-// Icons
-import ZondiconsCheveronDown from "~icons/zondicons/cheveron-down";
-
-const twFullConfig = resolveConfig(tailwindConfig);
-
-import { themeManager } from "$lib/theme.svelte";
-
-function formatNumber(num: number): string {
-	return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-}
-
-import HorizontallyScrollableContainer from "$lib/components/HorizontallyScrollableContainer.svelte";
-import type { CombinedResult, Result } from "$lib/query";
-
-const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:8000";
-setContext("apiUrl", apiUrl);
-
-const particles = ["が", "を", "に", "で", "から", "より", "と", "へ"];
-// TODO: Convert to runes
-let searchType: "verb" | "noun" = "noun";
-let searchTerm = "時間";
-
-const lastSearchedNoun = writable("");
-let statsDropdownOpen = false;
-let optionsDropdownOpen = false;
-
-let isLoading = false;
-let showMobileMenu = false;
-let mobileDropdownOption: "select" | "stats" | "options" | null = null;
-
-// TODO: Convert to runes
-const d: Writable<Record<string, Result[]>> = writable({});
-
-// Define colors (keep these outside any function)
-const highlightColors = [
-	twFullConfig.theme.colors.red[200],
-	twFullConfig.theme.colors.purple[200],
-	twFullConfig.theme.colors.green[200],
-	twFullConfig.theme.colors.blue[200],
-	twFullConfig.theme.colors.yellow[200],
-	twFullConfig.theme.colors.pink[200],
-];
-
-const highlightColorsDark = [
-	twFullConfig.theme.colors.red[800],
-	twFullConfig.theme.colors.purple[800],
-	twFullConfig.theme.colors.green[800],
-	twFullConfig.theme.colors.blue[800],
-	twFullConfig.theme.colors.yellow[800],
-	twFullConfig.theme.colors.pink[800],
-];
-
-const solidColors = [
-	twFullConfig.theme.colors.red[500],
-	twFullConfig.theme.colors.purple[500],
-	twFullConfig.theme.colors.green[500],
-	twFullConfig.theme.colors.blue[500],
-	twFullConfig.theme.colors.yellow[500],
-	twFullConfig.theme.colors.pink[500],
-];
-
-// Create a mapping of corpus to color index when corpusNorm is first loaded
-let corpusColorIndices: Record<string, number> = {};
-
-function getColor(corpus: string): string {
-	const index = corpusColorIndices[corpus] ?? 0;
-	return themeManager.isDarkMode
-		? highlightColorsDark[index % highlightColorsDark.length]
-		: highlightColors[index % highlightColors.length];
-}
-
-function getSolidColor(corpus: string): string {
-	const index = corpusColorIndices[corpus] ?? 0;
-	return solidColors[index % solidColors.length];
-}
-
-onMount(() => {
-	const fetchData = async () => {
-		try {
-			const response = await fetch(`${apiUrl}/corpus/norm`);
-			const normData = await response.json();
-
-			// Create the color mapping when we first get the corpus data
-			corpusColorIndices = Object.keys(normData).reduce(
-				(acc, corpus, index) => {
-					acc[corpus] = index;
-					return acc;
-				},
-				{} as Record<string, number>,
-			);
-
-			corpusNorm.set(normData);
-			selectedCorpora.set(Object.keys(normData));
-			await performSearch();
-		} catch (error) {
-			console.error("Error fetching corpus norm:", error);
-		}
-		updateScrollButtonsVisibility();
-	};
-
-	fetchData();
-
-	window.addEventListener("resize", updateScrollButtonsVisibility);
-	window.addEventListener("scroll", updateScrollButtonsVisibility);
-
-	if (mainScrollContainer) {
-		console.log("Main scroll container properties:");
-		console.log("scrollWidth:", mainScrollContainer.scrollWidth);
-		console.log("clientWidth:", mainScrollContainer.clientWidth);
-		console.log("offsetWidth:", mainScrollContainer.offsetWidth);
-		console.log("style.overflowX:", mainScrollContainer.style.overflowX);
-	}
-
-	return () => {
-		window.removeEventListener("resize", updateScrollButtonsVisibility);
-		window.removeEventListener("scroll", updateScrollButtonsVisibility);
-	};
-});
-
-// TODO: Extract to a separate file
-function computeDerivedData(
-	results: Result[],
-	useNormalization: boolean,
-	selectedCorpora: string[],
-) {
-	console.log("Computing derived data with:", {
-		resultsLength: results.length,
-		useNormalization,
+	import CollocationList from '$lib/components/CollocationList.svelte';
+	import Search from '$lib/components/Search.svelte';
+	import ThemeSwitch from '$lib/components/ThemeSwitch.svelte';
+	import Options from '$lib/components/menus/Options.svelte';
+	import Stats from '$lib/components/menus/Stats.svelte';
+	import {
+		corpusNorm,
+		filteredResultCount,
+		particleGroups,
+		resultCount,
+		results,
+		searchElapsedTime,
 		selectedCorpora,
+		useNormalization
+	} from '$lib/stores/corpus';
+	import { type Writable, writable } from 'svelte/store';
+
+	import { afterUpdate, onMount, setContext, tick } from 'svelte';
+	import './../tailwind.css';
+	import Loading from '$lib/components/Loading.svelte';
+	import resolveConfig from 'tailwindcss/resolveConfig';
+	import tailwindConfig from '../../tailwind.config.js';
+
+	// Icons
+	import ZondiconsCheveronDown from '~icons/zondicons/cheveron-down';
+
+	const twFullConfig = resolveConfig(tailwindConfig);
+
+	import { themeManager } from '$lib/theme.svelte';
+
+	function formatNumber(num: number): string {
+		return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+	}
+
+	import HorizontallyScrollableContainer from '$lib/components/HorizontallyScrollableContainer.svelte';
+	import type { Result } from '$lib/query';
+
+	const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+	setContext('apiUrl', apiUrl);
+
+	const particles = ['が', 'を', 'に', 'で', 'から', 'より', 'と', 'へ'];
+	// TODO: Convert to runes
+	let searchType: 'verb' | 'noun' = 'noun';
+	let searchTerm = '時間';
+
+	let statsDropdownOpen = false;
+	let optionsDropdownOpen = false;
+
+	let isLoading = false;
+	let showMobileMenu = false;
+	let mobileDropdownOption: 'select' | 'stats' | 'options' | null = null;
+
+	// TODO: Convert to runes
+	const d: Writable<Record<string, Result[]>> = writable({});
+
+	// Define colors (keep these outside any function)
+	const highlightColors = [
+		twFullConfig.theme.colors.red[200],
+		twFullConfig.theme.colors.purple[200],
+		twFullConfig.theme.colors.green[200],
+		twFullConfig.theme.colors.blue[200],
+		twFullConfig.theme.colors.yellow[200],
+		twFullConfig.theme.colors.pink[200]
+	];
+
+	const highlightColorsDark = [
+		twFullConfig.theme.colors.red[800],
+		twFullConfig.theme.colors.purple[800],
+		twFullConfig.theme.colors.green[800],
+		twFullConfig.theme.colors.blue[800],
+		twFullConfig.theme.colors.yellow[800],
+		twFullConfig.theme.colors.pink[800]
+	];
+
+	const solidColors = [
+		twFullConfig.theme.colors.red[500],
+		twFullConfig.theme.colors.purple[500],
+		twFullConfig.theme.colors.green[500],
+		twFullConfig.theme.colors.blue[500],
+		twFullConfig.theme.colors.yellow[500],
+		twFullConfig.theme.colors.pink[500]
+	];
+
+	// Create a mapping of corpus to color index when corpusNorm is first loaded
+	let corpusColorIndices: Record<string, number> = {};
+
+	function getColor(corpus: string): string {
+		const index = corpusColorIndices[corpus] ?? 0;
+		return themeManager.isDarkMode
+			? highlightColorsDark[index % highlightColorsDark.length]
+			: highlightColors[index % highlightColors.length];
+	}
+
+	function getSolidColor(corpus: string): string {
+		const index = corpusColorIndices[corpus] ?? 0;
+		return solidColors[index % solidColors.length];
+	}
+
+	onMount(() => {
+		const fetchData = async () => {
+			try {
+				const response = await fetch(`${apiUrl}/corpus/norm`);
+				const normData = await response.json();
+
+				// Create the color mapping when we first get the corpus data
+				corpusColorIndices = Object.keys(normData).reduce(
+					(acc, corpus, index) => {
+						acc[corpus] = index;
+						return acc;
+					},
+					{} as Record<string, number>
+				);
+
+				corpusNorm.set(normData);
+				selectedCorpora.set(Object.keys(normData));
+				await performSearch();
+			} catch (error) {
+				console.error('Error fetching corpus norm:', error);
+			}
+			updateScrollButtonsVisibility();
+		};
+
+		fetchData();
+
+		window.addEventListener('resize', updateScrollButtonsVisibility);
+		window.addEventListener('scroll', updateScrollButtonsVisibility);
+
+		if (mainScrollContainer) {
+			console.log('Main scroll container properties:');
+			console.log('scrollWidth:', mainScrollContainer.scrollWidth);
+			console.log('clientWidth:', mainScrollContainer.clientWidth);
+			console.log('offsetWidth:', mainScrollContainer.offsetWidth);
+			console.log('style.overflowX:', mainScrollContainer.style.overflowX);
+		}
+
+		return () => {
+			window.removeEventListener('resize', updateScrollButtonsVisibility);
+			window.removeEventListener('scroll', updateScrollButtonsVisibility);
+		};
 	});
 
-	// Filter results that have contributions matching selected corpora
-	const filteredResults = results.filter(
-		(result) =>
-			selectedCorpora.includes(result.corpus) ||
-			result.contributions?.some((c) => selectedCorpora.includes(c.corpus)),
-	);
+	// TODO: Extract to a separate file
+	function computeDerivedData(
+		results: Result[],
+		useNormalization: boolean,
+		selectedCorpora: string[]
+	) {
+		console.log('Computing derived data with:', {
+			resultsLength: results.length,
+			useNormalization,
+			selectedCorpora
+		});
 
-	console.log("Filtered results:", filteredResults);
-
-	// Group by particle
-	const particleGroups = Object.fromEntries(
-		particles.map((particle) => [
-			particle,
-			filteredResults
-				.filter((r) => r.p === particle)
-				.sort((a, b) => b.frequency - a.frequency),
-		]),
-	);
-
-	console.log("Particle groups:", particleGroups);
-	return particleGroups;
-}
-
-async function updateDerivedData() {
-	const derivedData = computeDerivedData(
-		$results,
-		$useNormalization,
-		$selectedCorpora,
-	);
-	d.set(derivedData as Record<string, Result[]>);
-	await tick(); // Wait for the next DOM update
-}
-
-async function handleCheckboxChange() {
-	isLoading = true;
-	await updateDerivedData();
-	isLoading = false;
-}
-
-async function performSearch(): Promise<void> {
-	console.log("performSearch");
-	try {
-		isLoading = true;
-		const startTime = performance.now();
-
-		const endpoint = `/npv/${searchType}/${searchTerm}`;
-
-		console.log("performSearch: before fetch", endpoint);
-		const response = await fetch(`${apiUrl}${endpoint}`);
-		const data = await response.json();
-		console.log("Raw API response:", data);
-
-		// Update stores with the new data structure
-		particleGroups.set(data.particleGroups);
-		corpusNorm.set(data.corpusNorm);
-		resultCount.set(data.totalResults);
-
-		const endTime = performance.now();
-		searchElapsedTime.set((endTime - startTime) / 1000);
-	} catch (error) {
-		console.error("Error fetching results:", error);
-	} finally {
-		isLoading = false;
-	}
-}
-
-function getMax(
-	collocates: (Result | CombinedResult)[],
-	useNormalization: boolean,
-): number {
-	console.log("Getting max value for:", {
-		collocatesLength: collocates.length,
-		useNormalization,
-	});
-
-	const max = Math.max(
-		...collocates.flatMap((collocate) =>
-			collocate.contributions.map(({ corpus, frequency }) => {
-				const normalizedFreq = useNormalization
-					? frequency * ($corpusNorm[corpus] || 1)
-					: frequency;
-				console.log("Max calculation:", {
-					corpus,
-					frequency,
-					normalizedFreq,
-					corpusNorm: $corpusNorm[corpus],
-				});
-				return normalizedFreq;
-			}),
-		),
-		0,
-	);
-
-	console.log("Max value:", max);
-	return max;
-}
-
-function showTooltip(
-	event: { pageX: number; pageY: number },
-	text: string | null,
-) {
-	const tooltip = document.getElementById("tooltip");
-	if (tooltip) {
-		tooltip.innerHTML = text;
-		tooltip.style.left = `${event.pageX + 10}px`;
-		tooltip.style.top = `${event.pageY + 10}px`;
-		tooltip.classList.remove("hidden");
-	}
-}
-
-function hideTooltip() {
-	const tooltip = document.getElementById("tooltip");
-	if (tooltip) {
-		tooltip.classList.add("hidden");
-	}
-}
-
-function tooltipAction(
-	node: HTMLLIElement,
-	{
-		getTooltipData,
-		useNormalization,
-	}: {
-		getTooltipData: () => Record<string, string>;
-		useNormalization: boolean;
-	},
-) {
-	const handleMouseover = (event: MouseEvent) => {
-		const tooltipData = getTooltipData();
-		const tooltipText = Object.entries(tooltipData)
-			.map(
-				([corpus, value]) =>
-					`<span style="color: ${getSolidColor(corpus)}">${corpus}: ${value}</span>`,
-			)
-			.join(", ");
-		showTooltip(event, tooltipText);
-	};
-	const handleMouseout = hideTooltip;
-
-	node.addEventListener("mouseover", handleMouseover);
-	node.addEventListener("mouseout", handleMouseout);
-
-	return {
-		destroy() {
-			node.removeEventListener("mouseover", handleMouseover);
-			node.removeEventListener("mouseout", handleMouseout);
-		},
-	};
-}
-
-const columnWidth = 200; // Set a fixed width for all columns
-const columnSpacing = 4; // Set a fixed spacing between columns
-
-let headerScrollContainer: HTMLElement;
-let mainScrollContainer: HTMLElement;
-
-function syncScroll(event: Event) {
-	const scrollingElement = event.target as HTMLElement;
-	if (scrollingElement === headerScrollContainer) {
-		mainScrollContainer.scrollLeft = scrollingElement.scrollLeft;
-	} else if (scrollingElement === mainScrollContainer) {
-		headerScrollContainer.scrollLeft = scrollingElement.scrollLeft;
-	}
-}
-
-function scrollOneColumn(direction: "left" | "right") {
-	console.log(`Scrolling ${direction}`);
-	if (mainScrollContainer) {
-		const currentScroll = mainScrollContainer.scrollLeft;
-		const scrollAmount = columnWidth + columnSpacing;
-		const newScroll =
-			direction === "left"
-				? Math.max(0, currentScroll - scrollAmount)
-				: currentScroll + scrollAmount;
-
-		console.log(
-			`Before scroll - Current scroll: ${currentScroll}, Target scroll: ${newScroll}`,
+		// Filter results that have contributions matching selected corpora
+		const filteredResults = results.filter(
+			(result) =>
+				selectedCorpora.includes(result.corpus) ||
+				result.contributions?.some((c) => selectedCorpora.includes(c.corpus))
 		);
 
-		requestAnimationFrame(() => {
-			mainScrollContainer.scrollLeft = newScroll;
+		console.log('Filtered results:', filteredResults);
 
-			// Force a reflow to ensure the scroll has been applied
-			void mainScrollContainer.offsetWidth;
+		// Group by particle
+		const particleGroups = Object.fromEntries(
+			particles.map((particle) => [
+				particle,
+				filteredResults.filter((r) => r.p === particle).sort((a, b) => b.frequency - a.frequency)
+			])
+		);
 
-			console.log(
-				`After scroll - New scroll position: ${mainScrollContainer.scrollLeft}`,
-			);
-		});
-	} else {
-		console.log("mainScrollContainer is not defined");
+		console.log('Particle groups:', particleGroups);
+		return particleGroups;
 	}
-}
 
-function updateScrollButtonsVisibility() {
-	if (mainScrollContainer) {
-		const hasOverflow =
-			mainScrollContainer.scrollWidth > mainScrollContainer.clientWidth;
-		const leftButton = document.querySelector(".left-button") as HTMLElement;
-		const rightButton = document.querySelector(".right-button") as HTMLElement;
+	async function updateDerivedData() {
+		const derivedData = computeDerivedData($results, $useNormalization, $selectedCorpora);
+		d.set(derivedData as Record<string, Result[]>);
+		await tick(); // Wait for the next DOM update
+	}
 
-		if (leftButton && rightButton) {
-			const scrollLeft = mainScrollContainer.scrollLeft;
-			const maxScrollLeft =
-				mainScrollContainer.scrollWidth - mainScrollContainer.clientWidth;
+	async function handleCheckboxChange() {
+		isLoading = true;
+		await updateDerivedData();
+		isLoading = false;
+	}
 
-			const containerRect = mainScrollContainer.getBoundingClientRect();
-			const viewportHeight = window.innerHeight;
-			const containerVisibleTop = Math.max(0, containerRect.top);
-			const containerVisibleBottom = Math.min(
-				viewportHeight,
-				containerRect.bottom,
-			);
-			const visibleCenterY =
-				containerVisibleTop +
-				(containerVisibleBottom - containerVisibleTop) / 2;
+	async function performSearch(): Promise<void> {
+		console.log('performSearch');
+		try {
+			isLoading = true;
+			const startTime = performance.now();
 
-			leftButton.style.display =
-				hasOverflow && scrollLeft > 0 ? "flex" : "none";
-			rightButton.style.display =
-				hasOverflow && scrollLeft < maxScrollLeft ? "flex" : "none";
+			const endpoint = `/npv/${searchType}/${searchTerm}`;
 
-			// Adjust the top position to account for both sticky headers
-			const topHeader = document.querySelector("header:first-of-type");
-			const particlesHeader = document.querySelector("header:nth-of-type(2)");
-			const totalHeaderHeight =
-				(topHeader?.clientHeight || 0) + (particlesHeader?.clientHeight || 0);
-			const buttonTop = Math.max(visibleCenterY, totalHeaderHeight + 20); // 20px padding
+			console.log('performSearch: before fetch', endpoint);
+			const response = await fetch(`${apiUrl}${endpoint}`);
+			const data = await response.json();
+			console.log('Raw API response:', data);
 
-			leftButton.style.top = `${buttonTop}px`;
-			rightButton.style.top = `${buttonTop}px`;
+			// Update stores with the new data structure
+			particleGroups.set(data.particleGroups);
+			corpusNorm.set(data.corpusNorm);
+			resultCount.set(data.totalResults);
+
+			const endTime = performance.now();
+			searchElapsedTime.set((endTime - startTime) / 1000);
+		} catch (error) {
+			console.error('Error fetching results:', error);
+		} finally {
+			isLoading = false;
 		}
 	}
-}
 
-function handleClickOutside(event: MouseEvent) {
-	const statsDropdown = document.querySelector("#stats-dropdown");
-	const optionsDropdown = document.querySelector("#options-dropdown");
-	const statsButton = document.querySelector("#stats-button");
-	const optionsButton = document.querySelector("#options-button");
-
-	if (
-		statsDropdown &&
-		!statsDropdown.contains(event.target as Node) &&
-		!statsButton?.contains(event.target as Node)
-	) {
-		statsDropdownOpen = false;
+	function showTooltip(event: { pageX: number; pageY: number }, values: Record<string, string>) {
+		const tooltip = document.getElementById('tooltip');
+		if (tooltip) {
+			tooltip.replaceChildren();
+			for (const [index, [corpus, value]] of Object.entries(values).entries()) {
+				if (index > 0) tooltip.append(', ');
+				const item = document.createElement('span');
+				item.style.color = getSolidColor(corpus);
+				item.textContent = `${corpus}: ${value}`;
+				tooltip.append(item);
+			}
+			tooltip.style.left = `${event.pageX + 10}px`;
+			tooltip.style.top = `${event.pageY + 10}px`;
+			tooltip.classList.remove('hidden');
+		}
 	}
-	if (
-		optionsDropdown &&
-		!optionsDropdown.contains(event.target as Node) &&
-		!optionsButton?.contains(event.target as Node)
-	) {
-		optionsDropdownOpen = false;
-	}
-}
 
-afterUpdate(() => {
-	updateScrollButtonsVisibility();
-});
+	function hideTooltip() {
+		const tooltip = document.getElementById('tooltip');
+		if (tooltip) {
+			tooltip.classList.add('hidden');
+		}
+	}
+
+	function tooltipAction(
+		node: HTMLLIElement,
+		{ getTooltipData }: { getTooltipData: () => Record<string, string> }
+	) {
+		const handleMouseover = (event: MouseEvent) => {
+			showTooltip(event, getTooltipData());
+		};
+		const handleMouseout = hideTooltip;
+
+		node.addEventListener('mouseover', handleMouseover);
+		node.addEventListener('mouseout', handleMouseout);
+
+		return {
+			destroy() {
+				node.removeEventListener('mouseover', handleMouseover);
+				node.removeEventListener('mouseout', handleMouseout);
+			}
+		};
+	}
+
+	const columnWidth = 200; // Set a fixed width for all columns
+	const columnSpacing = 4; // Set a fixed spacing between columns
+
+	let headerScrollContainer: HTMLElement;
+	let mainScrollContainer: HTMLElement;
+
+	function syncScroll(event: Event) {
+		const scrollingElement = event.target as HTMLElement;
+		if (scrollingElement === headerScrollContainer) {
+			mainScrollContainer.scrollLeft = scrollingElement.scrollLeft;
+		} else if (scrollingElement === mainScrollContainer) {
+			headerScrollContainer.scrollLeft = scrollingElement.scrollLeft;
+		}
+	}
+
+	function scrollOneColumn(direction: 'left' | 'right') {
+		console.log(`Scrolling ${direction}`);
+		if (mainScrollContainer) {
+			const currentScroll = mainScrollContainer.scrollLeft;
+			const scrollAmount = columnWidth + columnSpacing;
+			const newScroll =
+				direction === 'left'
+					? Math.max(0, currentScroll - scrollAmount)
+					: currentScroll + scrollAmount;
+
+			console.log(`Before scroll - Current scroll: ${currentScroll}, Target scroll: ${newScroll}`);
+
+			requestAnimationFrame(() => {
+				mainScrollContainer.scrollLeft = newScroll;
+
+				// Force a reflow to ensure the scroll has been applied
+				void mainScrollContainer.offsetWidth;
+
+				console.log(`After scroll - New scroll position: ${mainScrollContainer.scrollLeft}`);
+			});
+		} else {
+			console.log('mainScrollContainer is not defined');
+		}
+	}
+
+	function updateScrollButtonsVisibility() {
+		if (mainScrollContainer) {
+			const hasOverflow = mainScrollContainer.scrollWidth > mainScrollContainer.clientWidth;
+			const leftButton = document.querySelector('.left-button') as HTMLElement;
+			const rightButton = document.querySelector('.right-button') as HTMLElement;
+
+			if (leftButton && rightButton) {
+				const scrollLeft = mainScrollContainer.scrollLeft;
+				const maxScrollLeft = mainScrollContainer.scrollWidth - mainScrollContainer.clientWidth;
+
+				const containerRect = mainScrollContainer.getBoundingClientRect();
+				const viewportHeight = window.innerHeight;
+				const containerVisibleTop = Math.max(0, containerRect.top);
+				const containerVisibleBottom = Math.min(viewportHeight, containerRect.bottom);
+				const visibleCenterY =
+					containerVisibleTop + (containerVisibleBottom - containerVisibleTop) / 2;
+
+				leftButton.style.display = hasOverflow && scrollLeft > 0 ? 'flex' : 'none';
+				rightButton.style.display = hasOverflow && scrollLeft < maxScrollLeft ? 'flex' : 'none';
+
+				// Adjust the top position to account for both sticky headers
+				const topHeader = document.querySelector('header:first-of-type');
+				const particlesHeader = document.querySelector('header:nth-of-type(2)');
+				const totalHeaderHeight =
+					(topHeader?.clientHeight || 0) + (particlesHeader?.clientHeight || 0);
+				const buttonTop = Math.max(visibleCenterY, totalHeaderHeight + 20); // 20px padding
+
+				leftButton.style.top = `${buttonTop}px`;
+				rightButton.style.top = `${buttonTop}px`;
+			}
+		}
+	}
+
+	function handleClickOutside(event: MouseEvent) {
+		const statsDropdown = document.querySelector('#stats-dropdown');
+		const optionsDropdown = document.querySelector('#options-dropdown');
+		const statsButton = document.querySelector('#stats-button');
+		const optionsButton = document.querySelector('#options-button');
+
+		if (
+			statsDropdown &&
+			!statsDropdown.contains(event.target as Node) &&
+			!statsButton?.contains(event.target as Node)
+		) {
+			statsDropdownOpen = false;
+		}
+		if (
+			optionsDropdown &&
+			!optionsDropdown.contains(event.target as Node) &&
+			!optionsButton?.contains(event.target as Node)
+		) {
+			optionsDropdownOpen = false;
+		}
+	}
+
+	afterUpdate(() => {
+		updateScrollButtonsVisibility();
+	});
 </script>
 
 <div class="flex flex-col min-h-screen bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100">
@@ -609,24 +548,24 @@ afterUpdate(() => {
 								<div class="h-1 w-full relative">
 									{#each Object.entries(data.distribution || {}) as [corpus, freqs]}
 										{#if $selectedCorpora.includes(corpus)}
-											{@const selectedTotal = $useNormalization 
+											{@const selectedTotal = $useNormalization
 												? Object.entries(data.distribution)
 														.filter(([corpus]) => $selectedCorpora.includes(corpus))
-														.reduce((sum, [_, freqs]) => sum + freqs.normalized, 0)
+														.reduce((sum, [, freqs]) => sum + freqs.normalized, 0)
 												: Object.entries(data.distribution)
 														.filter(([corpus]) => $selectedCorpora.includes(corpus))
-														.reduce((sum, [_, freqs]) => sum + freqs.raw, 0)}
+														.reduce((sum, [, freqs]) => sum + freqs.raw, 0)}
 											{@const value = $useNormalization ? freqs.normalized : freqs.raw}
 											{@const percentage = (value / selectedTotal) * 100}
-											{@const offset = $useNormalization 
+											{@const offset = $useNormalization
 												? Object.entries(data.distribution)
 														.filter(([c]) => $selectedCorpora.includes(c))
 														.filter(([c]) => c < corpus)
-														.reduce((sum, [_, f]) => sum + (f.normalized / selectedTotal) * 100, 0)
+														.reduce((sum, [, f]) => sum + (f.normalized / selectedTotal) * 100, 0)
 												: Object.entries(data.distribution)
 														.filter(([c]) => $selectedCorpora.includes(c))
 														.filter(([c]) => c < corpus)
-														.reduce((sum, [_, f]) => sum + (f.raw / selectedTotal) * 100, 0)}
+														.reduce((sum, [, f]) => sum + (f.raw / selectedTotal) * 100, 0)}
 											<div
 												class="absolute h-full"
 												style="left: {offset}%; 
@@ -658,7 +597,7 @@ afterUpdate(() => {
 				>
 					<div class="flex" style="gap: {columnSpacing}px;">
 						{#if $particleGroups && Object.keys($particleGroups).length > 0}
-							{#each Object.entries($particleGroups) as [particle, data]}
+							{#each Object.values($particleGroups) as data}
 								{#if data && data.collocates && data.collocates.length > 0}
 									<div style="width: {columnWidth}px; flex-shrink: 0;">
 										<CollocationList
@@ -669,7 +608,6 @@ afterUpdate(() => {
 											{useNormalization}
 											{selectedCorpora}
 											{getSolidColor}
-											{corpusNorm}
 											{searchType}
 										/>
 									</div>

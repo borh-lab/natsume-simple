@@ -1,6 +1,6 @@
 // See https://kit.svelte.dev/docs/types#app
 // for information about these interfaces
-import "unplugin-icons/types/svelte";
+import 'unplugin-icons/types/svelte';
 
 declare global {
 	namespace App {

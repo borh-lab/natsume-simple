@@ -1,12 +1,22 @@
-<script>
-const {
-	useNormalization,
-	selectedCorpora,
-	getColor,
-	getSolidColor,
-	corpusNorm,
-	handleCheckboxChange,
-} = $props();
+<script lang="ts">
+	import type { CorpusStats } from '$lib/stores/corpus';
+	import type { Writable } from 'svelte/store';
+
+	const {
+		useNormalization,
+		selectedCorpora,
+		getColor,
+		getSolidColor,
+		corpusNorm,
+		handleCheckboxChange
+	}: {
+		useNormalization: Writable<boolean>;
+		selectedCorpora: Writable<string[]>;
+		getColor: (corpus: string) => string;
+		getSolidColor: (corpus: string) => string;
+		corpusNorm: Writable<Record<string, CorpusStats>>;
+		handleCheckboxChange: () => void | Promise<void>;
+	} = $props();
 </script>
 
 <div

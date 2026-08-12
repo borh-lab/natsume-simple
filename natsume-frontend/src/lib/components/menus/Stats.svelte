@@ -1,5 +1,18 @@
-<script>
-const { corpusStats, corpusNorm, filteredResultCount, searchElapsedTime, formatNumber } = $props();
+<script lang="ts">
+	import type { CorpusStats } from '$lib/stores/corpus';
+	import type { Readable } from 'svelte/store';
+
+	const {
+		corpusNorm,
+		filteredResultCount,
+		searchElapsedTime,
+		formatNumber
+	}: {
+		corpusNorm: Readable<Record<string, CorpusStats>>;
+		filteredResultCount: Readable<number>;
+		searchElapsedTime: Readable<number>;
+		formatNumber: (value: number) => string;
+	} = $props();
 </script>
 
 <div

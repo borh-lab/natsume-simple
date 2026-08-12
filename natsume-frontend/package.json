@@ -17,12 +17,10 @@
 	"devDependencies": {
 		"@iconify/json": "^2.2.279",
 		"@playwright/test": "^1.28.1",
-		"@sveltejs/adapter-auto": "^3.0.0",
 		"@sveltejs/adapter-static": "^3.0.5",
 		"@sveltejs/kit": "^2.0.0",
 		"@sveltejs/vite-plugin-svelte": "^4.0.0-next.6",
 		"@types/eslint": "^9.6.0",
-		"@types/lodash": "^4.17.13",
 		"autoprefixer": "^10.4.20",
 		"eslint": "^9.0.0",
 		"eslint-config-prettier": "^9.1.0",
@@ -40,8 +38,5 @@
 		"vite": "^5.0.3",
 		"vitest": "^2.0.0"
 	},
-	"type": "module",
-	"dependencies": {
-		"lodash": "^4.17.21"
-	}
+	"type": "module"
 }
