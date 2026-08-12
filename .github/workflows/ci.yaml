@@ -5,38 +5,74 @@ on:
     branches: [ main ]
   pull_request:
     branches: [ main ]
+  schedule:
+    - cron: '23 17 * * 0'
+  workflow_dispatch:
 
 env:
   ACCELERATOR: 'cpu'
 
 jobs:
   check:
-    name: Build
+    name: Check and build
     permissions:
       id-token: "write"
       contents: "read"
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: DeterminateSystems/nix-installer-action@main
-      - uses: DeterminateSystems/magic-nix-cache-action@main
-      - uses: DeterminateSystems/flake-checker-action@main
-      - name: Install frontend dependencies
-        run: nix develop --command npm --prefix natsume-frontend ci
-      - name: Run lint
-        run: nix run .#lint
-      - name: Run backend tests
-        run: nix run .#run-tests
-      - name: Check flake outputs
-        run: nix flake check --no-write-lock-file
-      - name: Run browser tests
-        run: nix run .#playwright-check
-      - name: Upload browser failure artifacts
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: playwright-report
-          path: |
-            natsume-frontend/playwright-report
-            natsume-frontend/test-results
-          if-no-files-found: ignore
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: DeterminateSystems/nix-installer-action@786fff0690178f1234e4e1fe9b536e94f5433196 # v20
+      - uses: DeterminateSystems/magic-nix-cache-action@565684385bcd71bad329742eefe8d12f2e765b39 # v13
+      - name: Run hermetic checks
+        run: nix flake check --no-write-lock-file --print-build-logs
+      - name: Build production outputs
+        run: >-
+          nix build --no-link
+          .#frontend
+          .#server
+          .#corpus-builder-cpu
+          .#container
+      - name: Smoke-test the OCI image
+        shell: bash
+        run: |
+          set -euo pipefail
+          fixture="$RUNNER_TEMP/natsume-fixture"
+          export NATSUME_FIXTURE_DIR="$fixture"
+          nix develop .#builder --command python -c \
+            'import os; from pathlib import Path; from tests.database_fixture import build_search_artifact; build_search_artifact(Path(os.environ["NATSUME_FIXTURE_DIR"]))'
+          chmod -R a+rX "$fixture"
+
+          image_path=$(nix build .#container --no-link --print-out-paths)
+          loaded=$(docker load --input "$image_path")
+          image_tag=${loaded#Loaded image: }
+          container_id=$(docker run --detach --read-only --user 65532:65532 \
+            --publish 18000:8000 \
+            --volume "$fixture:/var/lib/natsume/artifact:ro" \
+            "$image_tag")
+          trap 'docker rm --force "$container_id" >/dev/null 2>&1 || true' EXIT
+
+          test "$(docker image inspect --format '{{.Config.User}}' "$image_tag")" = '65532:65532'
+          test "$(docker inspect --format '{{.HostConfig.ReadonlyRootfs}}' "$container_id")" = 'true'
+          for _ in $(seq 1 50); do
+            if curl --fail --silent http://127.0.0.1:18000/api/health/ready >/dev/null; then
+              break
+            fi
+            sleep 0.2
+          done
+          curl --fail --silent http://127.0.0.1:18000/ | grep -q 'data-sveltekit-preload-data'
+          curl --fail --silent \
+            'http://127.0.0.1:18000/api/collocations?term=%E6%83%85%E5%A0%B1&pos=noun&rankBy=raw' \
+            | grep -q 'fixture-build-001'
+
+  model-integration:
+    name: NLP model integration
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    permissions:
+      id-token: write
+      contents: read
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: DeterminateSystems/nix-installer-action@786fff0690178f1234e4e1fe9b536e94f5433196 # v20
+      - uses: DeterminateSystems/magic-nix-cache-action@565684385bcd71bad329742eefe8d12f2e765b39 # v13
+      - run: nix build .#nlp-model-integration --no-link --print-build-logs

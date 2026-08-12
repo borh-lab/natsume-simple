@@ -18,7 +18,6 @@
 				"esbenp.prettier-vscode",
 				"dbaeumer.vscode-eslint",
 				"bradlc.vscode-tailwindcss",
-				"svelte.svelte-vscode",
 				"eamodio.gitlens",
 				"editorconfig.editorconfig",
 				"antfu.iconify",
@@ -26,11 +25,9 @@
 				"jnoortheen.nix-ide",
 				"ms-toolsai.jupyter"
 			],
-			"settings": {
-				"python.defaultInterpreterPath": ".venv/bin/python3"
-			}
+			"settings": {}
 		}
 	},
-	"updateContentCommand": "direnv reload",
+	"updateContentCommand": "nix flake show --no-write-lock-file",
 	"postStartCommand": "direnv allow"
 }
