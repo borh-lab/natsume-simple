@@ -62,7 +62,7 @@
 				{#each examples as example (example.sentenceId)}
 					<li class="rounded bg-gray-100 p-2 dark:bg-gray-800">
 						<strong>{example.sourceTitle}:</strong>
-						{#each sentenceSegments( example.text, [{ ...example.nounSpan, type: 'noun' }, { ...example.particleSpan, type: 'particle' }, { ...example.verbSpan, type: 'verb' }] ) as segment}
+						{#each sentenceSegments( example.text, [{ ...example.nounSpan, type: 'noun' }, { ...example.particleSpan, type: 'particle' }, { ...example.verbSpan, type: 'verb' }] ) as segment, index (index)}
 							{#if segment.className}<span class={segment.className}>{segment.text}</span
 								>{:else}{segment.text}{/if}
 						{/each}

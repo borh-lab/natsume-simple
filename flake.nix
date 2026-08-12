@@ -321,7 +321,7 @@
             runtimeInputs = runtime-packages;
             text = ''
               ${config.packages.build-frontend}/bin/build-frontend
-              ${uv-run} --with fastapi --with duckdb fastapi dev --host localhost src/natsume_simple/server.py
+              ${uv-run} --with fastapi --with duckdb fastapi dev --host localhost src/natsume_simple/api.py
             '';
             passthru.meta = {
               category = "Server";
@@ -333,7 +333,7 @@
             runtimeInputs = runtime-packages;
             text = ''
               ${config.packages.build-frontend}/bin/build-frontend
-              ${uv-run} --with fastapi --with duckdb fastapi run --host localhost src/natsume_simple/server.py
+              ${uv-run} --with fastapi --with duckdb fastapi run --host localhost src/natsume_simple/api.py
             '';
             passthru.meta = {
               category = "Server";

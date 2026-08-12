@@ -487,3 +487,14 @@ def test_corpus_selection_rejects_unknown_and_empty_ids(
             "requestId": "bad-corpus-selection",
         }
     }
+
+
+def test_runtime_app_serves_frontend_after_api_routes(tmp_path: Path):
+    artifact_dir = build_search_artifact(tmp_path / "artifact")
+    frontend_dir = tmp_path / "frontend"
+    frontend_dir.mkdir()
+    (frontend_dir / "index.html").write_text("<h1>Natsume fixture</h1>")
+
+    with TestClient(create_app(artifact_dir, frontend_dir=frontend_dir)) as client:
+        assert client.get("/api/health/live").json() == {"status": "ok"}
+        assert client.get("/").text == "<h1>Natsume fixture</h1>"

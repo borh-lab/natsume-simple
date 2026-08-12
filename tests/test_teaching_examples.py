@@ -1,11 +1,12 @@
 from pathlib import Path
 import tomllib
 
-import polars as pl
+from fastapi.testclient import TestClient
 
+from natsume_simple.api import create_app
 from natsume_simple.data import BaseCorpusLoader, GenericCorpusLoader, is_japanese
 from natsume_simple.pattern_extraction import normalize_verb_span, process_sentence
-from natsume_simple.server import get_npv_query, process_query_results
+from tests.database_fixture import build_search_artifact
 from tests.token_observations import (
     EXTRACTION_OBSERVATIONS,
     NORMALIZATION_OBSERVATIONS,
@@ -91,33 +92,43 @@ def test_occurrence_construction_example(monkeypatch):
     assert occurrences == [(7, "こと", "を", "説明する", 0, 2, 2, 3, 3, 10)]
 
 
-def test_aggregation_example():
-    rows = pl.DataFrame(
-        {
-            "n": ["情報"],
-            "p": ["を"],
-            "v": ["集める"],
-            "contributions": [
-                [
-                    {"corpus": "alpha", "frequency": 3},
-                    {"corpus": "beta", "frequency": 1},
-                ]
-            ],
-        }
+def test_aggregation_example(tmp_path: Path):
+    artifact = build_search_artifact(tmp_path / "artifact")
+    with TestClient(create_app(artifact)) as client:
+        response = client.get(
+            "/api/collocations",
+            params={"term": "情報", "pos": "noun", "rankBy": "raw"},
+        )
+
+    collocate = next(
+        item
+        for group in response.json()["particleGroups"]
+        if group["particle"] == "を"
+        for item in group["items"]
+        if item["verb"] == "集める"
     )
+    assert collocate["totalRawFrequency"] == 3
+    assert {row["corpusId"] for row in collocate["contributions"]} == {
+        "alpha",
+        "beta",
+    }
 
-    result = process_query_results(rows, ["を"], {"alpha": 1 / 3, "beta": 1})
-    collocate = result["を"]["collocates"][0]
 
-    assert collocate["totalRawFrequency"] == 4
-    assert collocate["totalNormalizedFrequency"] == 2
+def test_query_semantics_example(tmp_path: Path):
+    artifact = build_search_artifact(tmp_path / "artifact")
+    with TestClient(create_app(artifact)) as client:
+        noun = client.get(
+            "/api/collocations",
+            params={"term": "情報", "pos": "noun", "rankBy": "raw"},
+        ).json()
+        verb = client.get(
+            "/api/collocations",
+            params={"term": "集める", "pos": "verb", "rankBy": "raw"},
+        ).json()
 
-
-def test_query_semantics_example():
-    noun_query, noun_params = get_npv_query("noun", "情報")
-    verb_query, verb_params = get_npv_query("verb", "集める")
-
-    assert "WHERE l1.string = ?" in noun_query
-    assert noun_params == ["情報"]
-    assert "WHERE l3.string = ?" in verb_query
-    assert verb_params == ["集める"]
+    assert {
+        item["verb"] for group in noun["particleGroups"] for item in group["items"]
+    } >= {"集める", "分析する"}
+    assert {
+        item["noun"] for group in verb["particleGroups"] for item in group["items"]
+    } == {"情報"}

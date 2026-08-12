@@ -4,6 +4,7 @@ from datetime import datetime, UTC
 import hashlib
 import json
 import logging
+import os
 from pathlib import Path
 import re
 import time
@@ -16,6 +17,7 @@ from anyio import CapacityLimiter, WouldBlock
 from fastapi import Depends, FastAPI, Query, Request  # type: ignore
 from fastapi.exceptions import RequestValidationError  # type: ignore
 from fastapi.responses import JSONResponse  # type: ignore
+from fastapi.staticfiles import StaticFiles  # type: ignore
 from pydantic import BaseModel
 
 QUERY_CAPACITY = 16
@@ -306,7 +308,7 @@ async def database_connection(
 DatabaseConnection = Annotated[duckdb.DuckDBPyConnection, Depends(database_connection)]
 
 
-def create_app(artifact_dir: Path) -> FastAPI:
+def create_app(artifact_dir: Path, *, frontend_dir: Path | None = None) -> FastAPI:
     @asynccontextmanager
     async def artifact_lifespan(api: FastAPI):
         api.state.database_path = None
@@ -680,4 +682,16 @@ def create_app(artifact_dir: Path) -> FastAPI:
             databaseBuildId=request.app.state.database_build_id,
         )
 
+    if frontend_dir is not None:
+        api.mount(
+            "/",
+            StaticFiles(directory=frontend_dir, html=True, check_dir=False),
+            name="frontend",
+        )
     return api
+
+
+app = create_app(
+    Path(os.environ.get("NATSUME_ARTIFACT_DIR", "deploy/current")),
+    frontend_dir=Path(os.environ.get("NATSUME_FRONTEND_DIR", "natsume-frontend/build")),
+)

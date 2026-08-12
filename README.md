@@ -177,27 +177,25 @@ python src/natsume_simple/database.py \
     --action clean-patterns
 ```
 
-### Server (server.py)
+### Server (api.py)
 
 ```bash
-# Run with FastAPI CLI in development mode
-uvicorn src.natsume_simple.server:app --reload
+# Serve a published schema-v1 artifact in development mode
+NATSUME_ARTIFACT_DIR=deploy/current uvicorn natsume_simple.api:app --reload
 
-# Run with FastAPI CLI in production mode
-uvicorn src.natsume_simple.server:app
+# Production mode
+NATSUME_ARTIFACT_DIR=deploy/current uvicorn natsume_simple.api:app
 
 # Available API endpoints:
-# GET /corpus/norm - Get normalization factors
-# GET /npv/{search_type}/{term} - Search for collocations
-# GET /sentences/{n}/{p}/{v}/{limit} - Get example sentences
-# GET /search/{query} - Search for terms
+# GET /api/corpora - List corpora and their counts
+# GET /api/suggestions?q=...&pos=noun - Suggest lemmas
+# GET /api/collocations?term=...&pos=noun&rankBy=raw - Search collocations
+# GET /api/examples?noun=...&particle=...&verb=... - Get example sentences
 
 # Example API calls:
-curl http://localhost:8000/corpus/norm
-curl http://localhost:8000/npv/noun/本
-curl http://localhost:8000/npv/verb/読む
-curl http://localhost:8000/sentences/本/を/読む/5
-curl http://localhost:8000/search/読
+curl http://localhost:8000/api/corpora
+curl 'http://localhost:8000/api/collocations?term=本&pos=noun&rankBy=meanPerMillion'
+curl 'http://localhost:8000/api/examples?noun=本&particle=を&verb=読む'
 ```
 
 ## Nix Flake Usage
@@ -247,8 +245,11 @@ nix develop --print-build-logs
 │   └── tests/                   # フロントエンドテスト
 │
 ├── src/natsume_simple/          # バックエンドPythonパッケージ
-│   ├── server.py                # FastAPIサーバー
-│   ├── database.py              # データベース関連
+│   ├── api.py                   # FastAPIサーバー
+│   ├── artifact_builder.py      # DuckDBアーティファクト生成
+│   ├── artifact_registry.py     # 公開・ロールバック
+│   ├── corpus_pipeline.py       # コーパス変換パイプライン
+│   ├── database.py              # 旧データベース関連（移行中）
 │   ├── data.py                  # データ処理
 │   └── pattern_extraction.py    # パターン抽出ロジック
 │

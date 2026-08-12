@@ -20,8 +20,8 @@ behavior = "One parsed sentence produces token observations and an offset-bearin
 
 [aggregation]
 target = "test_aggregation_example"
-behavior = "Per-corpus raw counts are normalized and summed into one particle group."
+behavior = "Per-corpus contributions are summed into one schema-v1 collocation item."
 
 [query_semantics]
 target = "test_query_semantics_example"
-behavior = "Noun and verb directions bind the requested lemma on opposite sides of the relation."
+behavior = "Noun and verb API directions select the requested lemma on opposite sides of the relation."
