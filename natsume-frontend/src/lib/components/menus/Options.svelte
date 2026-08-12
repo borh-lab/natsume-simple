@@ -44,7 +44,7 @@
 				<span class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
 					>Corpus Selection</span
 				>
-				{#each Object.keys($corpusNorm) as corpus}
+				{#each Object.keys($corpusNorm) as corpus (corpus)}
 					<label
 						class="flex items-center mb-2 px-2 py-1 rounded border-2"
 						style="border-color: {getSolidColor(corpus)}; background-color: {getColor(corpus)}"

@@ -116,7 +116,7 @@
 			<ul
 				class="absolute top-full left-0 bg-white border border-gray-300 min-w-full z-[1000] dark:bg-[#2d2d2d] dark:text-white"
 			>
-				{#each $suggestions as suggestion}
+				{#each $suggestions as suggestion (`${suggestion.pos}-${suggestion.word}`)}
 					<li class="p-2 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 dark:bg-gray-800">
 						<button
 							class="w-full text-left"

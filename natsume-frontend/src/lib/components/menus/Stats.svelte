@@ -24,7 +24,7 @@
 		<div class="px-4 py-2">
 			<h2 class="text-lg font-semibold mb-2 dark:text-gray-200">Corpus Statistics</h2>
 			<ul class="list-none p-0 space-y-1 dark:text-gray-300">
-				{#each Object.entries($corpusNorm) as [corpus, stats]}
+				{#each Object.entries($corpusNorm) as [corpus, stats] (corpus)}
 					<li>
 						{corpus}: {formatNumber(stats.collocationCount)} collocations
 						<span class="text-gray-500 dark:text-gray-400">

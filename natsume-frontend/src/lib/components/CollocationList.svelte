@@ -115,7 +115,7 @@
 </script>
 
 <ul class="list-none p-0 space-y-0 mt-2">
-	{#each sortedCollocates as collocate}
+	{#each sortedCollocates as collocate (`${collocate.n}-${collocate.p}-${collocate.v}`)}
 		<li
 			class="flex items-center justify-start p-0"
 			use:tooltipAction={{
@@ -140,7 +140,7 @@
 			>
 				<summary class="list-none flex items-center justify-start p-0">
 					<svg width="50" height="20" class="mr-2">
-						{#each renderContributions(collocate) as { corpus, width, xOffset }}
+						{#each renderContributions(collocate) as { corpus, width, xOffset } (corpus)}
 							<rect
 								style="fill: {getSolidColor(corpus)}"
 								height="20"
@@ -154,10 +154,10 @@
 					</span>
 				</summary>
 				<ul class="list-none p-0 space-y-0 mt-2">
-					{#each sentencesMap[`${collocate.n}-${collocate.p}-${collocate.v}`] || [] as sentence}
+					{#each sentencesMap[`${collocate.n}-${collocate.p}-${collocate.v}`] || [] as sentence (`${sentence.corpus}-${sentence.text}`)}
 						<li class="my-1 p-1 rounded" style="background-color: {getColor(sentence.corpus)}">
-							<span class="font-medium">{sentence.corpus}:</span>{' '}
-							{#each sentenceSegments( sentence.text, [{ start: sentence.n_begin, end: sentence.n_end, type: 'noun' }, { start: sentence.p_begin, end: sentence.p_end, type: 'particle' }, { start: sentence.v_begin, end: sentence.v_end, type: 'verb' }] ) as segment}
+							<span class="font-medium">{sentence.corpus}:</span>
+							{#each sentenceSegments( sentence.text, [{ start: sentence.n_begin, end: sentence.n_end, type: 'noun' }, { start: sentence.p_begin, end: sentence.p_end, type: 'particle' }, { start: sentence.v_begin, end: sentence.v_end, type: 'verb' }] ) as segment, index (index)}
 								{#if segment.className}
 									<span class={segment.className}>{segment.text}</span>
 								{:else}

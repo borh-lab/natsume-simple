@@ -541,12 +541,12 @@
 		<HorizontallyScrollableContainer {syncScroll} bind:scrollContainer={headerScrollContainer}>
 			<div class="flex" style="gap: {columnSpacing}px;">
 				{#if $particleGroups && Object.keys($particleGroups).length > 0}
-					{#each Object.entries($particleGroups) as [particle, data]}
+					{#each Object.entries($particleGroups) as [particle, data] (particle)}
 						{#if data && data.collocates && data.collocates.length > 0}
 							<div style="width: {columnWidth}px; flex-shrink: 0;">
 								<h2 class="text-center text-2xl font-semibold">{particle}</h2>
 								<div class="h-1 w-full relative">
-									{#each Object.entries(data.distribution || {}) as [corpus, freqs]}
+									{#each Object.entries(data.distribution || {}) as [corpus, freqs] (corpus)}
 										{#if $selectedCorpora.includes(corpus)}
 											{@const selectedTotal = $useNormalization
 												? Object.entries(data.distribution)
@@ -597,7 +597,7 @@
 				>
 					<div class="flex" style="gap: {columnSpacing}px;">
 						{#if $particleGroups && Object.keys($particleGroups).length > 0}
-							{#each Object.values($particleGroups) as data}
+							{#each Object.entries($particleGroups) as [particle, data] (particle)}
 								{#if data && data.collocates && data.collocates.length > 0}
 									<div style="width: {columnWidth}px; flex-shrink: 0;">
 										<CollocationList
