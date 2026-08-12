@@ -1,17 +1,44 @@
 from collections import Counter
 from collections.abc import Callable, Iterable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import hashlib
 from pathlib import Path
 
 import polars as pl
+from spacy.tokens import Doc
 
-from natsume_simple.artifact_builder import SentenceRecord, SourceDocument
+from natsume_simple.artifact_builder import (
+    ArtifactRecords,
+    BuildMetadata,
+    CollocationOccurrence,
+    CorpusRecord,
+    SentenceRecord,
+    SourceDocument,
+    build_artifact,
+)
+from natsume_simple.pattern_extraction import npv_matcher
+
+
+class PipelineRejected(ValueError):
+    """A rejection threshold was crossed for one bounded reason."""
+
+
+@dataclass(frozen=True)
+class RejectionLimits:
+    max_count: int
+    max_fraction: float
 
 
 @dataclass(frozen=True)
 class AdaptationResult:
+    corpus_id: str
     documents: tuple[SourceDocument, ...]
+    rejections: dict[str, int]
+
+
+@dataclass(frozen=True)
+class ExtractionResult:
+    occurrences: tuple[CollocationOccurrence, ...]
     rejections: dict[str, int]
 
 
@@ -52,6 +79,7 @@ def adapt_jnlp_directory(
         )
 
     return AdaptationResult(
+        "jnlp",
         tuple(sorted(documents, key=lambda document: document.external_id)),
         dict(sorted(rejections.items())),
     )
@@ -93,6 +121,7 @@ def adapt_wikipedia_parquet(paths: Sequence[Path]) -> AdaptationResult:
             )
 
     return AdaptationResult(
+        "wiki",
         tuple(sorted(documents, key=lambda document: document.external_id)),
         dict(sorted(rejections.items())),
     )
@@ -118,6 +147,92 @@ def segment_documents(
             )
             ordinal += 1
     return tuple(sentences)
+
+
+def extract_collocations(
+    sentences: Iterable[SentenceRecord],
+    parse: Callable[[str], Doc],
+    *,
+    extractor_id: str,
+) -> ExtractionResult:
+    """Parse canonical sentences into identity-preserving occurrences."""
+    occurrences: list[CollocationOccurrence] = []
+    rejections: Counter[str] = Counter()
+    for sentence in sentences:
+        doc = parse(sentence.text)
+        if not doc.has_annotation("DEP"):
+            rejections["missing_dependency_parse"] += 1
+            continue
+        for noun, particle, verb, *spans in npv_matcher(doc):
+            occurrences.append(
+                CollocationOccurrence(
+                    source_identity=sentence.source_identity,
+                    sentence_ordinal=sentence.ordinal,
+                    noun=noun,
+                    particle=particle,
+                    verb=verb,
+                    noun_span=(spans[0], spans[1]),
+                    particle_span=(spans[2], spans[3]),
+                    verb_span=(spans[4], spans[5]),
+                    extractor_id=extractor_id,
+                )
+            )
+    return ExtractionResult(tuple(occurrences), dict(sorted(rejections.items())))
+
+
+def enforce_rejection_limits(
+    rejections: dict[str, int],
+    *,
+    total: int,
+    limits: RejectionLimits,
+) -> None:
+    """Reject a pipeline stage when any bounded reason crosses its limits."""
+    if total <= 0:
+        raise PipelineRejected("rejection_total_invalid")
+    for reason, count in sorted(rejections.items()):
+        if count > limits.max_count or count / total > limits.max_fraction:
+            raise PipelineRejected(f"rejection_limit_exceeded:{reason}")
+
+
+def build_corpus_artifact(
+    output_directory: Path,
+    *,
+    corpora: tuple[CorpusRecord, ...],
+    adaptations: tuple[AdaptationResult, ...],
+    split: Callable[[tuple[str, ...]], Iterable[str]],
+    parse: Callable[[str], Doc],
+    metadata: BuildMetadata,
+    rejection_limits: RejectionLimits,
+    extractor_id: str,
+) -> Path:
+    """Compose adapted sources, segmentation, extraction, and persistence."""
+    documents: list[SourceDocument] = []
+    rejection_counts: dict[str, dict[str, int]] = {}
+    for adaptation in adaptations:
+        total = len(adaptation.documents) + sum(adaptation.rejections.values())
+        enforce_rejection_limits(
+            adaptation.rejections, total=total, limits=rejection_limits
+        )
+        documents.extend(adaptation.documents)
+        rejection_counts[adaptation.corpus_id] = adaptation.rejections
+
+    sentences = segment_documents(documents, split)
+    extraction = extract_collocations(sentences, parse, extractor_id=extractor_id)
+    enforce_rejection_limits(
+        extraction.rejections, total=len(sentences), limits=rejection_limits
+    )
+    rejection_counts["extraction"] = extraction.rejections
+
+    return build_artifact(
+        output_directory,
+        records=ArtifactRecords(
+            corpora=corpora,
+            sources=tuple(documents),
+            sentences=sentences,
+            occurrences=extraction.occurrences,
+        ),
+        metadata=replace(metadata, rejection_counts=rejection_counts),
+    )
 
 
 def _jnlp_source_path(raw_path: str, volume: int) -> Path:

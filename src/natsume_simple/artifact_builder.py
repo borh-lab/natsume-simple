@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 import hashlib
 import json
@@ -139,6 +139,7 @@ class BuildMetadata:
     built_at: datetime
     content_license: str
     attribution: str
+    rejection_counts: dict[str, dict[str, int]] = field(default_factory=dict)
 
 
 def create_schema_v1(connection: duckdb.DuckDBPyConnection) -> None:
@@ -374,6 +375,7 @@ def _write_artifact_files(
         "databaseSha256": database_sha256,
         "identityInputs": applied_identity_inputs,
         "relationCounts": relation_counts,
+        "rejectionCounts": metadata.rejection_counts,
     }
     (staging / "manifest.json").write_text(
         json.dumps(manifest, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
