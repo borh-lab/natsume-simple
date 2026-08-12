@@ -4,6 +4,7 @@ from pathlib import Path
 
 import duckdb
 
+from natsume_simple.artifact_builder import create_schema_v1
 from natsume_simple.database import init_database
 
 
@@ -60,71 +61,14 @@ def build_search_artifact(directory: Path) -> Path:
     directory.mkdir()
     database_path = directory / "corpus.duckdb"
     conn = duckdb.connect(str(database_path))
+    create_schema_v1(conn)
     conn.execute(
         """
-        CREATE TABLE build_metadata (
-            schema_version INTEGER NOT NULL,
-            artifact_instance_id TEXT NOT NULL UNIQUE,
-            builder_version TEXT NOT NULL,
-            extractor_id TEXT NOT NULL,
-            execution_profile_json TEXT NOT NULL,
-            source_manifest_sha256 TEXT NOT NULL,
-            built_at_utc TIMESTAMP NOT NULL
-        );
-        CREATE TABLE corpus (id TEXT PRIMARY KEY, label TEXT NOT NULL);
-        CREATE TABLE source (
-            id INTEGER PRIMARY KEY,
-            corpus_id TEXT NOT NULL REFERENCES corpus(id),
-            external_id TEXT NOT NULL,
-            title TEXT NOT NULL,
-            content_sha256 TEXT NOT NULL,
-            UNIQUE (corpus_id, external_id)
-        );
-        CREATE TABLE sentence (
-            id INTEGER PRIMARY KEY,
-            source_id INTEGER NOT NULL REFERENCES source(id),
-            ordinal INTEGER NOT NULL,
-            text TEXT NOT NULL,
-            UNIQUE (source_id, ordinal)
-        );
-        CREATE TABLE collocation_occurrence (
-            sentence_id INTEGER NOT NULL REFERENCES sentence(id),
-            noun TEXT NOT NULL,
-            particle TEXT NOT NULL,
-            verb TEXT NOT NULL,
-            n_begin INTEGER NOT NULL,
-            n_end INTEGER NOT NULL,
-            p_begin INTEGER NOT NULL,
-            p_end INTEGER NOT NULL,
-            v_begin INTEGER NOT NULL,
-            v_end INTEGER NOT NULL,
-            extractor_id TEXT NOT NULL
-        );
-        CREATE TABLE corpus_stats (
-            corpus_id TEXT PRIMARY KEY REFERENCES corpus(id),
-            source_count INTEGER NOT NULL,
-            sentence_count INTEGER NOT NULL,
-            collocation_count INTEGER NOT NULL
-        );
-        CREATE TABLE lemma_frequency (
-            part_of_speech TEXT NOT NULL,
-            lemma TEXT NOT NULL,
-            occurrence_count INTEGER NOT NULL,
-            UNIQUE (part_of_speech, lemma)
-        );
-        CREATE VIEW collocation_frequency AS
-            SELECT src.corpus_id, o.noun, o.particle, o.verb,
-                   count(*)::INTEGER AS raw_frequency
-            FROM collocation_occurrence o
-            JOIN sentence s ON s.id = o.sentence_id
-            JOIN source src ON src.id = s.source_id
-            GROUP BY src.corpus_id, o.noun, o.particle, o.verb;
-
         INSERT INTO build_metadata VALUES
             (1, 'fixture-build-001', 'fixture', 'fixture-extractor', '{}',
              'fixture-sources', '2026-08-12T00:00:00Z');
         INSERT INTO corpus VALUES ('alpha', 'Alpha'), ('beta', 'Beta');
-        INSERT INTO source VALUES
+        INSERT INTO source (id, corpus_id, external_id, title, content_sha256) VALUES
             (1, 'alpha', 'a1', 'Alpha one', 'sha-a1'),
             (2, 'alpha', 'a2', 'Alpha two', 'sha-a2'),
             (3, 'beta', 'b1', 'Beta one', 'sha-b1');
@@ -192,7 +136,7 @@ def build_maximum_response_artifact(directory: Path) -> Path:
                 ('max-a', 'Maximum A'),
                 ('max-b', 'Maximum B'),
                 ('max-c', 'Maximum C');
-            INSERT INTO source VALUES
+            INSERT INTO source (id, corpus_id, external_id, title, content_sha256) VALUES
                 (20, 'max-a', 'max-a', 'Maximum A', 'sha-max-a'),
                 (21, 'max-b', 'max-b', 'Maximum B', 'sha-max-b'),
                 (22, 'max-c', 'max-c', 'Maximum C', 'sha-max-c');
@@ -237,7 +181,7 @@ def build_maximum_response_artifact(directory: Path) -> Path:
                 ('max-c', 1, 1600, 1600);
             INSERT INTO lemma_frequency VALUES ('noun', repeat('名', 64), 4800);
 
-            INSERT INTO source
+            INSERT INTO source (id, corpus_id, external_id, title, content_sha256)
             SELECT 100 + item,
                    'max-a',
                    'example-' || item,
