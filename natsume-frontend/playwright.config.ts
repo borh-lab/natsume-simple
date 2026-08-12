@@ -3,7 +3,9 @@ import type { PlaywrightTestConfig } from '@playwright/test';
 const config: PlaywrightTestConfig = {
 	webServer: [
 		{
-			command: 'cd .. && uv run -q --extra cpu python -m tests.fixture_server',
+			command:
+				process.env.NATSUME_FIXTURE_COMMAND ??
+				'cd .. && uv run -q --extra backend python -m tests.fixture_server',
 			port: 8000
 		},
 		{

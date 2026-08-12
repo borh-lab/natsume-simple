@@ -7,6 +7,17 @@ license = "MIT"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "duckdb>=1.5.5,<2",
+    "pydantic>=2.13.4,<3",
+]
+
+[project.scripts]
+natsume-corpus = "natsume_simple.builder_cli:main"
+
+[project.optional-dependencies]
+builder = [
+    # spaCy imports Click directly; Typer 0.27 no longer supplies it transitively.
+    "click>=8.4.2,<9",
     "polars[pyarrow,excel]>=1.43.2,<2",
     "ginza==5.2.0",
     "ja-ginza==5.2.0",
@@ -17,8 +28,21 @@ dependencies = [
     # "spacy-transformers>=1.2.5",
     # "torch>=2.5.1",
     "wtpsplit>=2.2.1,<3",
-    "duckdb>=1.5.5,<2",
-    "pydantic>=2.13.4,<3",
+]
+cpu = [
+    "torch==2.13.0+cpu",
+]
+cuda = [
+    "torch==2.13.0+cu126",
+    "cupy-cuda12x>=14.1.1,<15",
+]
+backend = [
+    "fastapi>=0.141.1,<1",
+    "uvicorn>=0.52.1,<1",
+]
+test = [
+    "httpx2>=2.9.0,<3",
+    "pytest>=9.1.1,<10",
 ]
 
 [dependency-groups]
@@ -29,7 +53,6 @@ dev = [
     "notebook>=7.3.2",
     "pytest-testmon>=2.1.1",
     "pytest-watch>=4.2.0",
-    "pytest>=9.1.1,<10",
     "ruff>=0.16.2,<1",
 ]
 
@@ -39,18 +62,6 @@ conflicts = [
         { extra = "cpu" },
         { extra = "cuda" },
     ],
-]
-
-[project.optional-dependencies]
-cpu = [
-    "torch==2.13.0+cpu",
-]
-cuda = [
-    "torch==2.13.0+cu126",
-    "cupy-cuda12x>=14.1.1,<15",
-]
-backend = [
-    "fastapi[standard-no-fastapi-cloud-cli]>=0.141.1,<1",
 ]
 
 [tool.uv.sources]

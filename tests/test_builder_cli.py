@@ -1,0 +1,73 @@
+import hashlib
+import re
+from pathlib import Path
+
+import pytest
+
+from natsume_simple import builder_cli
+
+
+def test_artifact_instance_id_is_utc_timestamp_plus_128_bits():
+    instance_id = builder_cli.new_artifact_instance_id(
+        timestamp="20260812T153045Z", random_hex="ab" * 16
+    )
+
+    assert instance_id == "20260812T153045Z-" + "ab" * 16
+    assert re.fullmatch(r"\d{8}T\d{6}Z-[0-9a-f]{32}", instance_id)
+
+
+def test_path_sha256_covers_relative_names_and_contents(tmp_path: Path):
+    model = tmp_path / "model"
+    model.mkdir()
+    (model / "a").write_bytes(b"first")
+    (model / "b").write_bytes(b"second")
+
+    expected = hashlib.sha256()
+    for name, content in [("a", b"first"), ("b", b"second")]:
+        expected.update(name.encode())
+        expected.update(b"\0")
+        expected.update(content)
+
+    assert builder_cli.path_sha256(model) == expected.hexdigest()
+
+
+def test_build_requires_at_least_one_explicit_local_corpus(tmp_path: Path, capsys):
+    model = tmp_path / "model"
+    model.mkdir()
+    license_file = tmp_path / "license.txt"
+    license_file.write_text("content license")
+    attribution = tmp_path / "attribution.md"
+    attribution.write_text("attribution")
+
+    with pytest.raises(SystemExit, match="2"):
+        builder_cli.main(
+            [
+                "build",
+                "--artifacts-directory",
+                str(tmp_path / "artifacts"),
+                "--splitter-model",
+                str(model),
+                "--content-license",
+                str(license_file),
+                "--attribution",
+                str(attribution),
+            ]
+        )
+    assert "at least one local corpus input is required" in capsys.readouterr().err
+
+
+def test_publish_command_delegates_to_atomic_registry(monkeypatch, tmp_path: Path):
+    artifact = tmp_path / "artifact"
+    deploy = tmp_path / "deploy"
+    calls = []
+
+    monkeypatch.setattr(
+        builder_cli,
+        "publish_artifact",
+        lambda artifact_directory, deploy_directory: (
+            calls.append((artifact_directory, deploy_directory)) or artifact_directory
+        ),
+    )
+
+    assert builder_cli.main(["publish", str(artifact), str(deploy)]) == 0
+    assert calls == [(artifact, deploy)]

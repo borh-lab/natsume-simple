@@ -1,94 +1,351 @@
 {
-  description = "natsume-simple nix flake";
+  description = "Natsume Japanese collocation service";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
-
     flake-parts.url = "github:hercules-ci/flake-parts";
-
-    process-compose-flake.url = "github:Platonic-Systems/process-compose-flake";
-    # services-flake.url = "github:juspay/services-flake";
 
     git-hooks-nix = {
       url = "github:cachix/git-hooks.nix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
-    # nix2container = {
-    #   url = "github:nlewo/nix2container";
-    #   inputs.nixpkgs.follows = "nixpkgs";
-    # };
+    pyproject-nix = {
+      url = "github:pyproject-nix/pyproject.nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
+    uv2nix = {
+      url = "github:pyproject-nix/uv2nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.pyproject-nix.follows = "pyproject-nix";
+    };
+
+    pyproject-build-systems = {
+      url = "github:pyproject-nix/build-system-pkgs";
+      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.pyproject-nix.follows = "pyproject-nix";
+      inputs.uv2nix.follows = "uv2nix";
+    };
   };
 
   outputs =
     inputs@{ flake-parts, ... }:
     flake-parts.lib.mkFlake { inherit inputs; } {
-      imports = [
-        # To import a flake module
-        # 1. Add foo to inputs
-        # 2. Add foo as a parameter to the outputs function
-        # 3. Add here: foo.flakeModule
-        inputs.process-compose-flake.flakeModule
-        inputs.git-hooks-nix.flakeModule
-      ];
+      imports = [ inputs.git-hooks-nix.flakeModule ];
       systems = [
         "x86_64-linux"
         "aarch64-linux"
         "aarch64-darwin"
-        "x86_64-darwin"
       ];
+
       perSystem =
         {
           config,
-          self',
-          inputs',
           pkgs,
           system,
           lib,
           ...
         }:
         let
-          detect-accelerator = ''
-            # Set default value if not already set
-            : "''${ACCELERATOR:=cpu}"
+          revision = inputs.self.shortRev or inputs.self.dirtyShortRev or "dirty";
+          workspace = inputs.uv2nix.lib.workspace.loadWorkspace { workspaceRoot = ./.; };
+          pythonBase = pkgs.callPackage inputs.pyproject-nix.build.packages {
+            python = pkgs.python312;
+          };
+          mkPythonSet =
+            dependencies:
+            pythonBase.overrideScope (
+              lib.composeManyExtensions [
+                inputs.pyproject-build-systems.overlays.wheel
+                (workspace.mkPyprojectOverlay {
+                  inherit dependencies;
+                  sourcePreference = "wheel";
+                })
+                (
+                  final: prev:
+                  lib.genAttrs
+                    [
+                      "docopt"
+                      "mosestokenizer"
+                      "toolwrapper"
+                      "uctools"
+                    ]
+                    (
+                      name:
+                      prev.${name}.overrideAttrs (old: {
+                        # These legacy sdists execute setuptools but do not
+                        # declare a PEP 517 build system.
+                        nativeBuildInputs =
+                          (old.nativeBuildInputs or [ ])
+                          ++ final.resolveBuildSystem {
+                            setuptools = [ ];
+                          };
+                      })
+                    )
+                )
+              ]
+            );
 
-            # Override with detection if not explicitly set externally
-            if [ "$ACCELERATOR" = "cpu" ] && [ -z "''${ACCELERATOR_EXPLICIT:-}" ]; then
-              if command -v nvidia-smi &> /dev/null && nvidia-smi &> /dev/null; then
-                  ACCELERATOR="cuda"
-              fi
-            fi
-            export ACCELERATOR
-          '';
-          uv-wrapped = pkgs.writeShellScriptBin "uv" ''
-            ${detect-accelerator}
-            exec ${pkgs.uv}/bin/uv "$@"
-          '';
-          uv-run = ''uv run -q --extra "''${ACCELERATOR:-cpu}"'';
-          runtime-packages = [
-            uv-wrapped
-            pkgs.nodejs
+          # Selecting CPU here resolves the CPU/CUDA lock conflict. Each virtual
+          # environment still contains only the extras named in its own spec.
+          cpu-resolution.natsume-simple = [ "cpu" ];
+          server-dependencies.natsume-simple = [ "backend" ];
+          builder-dependencies.natsume-simple = [
+            "builder"
+            "cpu"
           ];
-          playwright-browsers = pkgs.playwright-driver.browsers.override {
+          test-dependencies.natsume-simple = [
+            "backend"
+            "builder"
+            "cpu"
+            "test"
+          ];
+          cpuPythonSet = mkPythonSet cpu-resolution;
+          serverPython = cpuPythonSet.mkVirtualEnv "natsume-server-python" server-dependencies;
+          builderPython = cpuPythonSet.mkVirtualEnv "natsume-builder-python" builder-dependencies;
+          testPython = cpuPythonSet.mkVirtualEnv "natsume-test-python" test-dependencies;
+
+          frontend = pkgs.buildNpmPackage {
+            pname = "natsume-frontend";
+            version = "0.3.0";
+            src = ./natsume-frontend;
+            npmDepsHash = "sha256-EzpXV1g9dpjpwSBoqKMZPWB4LUg5/HDuf2uurWMrE1s=";
+            npmBuildScript = "build";
+            installPhase = ''
+              runHook preInstall
+              mkdir -p "$out"
+              cp -r build/. "$out/"
+              runHook postInstall
+            '';
+          };
+
+          server = pkgs.writeShellApplication {
+            name = "natsume-serve";
+            runtimeInputs = [ serverPython ];
+            text = ''
+              artifact_dir="''${NATSUME_ARTIFACT_DIR:-/var/lib/natsume/artifact}"
+              host="''${NATSUME_HOST:-127.0.0.1}"
+              port="''${NATSUME_PORT:-8000}"
+
+              while (( $# )); do
+                case "$1" in
+                  --artifact-dir)
+                    artifact_dir="$2"
+                    shift 2
+                    ;;
+                  --host)
+                    host="$2"
+                    shift 2
+                    ;;
+                  --port)
+                    port="$2"
+                    shift 2
+                    ;;
+                  -h|--help)
+                    echo "usage: natsume-serve [--artifact-dir PATH] [--host HOST] [--port PORT]"
+                    exit 0
+                    ;;
+                  *)
+                    echo "natsume-serve: unknown argument: $1" >&2
+                    exit 2
+                    ;;
+                esac
+              done
+
+              export NATSUME_ARTIFACT_DIR="$artifact_dir"
+              export NATSUME_FRONTEND_DIR=${frontend}
+              exec uvicorn natsume_simple.api:app --host "$host" --port "$port"
+            '';
+          };
+
+          corpusBuilder = pkgs.writeShellApplication {
+            name = "natsume-corpus";
+            runtimeInputs = [
+              builderPython
+              pkgs.nkf
+              pkgs.pandoc
+            ];
+            text = ''
+              export NATSUME_BUILDER_REVISION=${lib.escapeShellArg revision}
+              exec ${builderPython}/bin/natsume-corpus "$@"
+            '';
+          };
+
+          frontendCheck = pkgs.buildNpmPackage {
+            pname = "natsume-frontend-check";
+            version = "0.3.0";
+            src = ./natsume-frontend;
+            npmDepsHash = "sha256-EzpXV1g9dpjpwSBoqKMZPWB4LUg5/HDuf2uurWMrE1s=";
+            dontNpmBuild = true;
+            doCheck = true;
+            checkPhase = ''
+              npm run lint
+              npm run check
+              npm run test:unit -- --run
+              npm run build
+            '';
+            installPhase = ''touch "$out"'';
+          };
+
+          backendCheck = pkgs.runCommand "natsume-backend-check" { nativeBuildInputs = [ testPython ]; } ''
+            cp -r ${./.} source
+            chmod -R u+w source
+            cd source
+            pytest -m "not nlp_model"
+            touch "$out"
+          '';
+
+          modelIntegration =
+            pkgs.runCommand "natsume-nlp-model-integration" { nativeBuildInputs = [ testPython ]; }
+              ''
+                cp -r ${./.} source
+                chmod -R u+w source
+                cd source
+                pytest -m nlp_model
+                touch "$out"
+              '';
+
+          playwrightBrowsers = pkgs.playwright-driver.browsers.override {
             withFirefox = false;
             withWebkit = false;
           };
-          development-packages = [
-            pkgs.bashInteractive
-            pkgs.nkf
-            pkgs.git
-            pkgs.wget
-            pkgs.pandoc
-          ];
-          help = import ./help.nix { inherit lib; };
+          playwrightCheck = pkgs.buildNpmPackage {
+            pname = "natsume-playwright-check";
+            version = "0.3.0";
+            src = ./natsume-frontend;
+            npmDepsHash = "sha256-EzpXV1g9dpjpwSBoqKMZPWB4LUg5/HDuf2uurWMrE1s=";
+            dontNpmBuild = true;
+            doCheck = true;
+            nativeBuildInputs = [ testPython ];
+            FONTCONFIG_FILE = pkgs.makeFontsConf { fontDirectories = [ pkgs.dejavu_fonts ]; };
+            PLAYWRIGHT_BROWSERS_PATH = playwrightBrowsers;
+            NATSUME_FIXTURE_COMMAND = "cd .. && ${testPython}/bin/python -m tests.fixture_server";
+            preCheck = "cp -r ${./tests} ../tests";
+            checkPhase = "runHook preCheck; npm run test:integration; runHook postCheck";
+            installPhase = ''touch "$out"'';
+          };
+
+          serverSmoke =
+            pkgs.runCommand "natsume-server-smoke"
+              {
+                nativeBuildInputs = [
+                  pkgs.curl
+                  testPython
+                ];
+              }
+              ''
+                cp -r ${./tests} tests
+                python -c 'from pathlib import Path; from tests.database_fixture import build_search_artifact; build_search_artifact(Path("artifact"))'
+
+                ${server}/bin/natsume-serve --artifact-dir "$PWD/artifact" --port 18000 >server.log 2>&1 &
+                server_pid=$!
+                trap 'cat server.log >&2; kill "$server_pid" 2>/dev/null || true' ERR
+                trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+                for attempt in $(seq 1 50); do
+                  if curl --fail --silent http://127.0.0.1:18000/api/health/ready >ready.json; then
+                    break
+                  fi
+                  if ! kill -0 "$server_pid" 2>/dev/null; then
+                    cat server.log >&2
+                    exit 1
+                  fi
+                  sleep 0.1
+                done
+
+                curl --fail --silent http://127.0.0.1:18000/ | grep -q 'data-sveltekit-preload-data'
+                curl --fail --silent \
+                  'http://127.0.0.1:18000/api/collocations?term=%E6%83%85%E5%A0%B1&pos=noun&rankBy=raw' \
+                  | grep -q 'fixture-build-001'
+                kill "$server_pid"
+                wait "$server_pid" || true
+                trap - EXIT
+                touch "$out"
+              '';
+
+          serverClosureCheck =
+            pkgs.runCommand "natsume-server-closure-check"
+              {
+                exportReferencesGraph = [
+                  "server-closure"
+                  server
+                ];
+              }
+              ''
+                if grep -E -- '-(torch|spacy|ginza|wtpsplit|polars|nodejs|jupyter|notebook|cuda)(-|$)' \
+                  server-closure; then
+                  echo "server closure contains a forbidden build or accelerator dependency" >&2
+                  exit 1
+                fi
+                touch "$out"
+              '';
+
+          builderSmoke =
+            pkgs.runCommand "natsume-builder-smoke"
+              {
+                nativeBuildInputs = [ builderPython ];
+              }
+              ''
+                python - <<'PY'
+                from pathlib import Path
+                from zipfile import ZipFile
+
+                with ZipFile("jnlp.zip", "w") as archive:
+                    archive.writestr("NLP_LATEX_CORPUS/file_DB.xls", "fixture")
+                    archive.writestr("NLP_LATEX_CORPUS/V01/lesson.tex", "\\section{教材} 教材です。")
+                PY
+                ${corpusBuilder}/bin/natsume-corpus prepare-jnlp jnlp.zip prepared
+                grep -q '教材です' prepared/NLP_LATEX_CORPUS/V01/lesson.txt
+                {
+                  ${pkgs.nkf}/bin/nkf --version
+                  ${pkgs.pandoc}/bin/pandoc --version
+                } >tool-versions.txt
+                cp tool-versions.txt "$out"
+              '';
+
+          edgeConfigCheck =
+            pkgs.runCommand "natsume-edge-config-check" { nativeBuildInputs = [ pkgs.nginx ]; }
+              ''
+                mkdir -p runtime/logs
+                nginx -t -p "$PWD/runtime" -c ${./deploy/nginx.conf}
+                touch "$out"
+              '';
+
+          container = pkgs.dockerTools.buildLayeredImage {
+            name = "natsume-simple";
+            tag = "${revision}-${system}";
+            contents = [
+              server
+              pkgs.cacert
+            ];
+            extraCommands = ''
+              mkdir -p etc
+              echo 'natsume:x:65532:65532:Natsume service:/nonexistent:/sbin/nologin' > etc/passwd
+              echo 'natsume:x:65532:' > etc/group
+            '';
+            config = {
+              Entrypoint = [ "${server}/bin/natsume-serve" ];
+              Env = [
+                "NATSUME_ARTIFACT_DIR=/var/lib/natsume/artifact"
+                "NATSUME_HOST=0.0.0.0"
+                "NATSUME_PORT=8000"
+              ];
+              User = "65532:65532";
+              WorkingDir = "/";
+              ExposedPorts."8000/tcp" = { };
+              Labels = {
+                "org.opencontainers.image.revision" = revision;
+                "org.opencontainers.image.source" = "https://github.com/borh/natsume-simple";
+                "org.natsume.schema-version" = "1";
+              };
+            };
+          };
         in
         {
-          # Per-system attributes can be defined here. The self' and inputs'
-          # module parameters provide easy access to attributes of the same
-          # system.
-          formatter = pkgs.nixfmt-rfc-style;
+          formatter = pkgs.nixfmt;
+
           pre-commit.settings.hooks = {
-            nixfmt-rfc-style.enable = true;
+            nixfmt.enable = true;
             flake-checker.enable = true;
             ruff = {
               enable = true;
@@ -100,237 +357,106 @@
             };
           };
 
-          checks.source-quality =
-            pkgs.runCommand "natsume-source-quality"
-              {
-                nativeBuildInputs = [
-                  pkgs.nixfmt
-                  pkgs.ruff
-                ];
-                src = ./.;
-              }
-              ''
-                cp -r "$src" source
-                chmod -R u+w source
-                cd source
-                nixfmt --check flake.nix help.nix
-                ruff format --check
-                ruff check src tests
-                touch "$out"
-              '';
+          packages = {
+            inherit frontend server;
+            corpus-builder-cpu = corpusBuilder;
+            nlp-model-integration = modelIntegration;
+            default = server;
+          }
+          // lib.optionalAttrs (system == "x86_64-linux") {
+            inherit container;
+          };
 
-          checks.frontend = pkgs.buildNpmPackage {
-            pname = "natsume-frontend-check";
-            version = "0.0.1";
-            src = ./natsume-frontend;
-            npmDepsHash = "sha256-EzpXV1g9dpjpwSBoqKMZPWB4LUg5/HDuf2uurWMrE1s=";
-            dontNpmBuild = true;
-            doCheck = true;
-            checkPhase = ''
-              npm run check
-              npm run test:unit -- --run
-              npm run build
-            '';
-            installPhase = ''
-              touch "$out"
-            '';
+          apps = {
+            serve = {
+              type = "app";
+              program = "${server}/bin/natsume-serve";
+            };
+            build-corpus = {
+              type = "app";
+              program = "${corpusBuilder}/bin/natsume-corpus";
+            };
+            check = {
+              type = "app";
+              program = "${pkgs.writeShellScript "natsume-check" ''exec ${pkgs.nix}/bin/nix flake check "$@"''}";
+            };
+            default = {
+              type = "app";
+              program = "${server}/bin/natsume-serve";
+            };
+          };
+
+          checks = {
+            source-quality =
+              pkgs.runCommand "natsume-source-quality"
+                {
+                  nativeBuildInputs = [
+                    pkgs.actionlint
+                    pkgs.mypy
+                    pkgs.nixfmt
+                    pkgs.ruff
+                  ];
+                }
+                ''
+                  cp -r ${./.} source
+                  chmod -R u+w source
+                  cd source
+                  actionlint .github/workflows/*.yaml
+                  nixfmt --check flake.nix
+                  ruff format --check
+                  ruff check src tests
+                  mypy --ignore-missing-imports --show-error-context src
+                  touch "$out"
+                '';
+            frontend = frontendCheck;
+            backend = backendCheck;
+            playwright = playwrightCheck;
+            package-frontend = frontend;
+            package-server = server;
+            package-corpus-builder-cpu = corpusBuilder;
+            builder-smoke = builderSmoke;
+            edge-config = edgeConfigCheck;
+            server-closure = serverClosureCheck;
+            server-smoke = serverSmoke;
+          }
+          // lib.optionalAttrs (system == "x86_64-linux") {
+            package-container = container;
           };
 
           devShells = {
+            server = pkgs.mkShell {
+              packages = [
+                serverPython
+                pkgs.mypy
+                pkgs.ruff
+                pkgs.uv
+              ];
+            };
+            builder = pkgs.mkShell {
+              packages = [
+                builderPython
+                pkgs.nkf
+                pkgs.pandoc
+                pkgs.ruff
+                pkgs.uv
+              ];
+            };
+            frontend = pkgs.mkShell {
+              packages = [
+                pkgs.nodejs
+                pkgs.playwright-driver
+              ];
+              PLAYWRIGHT_BROWSERS_PATH = playwrightBrowsers;
+            };
             default = pkgs.mkShell {
-              nativeBuildInputs = development-packages ++ runtime-packages;
-              shellHook =
-                let
-                  p = self'.packages;
-                  e = pn: lib.getBin pn;
-                  local-packages = map (pn: e pn) (
-                    with p;
-                    [
-                      uv-wrapped
-                      help-command
-                      run-tests
-                      frontend-check
-                      playwright-check
-                      lint
-                      build-frontend
-                      watch-frontend
-                      watch-dev-server
-                      watch-prod-server
-                    ]
-                  );
-                  path-string = (lib.concatStringsSep "/bin:" local-packages) + "/bin";
-                  shellInit = pkgs.writeTextFile {
-                    name = "shell-init";
-                    text = ''
-                      ${detect-accelerator}
-
-                      # Set up shell and prompt
-                      export SHELL=${pkgs.bashInteractive}/bin/bash
-                      export PS1='\[\e[34m\]\w\[\e[0m\] $(if [[ $? == 0 ]]; then echo -e "\[\e[32m\]"; else echo -e "\[\e[31m\]"; fi)#\[\e[0m\] '
-
-                      # Add local packages to PATH if not already present
-                      if [[ ":$PATH:" != *":${path-string}:"* ]]; then
-                        PATH="${path-string}:$PATH"
-                      fi
-
-                      eval "$(direnv hook bash)"
-
-                      export PC_PORT_NUM=10011
-                      export PLAYWRIGHT_BROWSERS_PATH=${playwright-browsers}
-
-                      h
-                    '';
-                  };
-                in
-                ''
-                  ${config.pre-commit.installationScript}
-                  source ${shellInit}
-                '';
-            };
-            # TODO: Make backend, data, and frontend-specific devShells as well
-          };
-
-          process-compose = {
-            watch-all = {
-              settings.processes = {
-                backend-server.command = "${self'.packages.watch-dev-server}/bin/watch-dev-server";
-                frontend-server.command = "${self'.packages.watch-frontend}/bin/watch-frontend";
-              };
+              inputsFrom = [
+                config.devShells.server
+                config.devShells.builder
+                config.devShells.frontend
+              ];
+              packages = [ pkgs.git ];
             };
           };
-
-          packages.help-command = pkgs.writeShellApplication {
-            name = "h";
-            runtimeInputs = [ ];
-            text = ''
-              echo -e "${help.generateHelpText self'.packages}"
-            '';
-            passthru.meta = {
-              category = "Help";
-              description = "Show this help message";
-            };
-          };
-
-          packages.initial-setup = pkgs.writeShellApplication {
-            name = "initial-setup";
-            runtimeInputs = runtime-packages;
-            text = ''
-              ${detect-accelerator}
-              export PYTHON_VERSION=3.12.7
-              uv -q python install $PYTHON_VERSION
-              uv -q python pin $PYTHON_VERSION
-              uv -q sync --dev --extra backend --extra "$ACCELERATOR"
-            '';
-            passthru.meta = {
-              category = "Setup";
-              description = "Initialize Python environment and dependencies";
-            };
-          };
-          packages.run-tests = pkgs.writeShellApplication {
-            name = "run-tests";
-            runtimeInputs = runtime-packages;
-            text = ''
-              ${uv-run} pytest -m "not nlp_model"
-            '';
-            passthru.meta = {
-              category = "Testing & QC";
-              description = "Run the test suite with pytest";
-            };
-          };
-          packages.frontend-check = pkgs.writeShellApplication {
-            name = "frontend-check";
-            runtimeInputs = runtime-packages;
-            text = ''
-              cd natsume-frontend
-              npm run check
-              npm run test:unit -- --run
-              npm run build
-            '';
-            passthru.meta = {
-              category = "Testing & QC";
-              description = "Type-check, test, and build the frontend";
-            };
-          };
-          packages.playwright-check = pkgs.writeShellApplication {
-            name = "playwright-check";
-            runtimeInputs = runtime-packages;
-            text = ''
-              export PLAYWRIGHT_BROWSERS_PATH=${playwright-browsers}
-              cd natsume-frontend
-              npm run test:integration
-            '';
-            passthru.meta = {
-              category = "Testing & QC";
-              description = "Run browser tests against the fixture service";
-            };
-          };
-          packages.lint = pkgs.writeShellApplication {
-            name = "lint";
-            runtimeInputs = runtime-packages;
-            text = ''
-              nix fmt -- --check flake.nix help.nix
-              ${uv-run} ruff format --check
-              ${uv-run} ruff check --output-format=github src tests
-              ${pkgs.mypy}/bin/mypy --ignore-missing-imports --show-error-context src
-              cd natsume-frontend && npm run lint
-            '';
-            passthru.meta = {
-              category = "Testing & QC";
-              description = "Run all linters and formatters";
-            };
-          };
-          packages.build-frontend = pkgs.writeShellApplication {
-            name = "build-frontend";
-            runtimeInputs = runtime-packages;
-            text = ''
-              cd natsume-frontend && npm run build
-            '';
-            passthru.meta = {
-              category = "Frontend";
-              description = "Build the frontend for production";
-            };
-          };
-          packages.watch-frontend = pkgs.writeShellApplication {
-            name = "watch-frontend";
-            runtimeInputs = runtime-packages;
-            text = ''
-              cd natsume-frontend && npm run dev
-            '';
-            passthru.meta = {
-              category = "Frontend";
-              description = "Start frontend in development mode with hot reload";
-            };
-          };
-          packages.watch-dev-server = pkgs.writeShellApplication {
-            name = "watch-dev-server";
-            runtimeInputs = runtime-packages;
-            text = ''
-              ${config.packages.build-frontend}/bin/build-frontend
-              ${uv-run} --with fastapi --with duckdb fastapi dev --host localhost src/natsume_simple/api.py
-            '';
-            passthru.meta = {
-              category = "Server";
-              description = "Start backend server in development mode";
-            };
-          };
-          packages.watch-prod-server = pkgs.writeShellApplication {
-            name = "watch-prod-server";
-            runtimeInputs = runtime-packages;
-            text = ''
-              ${config.packages.build-frontend}/bin/build-frontend
-              ${uv-run} --with fastapi --with duckdb fastapi run --host localhost src/natsume_simple/api.py
-            '';
-            passthru.meta = {
-              category = "Server";
-              description = "Start backend server in production mode";
-            };
-          };
-          packages.default = config.packages.watch-prod-server;
         };
-      flake = {
-        # The usual flake attributes can be defined here, including system-
-        # agnostic ones like nixosModule and system-enumerating ones, although
-        # those are more easily expressed in perSystem.
-      };
     };
 }

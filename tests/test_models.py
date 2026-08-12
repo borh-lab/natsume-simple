@@ -56,8 +56,14 @@ def test_model_loading():
     assert [t.text for t in doc] == ["これ", "は", "テスト", "です"]
 
 
-def test_generic_corpus_loader(temp_data_dir, sample_corpus):
+def test_generic_corpus_loader(temp_data_dir, sample_corpus, monkeypatch):
     """Test GenericCorpusLoader functionality."""
+
+    class FixtureSplitter:
+        def split(self, paragraphs: list[str]) -> list[list[str]]:
+            return [[paragraph] for paragraph in paragraphs]
+
+    monkeypatch.setattr("natsume_simple.data.SaT", lambda _model: FixtureSplitter())
     loader = GenericCorpusLoader(data_dir=temp_data_dir, corpus_name="test")
 
     # Test that corpus directory is set correctly

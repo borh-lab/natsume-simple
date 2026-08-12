@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 
-from natsume_simple.api import validate_artifact
+from natsume_simple.artifact_validation import validate_artifact
 
 
 def publish_artifact(artifact_directory: Path, deploy_directory: Path) -> Path:
