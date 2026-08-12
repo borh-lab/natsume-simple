@@ -379,16 +379,6 @@ def _write_artifact_files(
         json.dumps(manifest, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
         encoding="utf-8",
     )
-    (staging / "validation.json").write_text(
-        json.dumps(
-            {"status": "passed", "relationCounts": relation_counts},
-            ensure_ascii=False,
-            sort_keys=True,
-            indent=2,
-        )
-        + "\n",
-        encoding="utf-8",
-    )
     (staging / "LICENSE-CONTENT.txt").write_text(
         metadata.content_license.rstrip() + "\n", encoding="utf-8"
     )

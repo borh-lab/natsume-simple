@@ -107,7 +107,6 @@ def test_build_artifact_derives_serving_facts_and_layout(tmp_path: Path):
         "LICENSE-CONTENT.txt",
         "corpus.duckdb",
         "manifest.json",
-        "validation.json",
     ]
     manifest = json.loads((artifact / "manifest.json").read_text())
     assert manifest["artifactInstanceId"] == "fixture-a"

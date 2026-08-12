@@ -98,7 +98,7 @@ build --inputs inputs/ --output artifacts/<instance-id>.staging/
        ├─► extractor      → CollocationOccurrence
        ├─► persist        → canonical facts + recorded aggregates
        ├─► define view    → filtered collocation frequency
-       └─► validate       → manifest + validation report
+       └─► validate       → sealed artifact + manifest
                                 │
                                 ▼
 publish --artifact artifacts/<instance-id>/ --pointer deploy/current
@@ -314,7 +314,6 @@ Artifact layout:
 artifacts/<artifact-instance-id>/
   corpus.duckdb
   manifest.json
-  validation.json
   LICENSE-CONTENT.txt
   ATTRIBUTION.md
 ```
@@ -331,8 +330,8 @@ artifact-level distribution conclusion and required notices, and the completed
 avoiding a circular identity. Equivalence checks and operator comparisons use
 the recorded fields directly instead of introducing a hash with no independent
 consumer. Equivalent instances may have different DuckDB checksums, which
-validation reports rather than conceals. The API exposes the instance ID as
-`databaseBuildId`.
+comparison tooling reports rather than conceals. The API exposes the instance ID
+as `databaseBuildId`.
 
 The initial publishable extraction profile is CPU, float32, deterministic mode,
 and fixed thread/process counts. The CUDA package may build diagnostic artifacts
@@ -380,10 +379,12 @@ contain identifiers and counts, never corpus text.
 
 ## Publication and Rollback
 
-The builder writes the exclusively created `<instance-id>.staging`,
-fsyncs/finishes files as supported by the platform, validates, then renames to
-the absent final instance directory. A pre-existing staging or final instance
-path is a hard failure. It never opens the deployed artifact for writing.
+The builder writes the exclusively created `<instance-id>.staging`, closes the
+database and artifact files, validates, then renames to the absent final
+instance directory. A pre-existing staging or final instance path is a hard
+failure. It never opens the deployed artifact for writing. A crash may leave a
+diagnostic staging directory; only a completed rename creates a publishable
+artifact.
 
 Publication validates the final directory again, then atomically changes an
 explicit `deploy/current` pointer and restarts the single server. The server

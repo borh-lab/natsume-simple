@@ -51,7 +51,7 @@ change atomically. There are no external API consumers to preserve.
 | Term                       | Definition                                                                                                            |
 | -------------------------- | --------------------------------------------------------------------------------------------------------------------- |
 | Corpus input               | Checksum-validated source material consumed by the offline builder and recorded in artifact provenance                |
-| Serving artifact           | Versioned directory containing `corpus.duckdb`, `manifest.json`, and validation evidence                              |
+| Serving artifact           | Versioned directory containing `corpus.duckdb`, `manifest.json`, and content-license notices                          |
 | Artifact instance ID       | Unique identity of one artifact execution; it names the flat directory and appears on the wire                        |
 | Identity inputs            | Structured source, transformation, model, execution, schema, and builder provenance recorded in the artifact manifest |
 | Database file checksum     | Integrity hash of the completed DuckDB file                                                                           |
