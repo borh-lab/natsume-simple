@@ -44,6 +44,9 @@ FastAPI lifespan resolves an explicit artifact-directory configuration, reads
 `manifest.json`, verifies supported schema version and database identity, and
 opens the database in DuckDB read-only mode before readiness becomes true. It
 closes owned resources on shutdown. Importing the module does not open a database.
+Failed validation leaves the process live for orchestration diagnostics but
+stores no usable database path; readiness and every database-backed route then
+return the sanitized `503 database_unavailable` envelope.
 
 A single FastAPI dependency opens and yields a request-local read-only DuckDB
 connection, then closes it. Connections are never shared concurrently across
@@ -260,6 +263,14 @@ development-time generator writes committed TypeScript declarations to
 and fails on a diff. The frontend uses a small handwritten fetch wrapper; no
 runtime generated-client framework is added.
 
+Implementation is temporarily gated: stable `openapi-typescript` 7.13.0
+declares TypeScript `^5.x`, while this repository uses TypeScript 6, and
+[upstream TypeScript 6 support](https://github.com/openapi-ts/openapi-typescript/issues/2726)
+remains open. The dependency is not installed with a forced peer override and a
+second tool-only npm graph is not introduced. Generation resumes when a stable
+compatible release exists or a separate recorded decision selects another
+generator; frontend protocol cutover cannot precede that resolution.
+
 ## Test Strategy
 
 - Router integration tests use a real fixture DuckDB database.
@@ -284,8 +295,8 @@ runtime generated-client framework is added.
   documented.
 - Invalid `pos`/limits return the common 4xx envelope, never an uncaught
   `ValueError`/500.
-- The server starts only with a compatible artifact and becomes unready if its
-  startup validation fails.
+- The server becomes ready only with a compatible artifact; failed startup
+  validation leaves liveness available and every database-backed route unready.
 - Parallel read tests pass with request-local connections.
 - No corpus/API content reaches an HTML interpreter or structured logs.
 - Every maximum valid request remains below the response-size cap and respects
@@ -321,6 +332,7 @@ not supported.
 | Request-local read-only connections                 | Accepted | Matches DuckDB Python concurrency guidance                                                        | Measured connection overhead becomes material                |
 | No production CORS                                  | Accepted | Frontend and API are same-origin                                                                  | Separate trusted frontend origin is deployed                 |
 | OpenAPI-generated compile-time types only           | Accepted | Prevents drift without runtime client machinery                                                   | Multiple clients need richer generation                      |
+| Gate `openapi-typescript` on TypeScript 6 support    | Deferred | Stable 7.13.0 declares TypeScript 5 only; forcing the peer contract would make the lockfile dishonest | A stable compatible release ships or another generator is selected |
 | Interrupt and discard timed-out request connections | Accepted | DuckDB exposes connection interruption but no declarative per-query timeout                       | Selected DuckDB release provides a safer native deadline     |
 | Use the event-loop timer, not a watchdog thread      | Accepted | The async handler already owns scheduling; a second thread and join lifecycle add no guarantee    | Runtime evidence shows event-loop starvation delays interrupts |
 | Fail fast at the global query bound                  | Accepted | Per-client edge limits do not bound aggregate clients; queueing would violate latency bounds       | Capacity measurements justify a queue or a different limit     |
