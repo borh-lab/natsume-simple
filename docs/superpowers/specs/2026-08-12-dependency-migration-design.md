@@ -175,6 +175,14 @@ are locked. CPU is the mandatory full CI baseline. CUDA and ROCm each receive:
 - Repeated ordered-relational comparison required by Spec 3 before that
   accelerator profile is allowed to publish a corpus.
 
+The in-flight `.devcontainer/rocm/devcontainer.json` may be retained as the
+declared ROCm scheduled-evidence environment for this cohort. Adoption requires
+bringing it under version control, making it a thin consumer of the Nix ROCm
+builder rather than another dependency definition, and running the smoke and
+fixture jobs above on matching hardware. If the cohort obtains equivalent
+evidence elsewhere, the owner deletes the untracked variant; general cleanup
+does not pre-emptively remove owner work in progress.
+
 An accelerator is not advertised as supported solely because CPU resolves.
 
 ## Version Policy
@@ -242,8 +250,8 @@ Every cohort runs:
 - Direct dependency/peer/engine inspection.
 - Security audit comparison.
 - Diff review for generated lock and build artifacts.
-- Walkthrough doctest inventory and behavior; a dependency cohort cannot erase
-  executable examples merely because collection remains green.
+- Walkthrough boundary mapping and behavior; a dependency cohort cannot erase a
+  taught seam merely because the total example collection remains green.
 
 The data/NLP and accelerator cohorts additionally run their specialized fixture
 and scheduled hardware gates. The next cohort does not begin until the current
@@ -268,8 +276,8 @@ component models that Specs 2 and 5 replace.
 - Notebook closure is absent from ordinary CI and production builds.
 - Frontend uses supported Node/Vite/Svelte/TypeScript peer combinations.
 - Data/NLP fixture behavior is reviewed rather than blindly re-recorded.
-- The executable backend walkthrough remains readable and its doctest behavior
-  inventory is preserved across every cohort.
+- The executable backend walkthrough remains readable and every boundary-mapped
+  behavior target is preserved across every cohort.
 - CPU/CUDA/ROCm support statements match resolver, build, and scheduled hardware
   evidence.
 - Final npm graph has no unaccepted high/critical advisory.

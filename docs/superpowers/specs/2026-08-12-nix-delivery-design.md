@@ -79,7 +79,7 @@ Apps are thin launch interfaces over packages, not mutable setup scripts.
 - Frontend format, lint, `svelte-check`, unit/component tests, and production
   build.
 - OpenAPI-to-TypeScript drift.
-- Model-free backend walkthrough doctests and their inventory.
+- Model-free backend walkthrough examples and boundary-coverage mapping.
 - Fixture Playwright flow.
 - npm high/critical advisory policy.
 - Explicit builds of frontend, server, CPU builder, and Linux container.
@@ -240,9 +240,12 @@ a second hand-written list of mutable wrappers.
 - One default `.devcontainer/devcontainer.json` remains the Codespaces/local
   editor entry into the flake and does not become a production image definition.
   It uses a standard upstream base image directly; the one-line Dockerfile and
-  unconsumed rootless/ROCm variants are removed. Accelerator development uses
-  the same Nix outputs and explicit hardware gates as other environments rather
-  than adding another setup definition.
+  unconsumed tracked rootless variant are removed. The owner's untracked ROCm
+  work is not cleanup scope: Cohort 7 may adopt it as the named scheduled-ROCm
+  evidence environment. If adopted, it is committed, reduced to a thin consumer
+  of the same Nix ROCm output, and smoke-tested on matching hardware; if Cohort 7
+  obtains that evidence elsewhere, the owner deletes it. It never becomes a
+  second dependency definition.
 
 ## Test Strategy
 
@@ -275,8 +278,10 @@ a second hand-written list of mutable wrappers.
   production topology.
 - Direct server and image expose identical application behavior for the fixture.
 - Entering a development shell causes no checkout mutation or automatic setup.
-- The one documented default devcontainer reaches the same flake interface;
-  there are no alternative devcontainer or Dockerfile dependency definitions.
+- The documented default devcontainer reaches the same flake interface; no
+  tracked rootless variant or Dockerfile dependency definition remains. Any
+  retained ROCm devcontainer is only a tested Cohort 7 evidence harness over the
+  Nix ROCm output.
 - README/help accurately describe the real flake interface.
 
 ## Rollback
@@ -297,5 +302,5 @@ no separate Dockerfile rollback path.
 | Focused non-mutating shells                         | Accepted | Keeps dependency ownership clear and entry predictable                        | Contributor evidence shows union shell is sufficient                              |
 | x86_64 Linux image initially                        | Accepted | Current public-host target                                                    | Deployment requires another architecture                                          |
 | Require bounded public edge                         | Accepted | Anonymous expensive queries need overload protection even on one instance     | Authentication, multi-instance limiting, or measured capacity changes the control |
-| Keep one devcontainer that delegates to Nix         | Accepted | The default is the only documented Codespaces consumer; host/accelerator variants duplicate setup ownership | A distinct environment gains a named user and automated smoke test |
+| Keep one general devcontainer; conditionally adopt ROCm harness | Accepted | Default owns Codespaces; in-flight ROCm work survives only if Cohort 7 uses it to produce scheduled hardware evidence | Cohort 7 chooses another evidence environment or gains a distinct supported workflow |
 | Keep large-model integration outside default checks | Accepted | Default checks remain small while release evidence owns the real pinned model | Model closure becomes appropriate for every check                                 |

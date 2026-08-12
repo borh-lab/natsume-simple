@@ -84,42 +84,73 @@ A parameterized fixture pins at least:
 - `突入しちゃう → 突入する`
 - `で囲んである → 囲む`
 - `たらしめている → たらしめる`
+- `いるからで → いる`
+- `いるという → いる`
+- `語ります → 語る`
+- `しました。 → する`
+- `作り上げたか → 作り上げる`
+- `見られなかったが → 見られない`
 
 The fixture records normalized lemma and half-open source offsets. Model-token
 snapshots are diagnostic fixtures, not the public contract; tokenization may
 change again while normalized behavior remains stable.
 
+The last six cases migrate from the notebook before its unittest class is
+deleted. The notebook explicitly labels `見られないが` as an intentionally
+failing expected value and says `見られない` is correct, so the deliberate
+failure is not promoted into the domain contract.
+
 ### Executable teaching contract
 
-Spec 1 records the existing 26 `>>>` prompt examples by module and the behavior
-each demonstrates. The count is a deletion alarm, not a quota: later work may
-combine or replace examples only when review shows that the taught behavior is
-still covered more clearly. An empty doctest collection is a failure.
+Spec 1 records executable coverage as a boundary → test target → taught behavior
+mapping. The initial 26 `>>>` prompts cover only Japanese-text filtering and
+normalization; source adaptation, segmentation, occurrence construction,
+aggregation, and query semantics start uncovered. Spec 1 is not accepted until
+all seven rows name and execute at least one fixture-sized example. CI validates
+the mapping targets, while the total prompt count is informational only.
 
 One such decision is made here: replace the local `pairwise` implementation with
 Python 3.12's `itertools.pairwise`. Its three examples teach a reimplementation
-of a standard primitive, so the reviewed baseline becomes 23 examples. The
-inventory records that explicit subtraction; every other decrease still needs a
-teaching-contract decision.
+of a standard primitive, so the prompt inventory falls from 26 to 23 before the
+five coverage gaps are filled. The boundary mapping, not the resulting total,
+guards the teaching surface.
 
 Every public transformation boundary on the documented backend walkthrough has
 at least one short executable example using fixture-sized values. This includes
 source adaptation, Japanese-text filtering, segmentation, normalization,
-occurrence construction, aggregation, and request/query parameter semantics as
-those boundaries are introduced. HTTP lifecycle orchestration and trivial
-getters use integration tests instead of ceremonial doctests.
+occurrence construction, aggregation, and request/query parameter semantics.
+HTTP lifecycle orchestration and trivial getters use integration tests instead
+of ceremonial doctests.
 
 Examples are adjacent to the code they explain, deterministic, and readable
 without the production corpus. A reviewer may reject a helper or abstraction
 that makes the walkthrough harder to read even when it reduces local line count.
 
 The pattern-extraction notebook demonstrates the module rather than forking it.
-It imports `simple_lemma`, `normalize_verb_span`, and extraction functions from
-`natsume_simple.pattern_extraction`; its duplicate implementations and unittest
-classes are removed. Narration, dependency visualization, KWIC, and `Counter`
-exploration remain. The parameterized pytest table is the authoritative behavior
-matrix; adjacent module doctests may retain one representative teaching example
-without becoming a second independently maintained implementation.
+Before deletion, its normalization expectations migrate to the table above and
+its extraction expectations migrate to a parameterized characterization table:
+
+| Input                                        | Expected normalized triples                                  |
+| -------------------------------------------- | ------------------------------------------------------------ |
+| `東京では，銀座でランチをたべよう。`         | `銀座・で・食べる`, `ランチ・を・食べる`                     |
+| `京都にも行く。`                             | none                                                         |
+| `ことを説明するならば`                       | `こと・を・説明する`                                         |
+| `ことにならない`                             | `こと・に・ならない`                                         |
+
+The first two cases preserve compound-particle exclusion and the table also
+preserves multi-result and ordinary extraction. Model-free token observations
+add explicit `では`, `には`, `をも`, and `へと` exclusion cases. The last row is
+characterization of current GiNZA fixed/compound handling, not a claim that it
+is the preferred linguistic analysis; changing it requires a reviewed semantic
+decision.
+
+Only after both tables pass does the notebook import `simple_lemma`,
+`normalize_verb_span`, and extraction functions from
+`natsume_simple.pattern_extraction` and delete its duplicate implementations and
+unittest classes. Narration, dependency visualization, KWIC, and `Counter`
+exploration remain. The pytest tables are authoritative; adjacent module
+doctests may retain representative teaching examples without becoming a second
+implementation.
 
 ### Proven dead-code and primitive cleanup
 
@@ -241,8 +272,8 @@ wrappers with full derivations and production closures.
 - Generic metadata paths load the intended files and never iterate characters.
 - The normalization table remains stable in model-free policy fixtures and the
   separately declared pinned-model integration tier.
-- Walkthrough doctests execute and their behavior inventory does not shrink
-  silently.
+- Walkthrough examples execute and every taught boundary retains a mapped
+  behavior target.
 - Existing endpoint queries compose through a real temporary DuckDB connection.
 - Frontend corpus filtering and normalization selection retain characterized
   behavior.
@@ -263,9 +294,9 @@ wrappers with full derivations and production closures.
   corpus download.
 - Ordinary `nix flake check` requires no large NLP model; the explicit model
   integration output is green before release or an NLP dependency update.
-- The baseline records all 26 current prompt examples, the reviewed stdlib
-  replacement accounts for the reduction to 23, and every taught public
-  transformation boundary retains or gains a meaningful fixture-sized doctest.
+- The boundary inventory has no uncovered row, every mapped example executes,
+  and its informational count accounts explicitly for the three `pairwise`
+  examples removed before new boundary examples are added.
 - The two confirmed defects have focused regression tests and separate commits.
 - Placeholder arithmetic and `h1`-only tests are removed when stronger tests
   cover their test layers.
@@ -294,8 +325,8 @@ than suppressing or weakening the new check.
 | Prettier plus ESLint own frontend checks                     | Accepted | They are the repository's Svelte-aware configured stack; current Biome Svelte support is experimental and duplicates ownership | The selected stack becomes unsupported or demonstrably inferior     |
 | Split model-free policy from model integration               | Accepted | Ordinary checks stay small while release evidence still covers actual GiNZA output                                             | The model becomes cheap enough for every default check              |
 | Baseline owns non-mutating wrappers and minimal flake checks | Accepted | Its acceptance criteria otherwise depend circularly on Spec 6                                                                  | Full derivations land in Spec 6                                     |
-| Preserve meaningful walkthrough doctests                    | Accepted | The agenda and pytest configuration make executable examples a present learner-facing interface                                | The repository is no longer used for instruction                    |
+| Preserve boundary-mapped walkthrough examples               | Accepted | Coverage by taught boundary detects loss or concentration that a total prompt count cannot                                      | The repository is no longer used for instruction                    |
 | Do not require doctests on orchestration/getters             | Accepted | A per-function quota creates ceremonial examples; integration tests explain lifecycle behavior better                           | Learner feedback identifies a missing executable seam               |
 | Replace local `pairwise` with the standard primitive         | Accepted | Python 3.12 is required; teaching the standard API is clearer and explicitly accounts for three removed examples                 | A domain-specific pairing rule appears                              |
-| Make the notebook a consumer of extraction code              | Accepted | One tested normalization implementation prevents an untested teaching fork while preserving exploration                         | The notebook needs a genuinely experimental algorithm               |
+| Migrate notebook behavior before making it a consumer        | Accepted | Twelve normalization cases and extraction/exclusion cases must survive removal of duplicate implementations and unittest classes | The notebook needs a genuinely experimental algorithm             |
 | Retire the unconsumed generated changelog                    | Accepted | No release automation/configuration consumes it, and its all-unreleased contents are stale                                      | A release process names changelog output as a deliverable            |

@@ -345,6 +345,9 @@ Publication requires all of the following:
   non-negative counts and references only canonical relations.
 - Every selected corpus has at least one source, sentence, and occurrence.
 - Representative noun/verb/example fixture queries match expected relations.
+- Extraction fixtures preserve the accepted compound-particle exclusions
+  (`では`, `には`, `をも`, `へと`) and the reviewed normalization matrix from
+  Spec 1 unless a separate semantic decision changes them.
 - The Spec 2 API integration suite passes against the built artifact.
 - Two small fixture builds from the same inputs and execution profile produce
   different artifact instance IDs, equal structured `identity_inputs`, and

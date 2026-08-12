@@ -109,10 +109,10 @@ completion record linking the implementation commits and surviving ADRs.
 | Identity nesting complicated retention and cache invalidation   | Artifact directories are flat and the instance ID is the wire `databaseBuildId`                                                 | 2 and 3              |
 | Semantic build hash lost its structural consumers               | Structured manifest inputs serve equivalence comparison directly; the instance ID remains the only build identifier            | 3                    |
 | Small dead helpers and duplicate wrappers remained              | Spec 1 deletes dead seed/filter/route surfaces and uses stdlib pairing/logging; the live normalization helper waits for Spec 2  | 1 and 2              |
-| Notebook forked the extraction contract                         | It imports the tested module and retains only narration, visualization, and exploratory analysis                                | 1                    |
+| Notebook forked the extraction contract                         | Its distinct normalization/extraction cases migrate first; then it imports the tested module and retains exploration           | 1                    |
 | JNLP conversion relied on ambient executables                    | Gate 3A runs `nkf`/`pandoc` end-to-end; Spec 6 includes both in the declared builder closure                                    | 3 and 6              |
 | Generated changelog had no release consumer                     | The stale file and `git-cliff` are removed until a release process names a changelog deliverable                                | 1                    |
-| Development entry points duplicated environment ownership       | One default Codespaces/devcontainer delegates to Nix; Dockerfile and unconsumed rootless/ROCm variants retire                  | 6                    |
+| Development entry points duplicated environment ownership       | Default Codespaces delegates to Nix; Dockerfile/rootless retire; in-flight ROCm survives only as Cohort 7's tested evidence harness | 4 and 6           |
 
 Review follow-ups also assign legacy static deletion to Spec 1, acknowledge the
 incumbent prerelease manifest range, require cumulative intermediate-major
