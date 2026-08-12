@@ -136,11 +136,15 @@ original text and signals a non-sensitive validation result to the caller.
 
 Each mounted `SentenceExamples` owns `idle | loading | success | empty | error`
 state and one abort controller. Reopening the same disclosure while its result
-item remains mounted reuses that local result. Replacing the collocation response
-keys each item by `(responseGeneration, noun, particle, verb)`, remounts it,
-aborts requests during component destruction, and drops all example state. There
-is no page cache, LRU policy, cross-result reuse, or persistent browser storage,
-so corpus selection cannot reuse examples from an older request identity.
+item remains mounted reuses that local result. Result items use the stable string
+key `JSON.stringify([selectedCorpusIds, noun, particle, verb])`, with the
+server-echoed canonical corpus order. A corpus-selection change therefore
+remounts each item, aborts its request during destruction, and drops stale
+example state. A `rankBy` change preserves every keyed item still present after
+reranking, including its open disclosure, because examples do not depend on
+ranking. The frontend fixes the examples `limit` at 5; exposing that control
+later requires adding it to the key. There is no page cache, LRU policy,
+cross-result reuse, or persistent browser storage.
 
 ## Presentation Components
 
@@ -209,6 +213,8 @@ colors, or network timing.
 - Suggestion keyboard navigation and dismissal.
 - Corpus selection and `rankBy` intents.
 - Corpus/ranking changes abort stale work and request the new corpus set/rank.
+- A corpus change remounts example state; reranking preserves an open item that
+  remains in the result set and its loaded examples.
 - Menu/disclosure ARIA state.
 - Example loading/empty/error/success rendering.
 - Malicious text remains text.
@@ -220,11 +226,14 @@ Against the fixture backend:
 1. Load corpus metadata.
 2. Submit a noun search.
 3. Filter one corpus.
-4. Switch `rankBy` between raw and mean-per-million.
-5. Expand a collocation and load examples.
-6. Verify HTML-shaped example content is inert text.
-7. Exercise empty results and a controlled API failure.
-8. Repeat the primary controls at a mobile viewport.
+4. Expand a collocation and load examples.
+5. Switch `rankBy` and verify that a keyed item present in both responses
+   preserves the disclosure.
+6. Change corpus selection and verify that examples are requested for the new
+   canonical selection.
+7. Verify HTML-shaped example content is inert text.
+8. Exercise empty results and a controlled API failure.
+9. Repeat the primary controls at a mobile viewport.
 
 ## Acceptance Criteria
 
@@ -233,8 +242,8 @@ Against the fixture backend:
 - Search state has one page-scoped owner and no global writable search stores.
 - Every component passes typed values/callbacks and `svelte-check` is green.
 - Presentation-math tests and controller succession tests pass.
-- Example state is component-local and cannot survive replacement of its
-  selection-specific collocation response.
+- Example state is component-local, survives rank-only reordering, and cannot
+  survive a corpus-selection change.
 - No corpus/API text flows through HTML-string rendering.
 - Desktop and mobile flows pass their accessibility and Playwright assertions.
 - Obsolete combined-mode types/stores/functions are removed after their last
@@ -247,6 +256,6 @@ Against the fixture backend:
 | Page-scoped controller                        | Accepted | Coordinated state without process-global leakage/framework                    | Multiple routes need shared search state                |
 | Small presentation-math module                | Accepted | Two shared pure calculations retain cheap tests without pretending to own domain ranking | The functions gain only one component consumer |
 | Values/callbacks for component interfaces     | Accepted | Honest, independently testable components                                     | A component genuinely owns shared mutable state         |
-| Component-local example state                 | Accepted | Re-expansion is reused while visible; response replacement gives exact invalidation with no cache policy | Measured traffic shows cross-result caching is needed |
+| Component-local example state                 | Accepted | Dependency-shaped keys reuse visible examples across ranking changes and invalidate them on corpus changes without cache policy | Measured traffic shows cross-result caching is needed |
 | Server owns selection-specific ranking        | Accepted | Client-side filtering cannot recover items omitted by server top-N truncation | API provides an unbounded or cursor-complete result set |
 | Retain last success on error with stale label | Accepted | User can inspect prior data without mistaking query identity                  | User research prefers clearing immediately              |

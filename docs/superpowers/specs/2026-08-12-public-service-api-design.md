@@ -70,8 +70,8 @@ Returns `200 {"status":"ok"}` without querying DuckDB.
 Returns `200` with `status`, `databaseBuildId`, and `schemaVersion` after a
 trivial database read. It returns the common `503 database_unavailable` error if
 the artifact is missing, incompatible, or unreadable.
-`databaseBuildId` is the deployed artifact instance ID, not the semantic build
-ID, so every publish/rollback changes browser-visible artifact identity.
+`databaseBuildId` is the deployed artifact instance ID, so every
+publish/rollback changes browser-visible artifact identity.
 
 ### `GET /api/corpora`
 

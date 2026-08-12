@@ -178,7 +178,7 @@ Required configuration identifies an artifact directory containing both
 readiness remains false for:
 
 - Missing mount/directory/files.
-- Manifest/database checksum or build-ID mismatch.
+- Manifest/database checksum or artifact-instance-ID mismatch.
 - Unsupported schema.
 - Unreadable DuckDB file.
 

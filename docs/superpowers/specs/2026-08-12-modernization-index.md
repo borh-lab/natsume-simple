@@ -47,19 +47,19 @@ change atomically. There are no external API consumers to preserve.
 
 ## Glossary
 
-| Term                       | Definition                                                                                                                       |
-| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| Corpus input               | Pinned, checksum-validated source material consumed by the offline builder                                                       |
-| Serving artifact           | Versioned directory containing `corpus.duckdb`, `manifest.json`, and validation evidence                                         |
-| Semantic build ID          | Hash of source identities/checksums, transformation and execution profiles, model identity, schema version, and builder revision |
-| Artifact instance ID       | Unique identity of one execution producing an artifact; multiple instances may share a semantic build ID                         |
-| Database file checksum     | Hash of the completed DuckDB file; distinct from semantic build identity                                                         |
-| Occurrence                 | One extracted noun-particle-verb relation tied to a sentence and source spans                                                    |
-| Raw frequency              | Count of occurrences for a collocation in a corpus                                                                               |
-| Frequency per million      | Raw frequency divided by that corpus's total collocation count, multiplied by 1,000,000                                          |
-| Mean frequency per million | Arithmetic mean of the selected corpora's per-million rates, including zero for a selected corpus with no occurrence             |
-| Characterization test      | Test that records current required behavior before a structure-only change                                                       |
-| Compatibility cohort       | Dependency set upgraded, reviewed, verified, and reverted as one unit                                                            |
+| Term                       | Definition                                                                                                            |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Corpus input               | Pinned, checksum-validated source material consumed by the offline builder                                            |
+| Serving artifact           | Versioned directory containing `corpus.duckdb`, `manifest.json`, and validation evidence                              |
+| Artifact instance ID       | Unique identity of one artifact execution; it names the flat directory and appears on the wire                        |
+| Identity inputs            | Structured source, transformation, model, execution, schema, and builder provenance recorded in the artifact manifest |
+| Database file checksum     | Integrity hash of the completed DuckDB file                                                                           |
+| Occurrence                 | One extracted noun-particle-verb relation tied to a sentence and source spans                                         |
+| Raw frequency              | Count of occurrences for a collocation in a corpus                                                                    |
+| Frequency per million      | Raw frequency divided by that corpus's total collocation count, multiplied by 1,000,000                               |
+| Mean frequency per million | Arithmetic mean of the selected corpora's per-million rates, including zero for a selected corpus with no occurrence  |
+| Characterization test      | Test that records current required behavior before a structure-only change                                            |
+| Compatibility cohort       | Dependency set upgraded, reviewed, verified, and reverted as one unit                                                 |
 
 ## Specification Set
 
@@ -80,12 +80,20 @@ cohorts wait for their protocol and corpus characterization. Final Nix packaging
 follows stable application closures. Spec 1 creates the minimal non-mutating
 flake checks and shell behavior that later specs extend.
 
+## Specification Lifecycle
+
+These documents are implementation scaffolding, not permanent prerequisite
+reading. When the final acceptance criteria land, durable choices collapse into
+a short ADR set, the learning/walkthrough contract and current commands move to
+`README.md` and `AGENDA.md`, and this superseded working set is retired with a
+completion record linking the implementation commits and surviving ADRs.
+
 ## Written Review Disposition
 
 | Finding                                                         | Resolution                                                                                                                     | Owning specification |
 | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ | -------------------- |
 | Selection-specific top N was impossible after global truncation | `corpusId` and `rankBy` are server inputs; selection/ranking precede limiting and UI toggles refetch                           | 2 and 5              |
-| Equivalent builds collided on one directory                     | Flat unique no-overwrite instance directories; semantic identity and execution profile remain manifest metadata                | 3                    |
+| Equivalent builds collided on one directory                     | Flat unique no-overwrite instance directories; structured provenance and execution profile remain manifest metadata            | 3                    |
 | Rebuildability was assumed                                      | Gate 3A requires a passing reacquire or validated conversion outcome for every corpus                                          | 3                    |
 | Large NLP model had no check owner                              | Default checks use model-free observations; an explicit locked model derivation is a release/scheduled gate                    | 1 and 6              |
 | Formatter ownership was undecided                               | Prettier formats and ESLint lints; duplicate Biome ownership is removed                                                        | 1 and 4              |
@@ -94,11 +102,12 @@ flake checks and shell behavior that later specs extend.
 | Public abuse control was absent                                 | Bounded application admission plus a rate/connection-limited reverse proxy are release prerequisites                           | 2 and 6              |
 | Aggregate rate name/meaning was ambiguous                       | Per-corpus `frequencyPerMillion` and selected `meanFrequencyPerMillion` are distinct                                           | 2                    |
 | p95 equalled timeout and cancellation was unspecified           | p95 is below 1 second; an event-loop timer interrupts and the request discards its local connection                            | 2                    |
-| Determinism criterion partly restated ID construction           | Repeated builds compare ordered relational exports and separately test identity changes                                        | 3                    |
+| Determinism criterion partly restated ID construction           | Repeated builds compare ordered relational exports and structured input fields independently                                   | 3                    |
 | Educational purpose was absent                                  | Student/instructor is an actor; walkthrough readability and executable examples are global constraints                          | 1–6                  |
-| Example cache omitted corpus selection                          | The cross-result cache is removed; example state lives only in the mounted result component                                     | 5                    |
-| Persisted aggregates created avoidable drift                    | Counts and frequencies begin as views; materialization requires benchmark evidence                                              | 3                    |
+| Example cache omitted corpus selection                          | Cross-result caching is removed; component keys follow corpus/example identity while rank-only reorders preserve state           | 5                    |
+| Persisted aggregates created avoidable drift                    | Immutable build-time corpus/lemma facts are reconciled once; only filtered collocation frequency remains a view                 | 3                    |
 | Identity nesting complicated retention and cache invalidation   | Artifact directories are flat and the instance ID is the wire `databaseBuildId`                                                 | 2 and 3              |
+| Semantic build hash lost its structural consumers               | Structured manifest inputs serve equivalence comparison directly; the instance ID remains the only build identifier            | 3                    |
 
 Review follow-ups also assign legacy static deletion to Spec 1, acknowledge the
 incumbent prerelease manifest range, require cumulative intermediate-major
@@ -202,8 +211,9 @@ Nix flake ──► frontend package
   justifies pagination.
 - CPU is the mandatory full CI path; accelerator claims require scheduled
   matching-hardware evidence rather than every-commit full runs.
-- Aggregate views may be slower than materialized projections; schema v1 accepts
-  that risk until the production-host benchmark demonstrates otherwise.
+- Filtered collocation aggregation remains a view; recorded corpus and lemma
+  facts keep artifact-wide scans off page-load, normalization, and typeahead
+  paths. The production-host benchmark verifies that split.
 
 **Blocking inputs owned by later specs**
 
