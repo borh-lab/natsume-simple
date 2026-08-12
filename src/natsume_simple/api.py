@@ -202,6 +202,10 @@ def select_corpora(requested: list[str] | None, known: set[str]) -> list[str]:
         raise PublicApiError(
             400, "invalid_parameter", "corpusId must name a known corpus"
         )
+    if len(selected) > 3:
+        raise PublicApiError(
+            400, "invalid_parameter", "corpusId accepts at most three corpora"
+        )
     return selected
 
 
@@ -429,7 +433,7 @@ def create_app(artifact_dir: Path) -> FastAPI:
         pos: Literal["noun", "verb"],
         rankBy: Literal["raw", "meanPerMillion"],
         corpusId: Annotated[list[str] | None, Query()] = None,
-        limitPerParticle: Annotated[int, Query(ge=1, le=200)] = 100,
+        limitPerParticle: Annotated[int, Query(ge=1, le=150)] = 100,
     ) -> CollocationsResponse:
         request.state.rank_by = rankBy
         request.state.query_length_bucket = query_length_bucket(term)

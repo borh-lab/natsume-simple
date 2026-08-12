@@ -7,7 +7,10 @@ import pytest
 from fastapi.testclient import TestClient
 
 from natsume_simple.api import create_app
-from tests.database_fixture import build_search_artifact
+from tests.database_fixture import (
+    build_maximum_response_artifact,
+    build_search_artifact,
+)
 
 
 def fixture_client(tmp_path: Path) -> TestClient:
@@ -270,6 +273,56 @@ def test_collocations_select_and_rank_before_applying_the_limit(tmp_path: Path):
             ],
         }
     ]
+
+
+def test_maximum_responses_stay_below_one_mebibyte(tmp_path: Path):
+    artifact_dir = build_maximum_response_artifact(tmp_path / "artifact")
+    with TestClient(create_app(artifact_dir)) as client:
+        collocations = client.get(
+            "/api/collocations",
+            params={
+                "term": "名" * 64,
+                "pos": "noun",
+                "corpusId": ["max-a", "max-b", "max-c"],
+                "rankBy": "meanPerMillion",
+                "limitPerParticle": 150,
+            },
+        )
+        examples = client.get(
+            "/api/examples",
+            params={
+                "noun": "例",
+                "particle": "を",
+                "verb": "示す",
+                "corpusId": "max-a",
+                "limit": 20,
+            },
+        )
+
+    assert collocations.status_code == 200
+    assert len(collocations.content) < 1024 * 1024
+    assert len(collocations.json()["particleGroups"]) == 8
+    assert all(
+        group["returnedCount"] == 150 for group in collocations.json()["particleGroups"]
+    )
+    assert examples.status_code == 200
+    assert len(examples.content) < 1024 * 1024
+    assert len(examples.json()["examples"]) == 20
+
+
+def test_collocation_limit_rejects_values_above_the_sized_bound(tmp_path: Path):
+    with fixture_client(tmp_path) as client:
+        response = client.get(
+            "/api/collocations",
+            params={
+                "term": "情報",
+                "pos": "noun",
+                "rankBy": "raw",
+                "limitPerParticle": 151,
+            },
+        )
+
+    assert response.status_code == 422
 
 
 def test_examples_return_selected_plain_text_and_typed_spans(tmp_path: Path):
