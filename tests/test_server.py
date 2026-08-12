@@ -34,6 +34,20 @@ def test_liveness_does_not_query_the_database(client: TestClient):
     assert response.json() == {"status": "ok"}
 
 
+def test_public_cors_does_not_advertise_credentials(client: TestClient):
+    response = client.options(
+        "/api/health/live",
+        headers={
+            "Origin": "https://lesson.example",
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "*"
+    assert "access-control-allow-credentials" not in response.headers
+
+
 @pytest.mark.parametrize(
     ("search_type", "term", "particle", "other_lemma", "result_count"),
     [
