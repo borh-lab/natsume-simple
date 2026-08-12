@@ -432,7 +432,7 @@ class GenericCorpusLoader(BaseCorpusLoader):
                     year=row["year"],
                     author=row.get("author"),
                     publisher=row.get("publisher"),
-                    sentences=self._load_sentences(row["file_path"]),
+                    sentences=self._load_sentences([Path(row["file_path"])]),
                     url=row.get("url"),
                 )
 
