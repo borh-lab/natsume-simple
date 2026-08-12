@@ -3,6 +3,7 @@
 </script>
 
 <button
+	aria-label="Toggle dark mode"
 	class="ml-2 p-1 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-white"
 	onclick={() => themeManager.toggle()}
 >
