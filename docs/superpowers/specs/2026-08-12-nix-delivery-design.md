@@ -78,6 +78,7 @@ Apps are thin launch interfaces over packages, not mutable setup scripts.
 - Frontend format, lint, `svelte-check`, unit/component tests, and production
   build.
 - OpenAPI-to-TypeScript drift.
+- Model-free backend walkthrough doctests and their inventory.
 - Fixture Playwright flow.
 - npm high/critical advisory policy.
 - Explicit builds of frontend, server, CPU builder, and Linux container.

@@ -242,6 +242,8 @@ Every cohort runs:
 - Direct dependency/peer/engine inspection.
 - Security audit comparison.
 - Diff review for generated lock and build artifacts.
+- Walkthrough doctest inventory and behavior; a dependency cohort cannot erase
+  executable examples merely because collection remains green.
 
 The data/NLP and accelerator cohorts additionally run their specialized fixture
 and scheduled hardware gates. The next cohort does not begin until the current
@@ -266,6 +268,8 @@ component models that Specs 2 and 5 replace.
 - Notebook closure is absent from ordinary CI and production builds.
 - Frontend uses supported Node/Vite/Svelte/TypeScript peer combinations.
 - Data/NLP fixture behavior is reviewed rather than blindly re-recorded.
+- The executable backend walkthrough remains readable and its doctest behavior
+  inventory is preserved across every cohort.
 - CPU/CUDA/ROCm support statements match resolver, build, and scheduled hardware
   evidence.
 - Final npm graph has no unaccepted high/critical advisory.

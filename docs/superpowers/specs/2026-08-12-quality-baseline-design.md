@@ -31,6 +31,7 @@ changing the tree it is meant to assess.
 | Frontend static checking is red                           | Observation | `npm run check`: 53 errors                                                                          | High       | Wire and component props are inconsistent                         |
 | Frontend tests prove little                               | Observation | Arithmetic unit test and `h1` browser assertion                                                     | High       | Green tests would not protect search behavior                     |
 | CI is incomplete and mutating                             | Observation | Workflow calls Nix wrappers whose lint commands use write/fix modes                                 | High       | CI result is not a clean-checkout proof                           |
+| Executable examples are an active teaching surface        | Observation | `AGENDA.md` walks the backend and doctests; pytest enables `--doctest-modules`; 26 prompt examples exist | High    | A rewrite can stay green after silently deleting the walkthrough |
 
 ## Goals
 
@@ -42,6 +43,8 @@ changing the tree it is meant to assess.
   deliberately replace.
 - Make each check runnable without the production database or a downloaded
   browser unless the check explicitly owns that dependency.
+- Inventory and preserve the executable examples used to teach the backend
+  walkthrough.
 
 ## Non-Goals
 
@@ -86,6 +89,24 @@ The fixture records normalized lemma and half-open source offsets. Model-token
 snapshots are diagnostic fixtures, not the public contract; tokenization may
 change again while normalized behavior remains stable.
 
+### Executable teaching contract
+
+Spec 1 records the existing 26 `>>>` prompt examples by module and the behavior
+each demonstrates. The count is a deletion alarm, not a quota: later work may
+combine or replace examples only when review shows that the taught behavior is
+still covered more clearly. An empty doctest collection is a failure.
+
+Every public transformation boundary on the documented backend walkthrough has
+at least one short executable example using fixture-sized values. This includes
+source adaptation, Japanese-text filtering, segmentation, normalization,
+occurrence construction, aggregation, and request/query parameter semantics as
+those boundaries are introduced. HTTP lifecycle orchestration and trivial
+getters use integration tests instead of ceremonial doctests.
+
+Examples are adjacent to the code they explain, deterministic, and readable
+without the production corpus. A reviewer may reject a helper or abstraction
+that makes the walkthrough harder to read even when it reduces local line count.
+
 ### Frontend baseline cleanup
 
 Before changing architecture, tests characterize:
@@ -124,6 +145,11 @@ tier loads the locked `ja-ginza` package and proves that actual model output map
 to the same normalization table. The model tier performs no runtime download and
 runs as a release/scheduled gate through a declared Nix output in Spec 6; it is
 not part of ordinary `nix flake check`.
+
+This split deliberately allows the default gate to remain green when a new
+GiNZA release changes tokenization but the captured policy examples still pass.
+The model-dependent release gate is the owner that detects that drift, and it
+must run before any NLP dependency or production-corpus release.
 
 ### Test fixtures
 
@@ -173,6 +199,8 @@ wrappers with full derivations and production closures.
 - Generic metadata paths load the intended files and never iterate characters.
 - The normalization table remains stable in model-free policy fixtures and the
   separately declared pinned-model integration tier.
+- Walkthrough doctests execute and their behavior inventory does not shrink
+  silently.
 - Existing endpoint queries compose through a real temporary DuckDB connection.
 - Frontend corpus filtering and normalization selection retain characterized
   behavior.
@@ -193,6 +221,8 @@ wrappers with full derivations and production closures.
   corpus download.
 - Ordinary `nix flake check` requires no large NLP model; the explicit model
   integration output is green before release or an NLP dependency update.
+- The baseline records all 26 current prompt examples, and every taught public
+  transformation boundary retains or gains a meaningful fixture-sized doctest.
 - The two confirmed defects have focused regression tests and separate commits.
 - Placeholder arithmetic and `h1`-only tests are removed when stronger tests
   cover their test layers.
@@ -219,3 +249,5 @@ than suppressing or weakening the new check.
 | Prettier plus ESLint own frontend checks                     | Accepted | They are the repository's Svelte-aware configured stack; current Biome Svelte support is experimental and duplicates ownership | The selected stack becomes unsupported or demonstrably inferior     |
 | Split model-free policy from model integration               | Accepted | Ordinary checks stay small while release evidence still covers actual GiNZA output                                             | The model becomes cheap enough for every default check              |
 | Baseline owns non-mutating wrappers and minimal flake checks | Accepted | Its acceptance criteria otherwise depend circularly on Spec 6                                                                  | Full derivations land in Spec 6                                     |
+| Preserve meaningful walkthrough doctests                    | Accepted | The agenda and pytest configuration make executable examples a present learner-facing interface                                | The repository is no longer used for instruction                    |
+| Do not require doctests on orchestration/getters             | Accepted | A per-function quota creates ceremonial examples; integration tests explain lifecycle behavior better                           | Learner feedback identifies a missing executable seam               |

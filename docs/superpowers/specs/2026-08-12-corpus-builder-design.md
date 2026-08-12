@@ -32,6 +32,9 @@ migration framework.
 - Store only the facts required by the accepted public API.
 - Make reruns safe by replacement rather than incremental mutation.
 - Support fast fixture builds without large models or network access.
+- Keep acquisition → adaptation → segmentation → extraction → persistence
+  readable as a linear walkthrough with executable examples at its public
+  transformation boundaries.
 
 ## Gate 3A: Corpus Recoverability Spike
 
@@ -91,16 +94,17 @@ acquire --manifest sources.lock.json --output inputs/
 validated pinned inputs
        │
        ▼
-build --inputs inputs/ --output artifacts/<semantic-id>/<instance-id>.staging/
+build --inputs inputs/ --output artifacts/<instance-id>.staging/
        │
        ├─► source adapters → SourceDocument
        ├─► segmenter      → SentenceRecord
        ├─► extractor      → CollocationOccurrence
-       ├─► aggregate      → serving tables
+       ├─► persist        → canonical base tables
+       ├─► define views   → serving relations
        └─► validate       → manifest + validation report
                                 │
                                 ▼
-publish --artifact artifacts/<semantic-id>/<instance-id>/ --pointer deploy/current
+publish --artifact artifacts/<instance-id>/ --pointer deploy/current
 ```
 
 Acquisition is network-capable. Transformation accepts already acquired inputs
@@ -187,7 +191,6 @@ Exactly one row:
 
 - `id TEXT PRIMARY KEY`.
 - `label TEXT NOT NULL`.
-- `source_count`, `sentence_count`, `collocation_count` non-negative integers.
 
 ### `source`
 
@@ -211,16 +214,19 @@ Exactly one row:
 - `extractor_id`.
 - Unique on sentence, three lemmas, six offsets, and extractor identity.
 
-### `collocation_frequency`
+### Derived serving views
 
-- `corpus_id`, noun, particle, verb, and positive `raw_frequency`.
-- Primary key `(corpus_id, noun, particle, verb)`.
+- `corpus_stats`: source, sentence, and collocation counts grouped by corpus.
+- `collocation_frequency`: `corpus_id`, noun, particle, verb, and positive
+  `raw_frequency`, grouped from `collocation_occurrence`.
+- `lemma_frequency`: noun and verb lemma occurrence counts, derived from the two
+  occurrence roles.
 
-### `lemma_frequency`
-
-- `part_of_speech` constrained to noun/verb.
-- `lemma` and positive `occurrence_count`.
-- Primary key `(part_of_speech, lemma)`.
+These are ordinary DuckDB views in schema v1, not persisted aggregate tables.
+Raw occurrences are the single source of frequency/count truth. If the Spec 2
+production-host benchmark misses its latency target after query/index tuning, a
+separate measured decision may materialize only the relation proven responsible;
+that change must add the corresponding refresh/reconciliation invariant.
 
 The schema omits general `lemma`, `word`, and `sentence_word` tables. If
 token-level research becomes supported, it receives a separate analytical
@@ -228,13 +234,11 @@ artifact and contract.
 
 ## Query-Oriented Physical Design
 
-Candidate indexes align with endpoint predicates:
+Candidate indexes on base tables align with endpoint predicates:
 
-- Frequency lookup by `(noun, particle, raw_frequency)`.
-- Frequency lookup by `(verb, particle, raw_frequency)`.
-- Suggestions by `(part_of_speech, lemma)`.
+- Occurrences by `(noun, particle)` and `(verb, particle)`.
 - Examples by `(noun, particle, verb)` on occurrence.
-- Foreign-key lookup paths for source and sentence.
+- Source by `(corpus_id, id)` and sentence by `(source_id, id)` for corpus joins.
 
 For the selected DuckDB release, the builder captures `EXPLAIN` output for the
 curated query set with and without candidate indexes. An index is retained only
@@ -243,19 +247,18 @@ Index count is not a success metric.
 
 ## Normalization and Aggregation
 
-`corpus.collocation_count` equals the number of occurrence rows for that corpus.
-`collocation_frequency.raw_frequency` is recomputed from occurrences.
-`lemma_frequency` counts occurrences of a lemma in its noun/verb role.
+`corpus_stats.collocation_count`, `collocation_frequency.raw_frequency`, and
+`lemma_frequency.occurrence_count` are view results derived from occurrences.
 
 Per-million values are not persisted because they are exactly derived from raw
 counts and corpus totals:
 
 ```text
-frequency_per_million = raw_frequency / corpus.collocation_count × 1,000,000
+frequency_per_million = raw_frequency / corpus_stats.collocation_count × 1,000,000
 ```
 
-Keeping raw facts in persistence avoids stored derived values drifting from the
-denominator.
+Keeping only raw facts in persistence makes aggregate/denominator drift
+structurally impossible.
 
 ## Build Identity and Artifact Layout
 
@@ -274,7 +277,7 @@ The semantic build ID is SHA-256 over a canonical serialization of:
 Artifact layout:
 
 ```text
-artifacts/<semantic-build-id>/<artifact-instance-id>/
+artifacts/<artifact-instance-id>/
   corpus.duckdb
   manifest.json
   validation.json
@@ -282,17 +285,22 @@ artifacts/<semantic-build-id>/<artifact-instance-id>/
 
 `artifact-instance-id` is an operator-readable UTC basic timestamp plus 128 bits
 of randomness generated once before staging, and is not part of semantic
-identity. Thus repeated executions with the same inputs share the semantic build
-ID but never share a filesystem target without adding a UUID dependency.
-Creation uses an atomic exclusive directory operation and refuses any existing
-staging or final path; neither build nor publish overwrites an artifact.
+identity. Instance IDs are globally unique, so semantic directory nesting adds no
+safety. Creation uses an atomic exclusive directory operation and refuses any
+existing staging or final path; neither build nor publish overwrites an artifact.
 
 `manifest.json` repeats semantic identity inputs and execution profile, the
-instance ID, table counts, corpus counts, license/provenance records, and the
-completed `corpus.duckdb` SHA-256. The file checksum is not embedded in the
-database, avoiding a circular identity. Two semantically equivalent instances
-may have different DuckDB checksums, which validation reports rather than
-conceals.
+instance ID, base-table and derived-view counts, corpus counts,
+license/provenance records, and the completed `corpus.duckdb` SHA-256. The file
+checksum is not embedded in the database, avoiding a circular identity. Two
+semantically equivalent instances may have different DuckDB checksums, which
+validation reports rather than conceals.
+
+Only the semantic build ID and artifact instance ID are identities. The
+execution profile is an input recorded inside semantic identity, and the DuckDB
+checksum is an integrity check. The API exposes only the instance ID as
+`databaseBuildId`; operators inspect semantic equivalence through manifests or
+`list-artifacts`.
 
 The initial publishable extraction profile is CPU, float32, deterministic mode,
 and fixed thread/process counts. CUDA/ROCm packages may build diagnostic
@@ -310,8 +318,8 @@ Publication requires all of the following:
 - Every sentence belongs to exactly one source/corpus.
 - Every occurrence references a sentence and has valid spans.
 - Every normalized lemma/particle is non-empty and every particle is configured.
-- Aggregate frequency tables exactly equal recomputation from occurrences.
-- Corpus counts exactly equal table-derived counts.
+- Derived frequency/count views return non-negative values and their definitions
+  reference only the canonical base relations.
 - Every selected corpus has at least one source, sentence, and occurrence.
 - Representative noun/verb/example fixture queries match expected relations.
 - The Spec 2 API integration suite passes against the built artifact.
@@ -330,18 +338,18 @@ contain identifiers and counts, never corpus text.
 
 ## Publication and Rollback
 
-The builder writes the exclusively created
-`<semantic-id>/<instance-id>.staging`, fsyncs/finishes files as supported by the
-platform, validates, then renames to the absent final instance directory. A
-pre-existing staging or final instance path is a hard failure. It never opens
-the deployed artifact for writing.
+The builder writes the exclusively created `<instance-id>.staging`,
+fsyncs/finishes files as supported by the platform, validates, then renames to
+the absent final instance directory. A pre-existing staging or final instance
+path is a hard failure. It never opens the deployed artifact for writing.
 
 Publication validates the final directory again, then atomically changes an
 explicit `deploy/current` pointer and restarts the single server. The server
 resolves the pointer only at startup. Rollback restores the prior pointer and
-restarts. Old versioned artifacts remain until an explicit retention command
-removes versions beyond the configured keep count; removal is not part of
-publication.
+restarts. `list-artifacts` reads flat-directory manifests and can group by
+semantic build ID. An explicit retention command sorts all instances by
+`built_at_utc`, protects `deploy/current`, and removes only non-current instances
+beyond the overall configured keep count; removal is not part of publication.
 
 Partial corpus success exits non-zero. Building an intentional subset requires
 the operator to explicitly select that subset, producing a different source
@@ -362,18 +370,20 @@ manifest and build ID.
 ## Test Strategy
 
 - Adapter contract tests for every source using tiny local fixtures.
-- Property tests for stable identity, span validation, aggregate reconciliation,
+- Property tests for stable identity, span validation, derived-view definitions,
   and canonical build-ID ordering.
 - Fixture end-to-end build with no network/model download.
 - Failure-injection tests at acquisition, transformation, validation, rename,
   pointer swap, and server restart boundaries.
-- Duplicate-input tests prove uniqueness/reconciliation failures are loud.
+- Duplicate-input tests prove base-table uniqueness failures are loud.
 - Compatibility probes against selected datasets/GiNZA/spaCy/wtpsplit versions.
 - Recoverability-gate tests for data-only acquisition and the legacy conversion
   reconciliations before real corpus replacement.
 - Production-like benchmark records build duration, peak memory, artifact size,
   rejection counts, and curated query plans without making an optimization claim
   before measurement.
+- Doctests walk fixture-sized canonical values through adaptation, segmentation,
+  occurrence construction, view-derived frequency, and build identity.
 
 ## Acceptance Criteria
 
@@ -381,8 +391,7 @@ manifest and build ID.
   before builder implementation or legacy database replacement begins.
 - A fixture artifact can be built twice into distinct immutable instance paths
   with identical semantic ID and relational contents.
-- The built artifact passes all schema, reconciliation, protocol, and query
-  fixture validations.
+- The built artifact passes all schema, protocol, and query fixture validations.
 - Re-running or republishing never duplicates persisted facts.
 - No normal transformation command uses network access or remote code execution.
 - Failed builds/publications cannot change the artifact used by the server.
@@ -390,6 +399,8 @@ manifest and build ID.
 - Manifest provenance and license fields are complete for every publicly
   published corpus.
 - Operators can publish and roll back by selecting immutable artifact versions.
+- A learner can run the builder walkthrough examples and trace the corresponding
+  implementation without following a framework or repository hierarchy.
 
 ## Decision Log
 
@@ -403,3 +414,5 @@ manifest and build ID.
 | Gate replacement on corpus recoverability        | Accepted | TED/Wiki source material is absent locally and the target datasets stack cannot execute the incumbent remote loader | All corpora have durable pinned data-only sources                    |
 | Separate semantic and artifact-instance identity | Accepted | Equivalent rebuilds must not collide or overwrite a live artifact                                                   | Content-addressed byte-reproducible DuckDB output becomes guaranteed |
 | Include execution profile in semantic identity   | Accepted | Device, precision, and concurrency can change NLP extraction results                                                | Extraction becomes proven invariant across profiles                  |
+| Keep aggregate relations as views initially      | Accepted | Derived counts cannot drift and no benchmark yet earns materialization                                              | The production-host gate fails after query/index tuning              |
+| Use flat instance directories                    | Accepted | Instance IDs are globally unique; flat layout makes listing and retention one-dimensional                           | Artifact volume requires a measured sharding strategy                |
