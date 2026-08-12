@@ -1,7 +1,6 @@
 import logging
 import re
 from itertools import chain, dropwhile, pairwise, takewhile
-from typing import List, Optional, Tuple
 
 import ginza  # type: ignore
 import spacy  # type: ignore
@@ -30,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 
 def load_nlp_model(
-    model_name: Optional[str] = None,
+    model_name: str | None = None,
 ) -> spacy.language.Language:
     """
     Load and return the NLP model.
@@ -57,7 +56,7 @@ def load_nlp_model(
     else:
         try:
             nlp = spacy.load("ja_ginza_bert_large")
-        except Exception:
+        except OSError:
             nlp = spacy.load("ja_ginza")
 
     return nlp
@@ -89,7 +88,7 @@ def simple_lemma(token: Token) -> str:
         return token.norm_
 
 
-def normalize_verb_span(tokens: Doc | Span) -> tuple[Optional[str], int, int]:
+def normalize_verb_span(tokens: Doc | Span) -> tuple[str | None, int, int]:
     """
     Normalize a verb span.
 
@@ -160,7 +159,7 @@ def normalize_verb_span(tokens: Doc | Span) -> tuple[Optional[str], int, int]:
         )
         return (None, -1, -1)
 
-    normalized_tokens: List[Token] = []
+    normalized_tokens: list[Token] = []
     contracted_suru = False
     synthetic_suru = False
     for i, (token, next_token) in enumerate(pairwise(clean_tokens)):
@@ -241,7 +240,7 @@ def normalize_verb_span(tokens: Doc | Span) -> tuple[Optional[str], int, int]:
     )
 
 
-def npv_matcher(doc: Doc) -> List[Tuple[str, str, str, int, int, int, int, int, int]]:
+def npv_matcher(doc: Doc) -> list[tuple[str, str, str, int, int, int, int, int, int]]:
     """
     Extract NPV (Noun-Particle-Verb) patterns from a document with character positions.
 
@@ -251,7 +250,7 @@ def npv_matcher(doc: Doc) -> List[Tuple[str, str, str, int, int, int, int, int, 
     Returns:
         List[Tuple[str, str, str, int, int, int, int, int, int]]: A list of NPV patterns with positions.
     """
-    matches: List[Tuple[str, str, str, int, int, int, int, int, int]] = []
+    matches: list[tuple[str, str, str, int, int, int, int, int, int]] = []
     for token in doc[:-2]:
         noun = token
         case_particle = noun.nbor(1)
@@ -315,9 +314,9 @@ def npv_matcher(doc: Doc) -> List[Tuple[str, str, str, int, int, int, int, int, 
 def process_sentence(
     doc: Doc,
     sentence_id: int,
-) -> Tuple[
-    List[Tuple[int, int, str, str, str, Optional[str], str]],
-    List[Tuple[int, str, str, str, int, int, int, int, int, int]],
+) -> tuple[
+    list[tuple[int, int, str, str, str, str | None, str]],
+    list[tuple[int, str, str, str, int, int, int, int, int, int]],
 ]:
     """Process a single sentence, extracting both word info and patterns.
 

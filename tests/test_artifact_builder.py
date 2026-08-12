@@ -1,6 +1,6 @@
-from datetime import UTC, datetime
-from dataclasses import replace
 import json
+from dataclasses import replace
+from datetime import UTC, datetime
 from pathlib import Path
 
 import duckdb

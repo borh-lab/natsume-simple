@@ -1,15 +1,16 @@
 import asyncio
-from contextlib import asynccontextmanager
-from datetime import datetime, UTC
 import hashlib
 import json
 import logging
 import os
-from pathlib import Path
 import re
 import time
-from typing import Annotated, AsyncIterator, Callable, Literal, TypeVar
 import uuid
+from collections.abc import AsyncIterator, Callable
+from contextlib import asynccontextmanager
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Annotated, Literal
 
 import anyio
 import duckdb
@@ -134,9 +135,6 @@ class ArtifactValidationError(Exception):
         self.reason = reason
 
 
-QueryResult = TypeVar("QueryResult")
-
-
 def query_length_bucket(query: str) -> str:
     length = len(query)
     if length == 1:
@@ -227,22 +225,20 @@ def log_artifact_rejection(reason: str) -> None:
     )
 
 
-async def run_database_operation(
-    operation: Callable[[], QueryResult],
-) -> QueryResult:
+async def run_database_operation[Result](operation: Callable[[], Result]) -> Result:
     try:
         return await anyio.to_thread.run_sync(operation)
     except duckdb.OperationalError as error:
         raise database_unavailable() from error
 
 
-async def run_bounded_query(
+async def run_bounded_query[Result](
     connection,
     limiter: CapacityLimiter,
-    operation: Callable[[], QueryResult],
+    operation: Callable[[], Result],
     *,
     timeout: float,
-) -> QueryResult:
+) -> Result:
     try:
         limiter.acquire_nowait()
     except WouldBlock as error:

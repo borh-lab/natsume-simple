@@ -1,7 +1,7 @@
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 from threading import Event
 from types import SimpleNamespace
-from pathlib import Path
 
 import anyio
 import duckdb

@@ -1,7 +1,7 @@
 import logging
 import re
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Iterator, List, Optional
 
 import polars as pl  # type: ignore
 import torch
@@ -17,10 +17,10 @@ class CorpusEntry(BaseModel):
     corpus: str
     title: str
     year: int
-    author: Optional[str] = None
-    publisher: Optional[str] = None
-    sentences: List[str]
-    url: Optional[str] = None
+    author: str | None = None
+    publisher: str | None = None
+    sentences: list[str]
+    url: str | None = None
 
 
 class BaseCorpusLoader(BaseModel):
@@ -34,7 +34,7 @@ class BaseCorpusLoader(BaseModel):
         """Set up and return the corpus directory."""
         return self.data_dir / f"{self.corpus_name}_corpus"
 
-    def split_into_sentences(self, texts: List[str], splitter: SaT) -> List[str]:
+    def split_into_sentences(self, texts: list[str], splitter: SaT) -> list[str]:
         """Split texts into sentences using wtpsplit.
 
         Args:
@@ -60,7 +60,7 @@ class BaseCorpusLoader(BaseModel):
             if sentence.strip()
         ]
 
-    def _load_sentences(self, file_paths: List[Path]) -> List[str]:
+    def _load_sentences(self, file_paths: list[Path]) -> list[str]:
         """Load and filter sentences from text files.
 
         Args:
@@ -75,7 +75,7 @@ class BaseCorpusLoader(BaseModel):
             try:
                 with open(full_path, "r", encoding="utf-8") as f:
                     texts.append(f.read())
-            except (UnicodeDecodeError, IOError) as e:
+            except (OSError, UnicodeDecodeError) as e:
                 logger.warning(f"Error loading {full_path}: {e}")
                 texts.append("")  # Add empty text to maintain alignment
 

@@ -259,14 +259,16 @@ Svelteの使用にはnodejsの環境整備が必要になる。
 
 ```python
 import spacy
-nlp = spacy.load('ja_ginza_bert_large')
+
+nlp = spacy.load("ja_ginza_bert_large")
 ```
 
 あるいは
 
 ```python
 import spacy
-nlp = spacy.load('ja_ginza')
+
+nlp = spacy.load("ja_ginza")
 ```
 
 notebooksにあるノートブックでは，優先的に`ja_ginza_bert_large`を使用するが，インストールされていない場合は`ja_ginza`を使用する。

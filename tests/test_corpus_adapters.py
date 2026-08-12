@@ -1,6 +1,6 @@
-from pathlib import Path
-from datetime import UTC, datetime
 import json
+from datetime import UTC, datetime
+from pathlib import Path
 
 import polars as pl
 import pytest

@@ -1,13 +1,12 @@
-from dataclasses import dataclass, field
-from datetime import datetime
 import hashlib
 import json
-from pathlib import Path
 import re
+from dataclasses import dataclass, field
+from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 import duckdb
-
 
 SCHEMA_VERSION = 1
 PARTICLES = frozenset({"が", "を", "に", "で", "から", "より", "と", "へ"})

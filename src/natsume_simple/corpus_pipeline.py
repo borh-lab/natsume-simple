@@ -1,10 +1,10 @@
+import hashlib
+import subprocess
+import zipfile
 from collections import Counter
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, replace
-import hashlib
 from pathlib import Path
-import subprocess
-import zipfile
 
 import polars as pl
 from spacy.tokens import Doc

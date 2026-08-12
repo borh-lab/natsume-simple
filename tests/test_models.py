@@ -48,7 +48,7 @@ def sample_corpus(temp_data_dir):
 def test_model_loading():
     try:
         nlp = spacy.load("ja_ginza_electra")
-    except Exception:
+    except OSError:
         nlp = spacy.load("ja_ginza")
 
     doc = nlp("これはテストです")
