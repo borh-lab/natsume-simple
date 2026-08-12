@@ -250,9 +250,7 @@ nix develop --print-build-logs
 │   ├── server.py                # FastAPIサーバー
 │   ├── database.py              # データベース関連
 │   ├── data.py                  # データ処理
-│   ├── pattern_extraction.py    # パターン抽出ロジック
-│   ├── log.py                   # ログ設定
-│   └── utils.py                 # ユーティリティ関数
+│   └── pattern_extraction.py    # パターン抽出ロジック
 │
 ├── scripts/                     # データ準備スクリプト
 │   ├── get-jnlp-corpus.py       # コーパス取得
@@ -305,11 +303,7 @@ npm run build
 
 Svelteの使用にはnodejsの環境整備が必要になる。
 
-#### static
-
-サーバ読む静的ファイルを含むファルダ。
-上記の`npm run build`コマンド実行で`static/`下にフロントエンドのファイルが作成される。
-ここに置かれるものは基本的にAPIの`static/`URL下で同一ファイル名でアクセス可能。
+`npm run build` writes the deployable frontend to `natsume-frontend/build/`.
 
 # 開発向け情報
 

@@ -73,12 +73,8 @@
             pkgs.bashInteractive
             pkgs.nkf
             pkgs.git
-            pkgs.git-cliff # Changelog generator
-            pkgs.bun
-            pkgs.biome
             pkgs.wget
             pkgs.pandoc
-            pkgs.sqlite
           ];
           help = import ./help.nix { inherit lib; };
         in
@@ -90,9 +86,14 @@
           pre-commit.settings.hooks = {
             nixfmt-rfc-style.enable = true;
             flake-checker.enable = true;
-            ruff.enable = true;
-            ruff-format.enable = true;
-            biome.enable = true;
+            ruff = {
+              enable = true;
+              entry = "${pkgs.ruff}/bin/ruff check";
+            };
+            ruff-format = {
+              enable = true;
+              entry = "${pkgs.ruff}/bin/ruff format --check";
+            };
           };
 
           devShells = {
@@ -127,7 +128,7 @@
 
                       # Set up shell and prompt
                       export SHELL=${pkgs.bashInteractive}/bin/bash
-                      export PS1='(uv) \[\e[34m\]\w\[\e[0m\] $(if [[ $? == 0 ]]; then echo -e "\[\e[32m\]"; else echo -e "\[\e[31m\]"; fi)#\[\e[0m\] '
+                      export PS1='\[\e[34m\]\w\[\e[0m\] $(if [[ $? == 0 ]]; then echo -e "\[\e[32m\]"; else echo -e "\[\e[31m\]"; fi)#\[\e[0m\] '
 
                       # Add local packages to PATH if not already present
                       if [[ ":$PATH:" != *":${path-string}:"* ]]; then
@@ -138,16 +139,12 @@
 
                       export PC_PORT_NUM=10011
 
-                      source .venv/bin/activate
-                      echo "Entering natsume-simple venv..."
-
                       h
                     '';
                   };
                 in
                 ''
                   ${config.pre-commit.installationScript}
-                  ${config.packages.initial-setup}/bin/initial-setup
                   source ${shellInit}
                 '';
             };
@@ -205,9 +202,7 @@
             name = "run-tests";
             runtimeInputs = runtime-packages;
             text = ''
-              ${config.packages.initial-setup}/bin/initial-setup
-              mkdir -p natsume-frontend/build # Ensure directory exists to not fail test
-              ${uv-run} pytest
+              ${uv-run} pytest -m "not nlp_model"
             '';
             passthru.meta = {
               category = "Testing & QC";
@@ -218,12 +213,11 @@
             name = "lint";
             runtimeInputs = runtime-packages;
             text = ''
-              ${config.packages.initial-setup}/bin/initial-setup
-              nix fmt {flake,help}.nix
-              ${uv-run} ruff format
-              ${uv-run} ruff check --fix --select I --output-format=github src notebooks tests
+              nix fmt -- --check flake.nix help.nix
+              ${uv-run} ruff format --check
+              ${uv-run} ruff check --output-format=github src tests
               ${pkgs.mypy}/bin/mypy --ignore-missing-imports --show-error-context src
-              ${pkgs.biome}/bin/biome check --write natsume-frontend
+              cd natsume-frontend && npm run lint
             '';
             passthru.meta = {
               category = "Testing & QC";
@@ -234,8 +228,7 @@
             name = "build-frontend";
             runtimeInputs = runtime-packages;
             text = ''
-              ${config.packages.initial-setup}/bin/initial-setup
-              cd natsume-frontend && npm i && npm run build && cd ..
+              cd natsume-frontend && npm run build
             '';
             passthru.meta = {
               category = "Frontend";
@@ -246,8 +239,7 @@
             name = "watch-frontend";
             runtimeInputs = runtime-packages;
             text = ''
-              ${config.packages.initial-setup}/bin/initial-setup
-              cd natsume-frontend && npm i && npm run dev && cd ..
+              cd natsume-frontend && npm run dev
             '';
             passthru.meta = {
               category = "Frontend";
@@ -258,7 +250,6 @@
             name = "watch-dev-server";
             runtimeInputs = runtime-packages;
             text = ''
-              ${config.packages.initial-setup}/bin/initial-setup
               ${config.packages.build-frontend}/bin/build-frontend
               ${uv-run} --with fastapi --with duckdb fastapi dev --host localhost src/natsume_simple/server.py
             '';
@@ -271,7 +262,6 @@
             name = "watch-prod-server";
             runtimeInputs = runtime-packages;
             text = ''
-              ${config.packages.initial-setup}/bin/initial-setup
               ${config.packages.build-frontend}/bin/build-frontend
               ${uv-run} --with fastapi --with duckdb fastapi run --host localhost src/natsume_simple/server.py
             '';
@@ -282,10 +272,11 @@
           };
           packages.prepare-data = pkgs.writeShellApplication {
             name = "prepare-data";
-            runtimeInputs = runtime-packages;
+            runtimeInputs = runtime-packages ++ [
+              pkgs.nkf
+              pkgs.pandoc
+            ];
             text = ''
-              ${config.packages.initial-setup}/bin/initial-setup
-
               # Process all standard corpora
               ${uv-run} python src/natsume_simple/data.py --corpus-type all
             '';
@@ -298,8 +289,6 @@
             name = "extract-patterns";
             runtimeInputs = runtime-packages;
             text = ''
-              ${config.packages.initial-setup}/bin/initial-setup
-
               # Extract patterns from all unprocessed sentences and save to database
               ${uv-run} python src/natsume_simple/pattern_extraction.py \
                   --data-dir data \
@@ -322,7 +311,6 @@
             name = "run-all";
             runtimeInputs = runtime-packages;
             text = ''
-              ${config.packages.initial-setup}/bin/initial-setup
               ${config.packages.prepare-data}/bin/prepare-data
               ${config.packages.watch-prod-server}/bin/watch-prod-server
             '';

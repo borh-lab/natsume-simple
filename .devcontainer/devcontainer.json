@@ -1,8 +1,6 @@
 {
 	"name": "natsume-simple",
-	"build": {
-		"dockerfile": "Dockerfile"
-	},
+	"image": "mcr.microsoft.com/devcontainers/base:bookworm",
 	"features": {
 		"ghcr.io/devcontainers/features/nix:1": {
 			"multiUser": true,
@@ -17,7 +15,6 @@
 				"mkhl.direnv",
 				"ms-python.python",
 				"svelte.svelte-vscode",
-				"oven.bun-vscode",
 				"esbenp.prettier-vscode",
 				"dbaeumer.vscode-eslint",
 				"bradlc.vscode-tailwindcss",

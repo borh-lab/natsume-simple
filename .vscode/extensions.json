@@ -3,7 +3,6 @@
 		"mkhl.direnv",
 		"ms-python.python",
 		"svelte.svelte-vscode",
-		"oven.bun-vscode",
 		"esbenp.prettier-vscode",
 		"dbaeumer.vscode-eslint",
 		"bradlc.vscode-tailwindcss",
