@@ -1,13 +1,37 @@
+from concurrent.futures import ThreadPoolExecutor
 from threading import Event
 from types import SimpleNamespace
+from pathlib import Path
 
 import anyio
 import duckdb
 import pytest
 from anyio import CapacityLimiter
+from fastapi.testclient import TestClient
 
 from natsume_simple import api
 from natsume_simple.api import PublicApiError, run_bounded_query
+from tests.database_fixture import build_search_artifact
+
+
+@pytest.mark.parametrize(
+    ("length", "expected"),
+    [
+        (1, "1"),
+        (2, "2–4"),
+        (4, "2–4"),
+        (5, "5–8"),
+        (8, "5–8"),
+        (9, "9–16"),
+        (16, "9–16"),
+        (17, "17–32"),
+        (32, "17–32"),
+        (33, "33–64"),
+        (64, "33–64"),
+    ],
+)
+def test_query_length_bucket_has_stable_public_boundaries(length: int, expected: str):
+    assert api.query_length_bucket("語" * length) == expected
 
 
 class InterruptibleConnection:
@@ -114,3 +138,17 @@ def test_completed_query_cancels_its_interrupt_timer():
 
     anyio.run(exercise)
     assert connection.interrupt_count == 0
+
+
+def test_parallel_requests_use_safe_request_local_connections(tmp_path: Path):
+    artifact_dir = build_search_artifact(tmp_path / "artifact")
+    with TestClient(api.create_app(artifact_dir)) as client:
+
+        def search(_request_number: int):
+            return client.get("/api/suggestions", params={"q": "める", "pos": "verb"})
+
+        with ThreadPoolExecutor(max_workers=10) as workers:
+            responses = list(workers.map(search, range(10)))
+
+    assert [response.status_code for response in responses] == [200] * 10
+    assert all(len(response.json()["suggestions"]) == 2 for response in responses)

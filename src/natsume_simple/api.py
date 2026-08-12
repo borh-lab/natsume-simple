@@ -1,9 +1,12 @@
 import asyncio
 from contextlib import asynccontextmanager
+from datetime import datetime, UTC
 import hashlib
 import json
+import logging
 from pathlib import Path
 import re
+import time
 from typing import Annotated, AsyncIterator, Callable, Literal, TypeVar
 import uuid
 
@@ -17,6 +20,7 @@ from pydantic import BaseModel
 
 QUERY_CAPACITY = 16
 QUERY_TIMEOUT_SECONDS = 2.0
+request_logger = logging.getLogger("natsume_simple.api.requests")
 
 
 class HealthResponse(BaseModel):
@@ -117,6 +121,21 @@ class PublicApiError(Exception):
 
 
 QueryResult = TypeVar("QueryResult")
+
+
+def query_length_bucket(query: str) -> str:
+    length = len(query)
+    if length == 1:
+        return "1"
+    if length <= 4:
+        return "2–4"
+    if length <= 8:
+        return "5–8"
+    if length <= 16:
+        return "9–16"
+    if length <= 32:
+        return "17–32"
+    return "33–64"
 
 
 def database_unavailable() -> PublicApiError:
@@ -251,13 +270,43 @@ def create_app(artifact_dir: Path) -> FastAPI:
 
     @api.middleware("http")
     async def request_identity(request: Request, call_next):
+        started = time.perf_counter()
         supplied = request.headers.get("X-Request-ID", "")
         request.state.request_id = (
             supplied
             if len(supplied) <= 128 and re.fullmatch(r"[\x21-\x7e]+", supplied)
             else uuid.uuid4().hex
         )
-        return await call_next(request)
+        request.state.result_count = None
+        request.state.corpus_ids = []
+        request.state.rank_by = None
+        request.state.query_length_bucket = None
+        status = 500
+        try:
+            response = await call_next(request)
+            status = response.status_code
+            return response
+        finally:
+            route = request.scope.get("route")
+            request_logger.info(
+                json.dumps(
+                    {
+                        "timestamp": datetime.now(UTC).isoformat(),
+                        "level": "INFO",
+                        "requestId": request.state.request_id,
+                        "route": getattr(route, "path", request.url.path),
+                        "status": status,
+                        "durationMs": round((time.perf_counter() - started) * 1_000, 3),
+                        "databaseBuildId": request.app.state.database_build_id,
+                        "resultCount": request.state.result_count,
+                        "corpusIds": request.state.corpus_ids,
+                        "rankBy": request.state.rank_by,
+                        "queryLengthBucket": request.state.query_length_bucket,
+                    },
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                )
+            )
 
     @api.exception_handler(RequestValidationError)
     async def validation_error(request: Request, _error: RequestValidationError):
@@ -326,6 +375,7 @@ def create_app(artifact_dir: Path) -> FastAPI:
                 """
             ).fetchall()
         )
+        request.state.result_count = len(rows)
         return CorporaResponse(
             corpora=[
                 CorpusResponse(
@@ -347,6 +397,7 @@ def create_app(artifact_dir: Path) -> FastAPI:
         pos: Literal["noun", "verb"],
         limit: Annotated[int, Query(ge=1, le=20)] = 10,
     ) -> SuggestionsResponse:
+        request.state.query_length_bucket = query_length_bucket(q)
         rows = await run_bounded_query(
             connection,
             request.app.state.query_limiter,
@@ -362,6 +413,7 @@ def create_app(artifact_dir: Path) -> FastAPI:
             ).fetchall(),
             timeout=QUERY_TIMEOUT_SECONDS,
         )
+        request.state.result_count = len(rows)
         return SuggestionsResponse(
             suggestions=[
                 SuggestionResponse(lemma=row[0], pos=row[1], occurrenceCount=row[2])
@@ -379,6 +431,9 @@ def create_app(artifact_dir: Path) -> FastAPI:
         corpusId: Annotated[list[str] | None, Query()] = None,
         limitPerParticle: Annotated[int, Query(ge=1, le=200)] = 100,
     ) -> CollocationsResponse:
+        request.state.rank_by = rankBy
+        request.state.query_length_bucket = query_length_bucket(term)
+
         def load_rows():
             corpus_rows = connection.execute(
                 "SELECT corpus_id, collocation_count FROM corpus_stats ORDER BY corpus_id"
@@ -489,6 +544,10 @@ def create_app(artifact_dir: Path) -> FastAPI:
                 )
             )
 
+        request.state.result_count = sum(
+            group.returnedCount for group in particle_groups
+        )
+        request.state.corpus_ids = selected
         return CollocationsResponse(
             particleGroups=particle_groups,
             selectedCorpusIds=selected,
@@ -537,6 +596,8 @@ def create_app(artifact_dir: Path) -> FastAPI:
             load_rows,
             timeout=QUERY_TIMEOUT_SECONDS,
         )
+        request.state.result_count = len(rows)
+        request.state.corpus_ids = selected
         return ExamplesResponse(
             examples=[
                 ExampleResponse(

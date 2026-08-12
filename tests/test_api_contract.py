@@ -1,5 +1,6 @@
 import hashlib
 import json
+import logging
 from pathlib import Path
 
 import pytest
@@ -145,6 +146,41 @@ def test_suggestions_filter_part_of_speech_and_order_by_frequency(tmp_path: Path
     }
 
 
+def test_request_log_contains_diagnostics_without_the_query(caplog, tmp_path: Path):
+    caplog.set_level(logging.INFO, logger="natsume_simple.api.requests")
+
+    with fixture_client(tmp_path) as client:
+        response = client.get(
+            "/api/collocations",
+            params={
+                "term": "情報",
+                "pos": "noun",
+                "corpusId": "beta",
+                "rankBy": "raw",
+                "limitPerParticle": 1,
+            },
+            headers={"X-Request-ID": "logged-request"},
+        )
+
+    assert response.status_code == 200
+    record = json.loads(caplog.records[-1].message)
+    assert record == {
+        "timestamp": record["timestamp"],
+        "level": "INFO",
+        "requestId": "logged-request",
+        "route": "/api/collocations",
+        "status": 200,
+        "durationMs": record["durationMs"],
+        "databaseBuildId": "fixture-build-001",
+        "resultCount": 2,
+        "corpusIds": ["beta"],
+        "rankBy": "raw",
+        "queryLengthBucket": "2–4",
+    }
+    assert record["durationMs"] >= 0
+    assert "情報" not in caplog.text
+
+
 def test_validation_errors_use_the_public_envelope(tmp_path: Path):
     with fixture_client(tmp_path) as client:
         response = client.get(
@@ -163,7 +199,8 @@ def test_validation_errors_use_the_public_envelope(tmp_path: Path):
     }
 
 
-def test_exhausted_query_capacity_returns_retryable_error(tmp_path: Path):
+def test_exhausted_query_capacity_returns_retryable_error(caplog, tmp_path: Path):
+    caplog.set_level(logging.INFO, logger="natsume_simple.api.requests")
     with fixture_client(tmp_path) as client:
         limiter = client.app.state.query_limiter
         borrowers = [object() for _ in range(limiter.total_tokens)]
@@ -188,6 +225,10 @@ def test_exhausted_query_capacity_returns_retryable_error(tmp_path: Path):
             "requestId": "busy-request",
         }
     }
+    record = json.loads(caplog.records[-1].message)
+    assert record["status"] == 429
+    assert record["queryLengthBucket"] == "2–4"
+    assert "情報" not in caplog.text
 
 
 def test_collocations_select_and_rank_before_applying_the_limit(tmp_path: Path):
