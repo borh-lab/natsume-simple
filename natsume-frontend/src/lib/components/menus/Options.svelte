@@ -7,15 +7,13 @@
 		selectedCorpora,
 		getColor,
 		getSolidColor,
-		corpusNorm,
-		handleCheckboxChange
+		corpusNorm
 	}: {
 		useNormalization: Writable<boolean>;
 		selectedCorpora: Writable<string[]>;
 		getColor: (corpus: string) => string;
 		getSolidColor: (corpus: string) => string;
 		corpusNorm: Writable<Record<string, CorpusStats>>;
-		handleCheckboxChange: () => void | Promise<void>;
 	} = $props();
 </script>
 
@@ -34,7 +32,6 @@
 					checked={$useNormalization}
 					onchange={() => {
 						$useNormalization = !$useNormalization;
-						handleCheckboxChange();
 					}}
 					class="mr-2"
 				/>
@@ -55,7 +52,6 @@
 							name="corpus-{corpus}"
 							bind:group={$selectedCorpora}
 							value={corpus}
-							onchange={handleCheckboxChange}
 							class="mr-2"
 						/>
 						<span class="dark:text-white">{corpus}</span>

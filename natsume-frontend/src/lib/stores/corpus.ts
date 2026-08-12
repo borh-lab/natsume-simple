@@ -1,5 +1,5 @@
 import { writable, derived } from 'svelte/store';
-import type { Collocate, Result } from '$lib/query';
+import type { Collocate } from '$lib/query';
 
 export type CorpusStats = {
 	normalizationFactor: number;
@@ -11,7 +11,6 @@ export const selectedCorpora = writable<string[]>([]);
 export const useNormalization = writable(true);
 export const searchElapsedTime = writable(0);
 export const resultCount = writable(0);
-export const results = writable<Result[]>([]);
 export type Frequency = {
 	normalized: number;
 	raw: number;

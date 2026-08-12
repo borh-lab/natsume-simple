@@ -9,14 +9,12 @@
 		filteredResultCount,
 		particleGroups,
 		resultCount,
-		results,
 		searchElapsedTime,
 		selectedCorpora,
 		useNormalization
 	} from '$lib/stores/corpus';
-	import { type Writable, writable } from 'svelte/store';
 
-	import { afterUpdate, onMount, setContext, tick } from 'svelte';
+	import { afterUpdate, onMount, setContext } from 'svelte';
 	import './../tailwind.css';
 	import Loading from '$lib/components/Loading.svelte';
 	import resolveConfig from 'tailwindcss/resolveConfig';
@@ -34,12 +32,9 @@
 	}
 
 	import HorizontallyScrollableContainer from '$lib/components/HorizontallyScrollableContainer.svelte';
-	import type { Result } from '$lib/query';
-
 	const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 	setContext('apiUrl', apiUrl);
 
-	const particles = ['が', 'を', 'に', 'で', 'から', 'より', 'と', 'へ'];
 	// TODO: Convert to runes
 	let searchType: 'verb' | 'noun' = 'noun';
 	let searchTerm = '時間';
@@ -50,9 +45,6 @@
 	let isLoading = false;
 	let showMobileMenu = false;
 	let mobileDropdownOption: 'select' | 'stats' | 'options' | null = null;
-
-	// TODO: Convert to runes
-	const d: Writable<Record<string, Result[]>> = writable({});
 
 	// Define colors (keep these outside any function)
 	const highlightColors = [
@@ -139,51 +131,6 @@
 			window.removeEventListener('scroll', updateScrollButtonsVisibility);
 		};
 	});
-
-	// TODO: Extract to a separate file
-	function computeDerivedData(
-		results: Result[],
-		useNormalization: boolean,
-		selectedCorpora: string[]
-	) {
-		console.log('Computing derived data with:', {
-			resultsLength: results.length,
-			useNormalization,
-			selectedCorpora
-		});
-
-		// Filter results that have contributions matching selected corpora
-		const filteredResults = results.filter(
-			(result) =>
-				selectedCorpora.includes(result.corpus) ||
-				result.contributions?.some((c) => selectedCorpora.includes(c.corpus))
-		);
-
-		console.log('Filtered results:', filteredResults);
-
-		// Group by particle
-		const particleGroups = Object.fromEntries(
-			particles.map((particle) => [
-				particle,
-				filteredResults.filter((r) => r.p === particle).sort((a, b) => b.frequency - a.frequency)
-			])
-		);
-
-		console.log('Particle groups:', particleGroups);
-		return particleGroups;
-	}
-
-	async function updateDerivedData() {
-		const derivedData = computeDerivedData($results, $useNormalization, $selectedCorpora);
-		d.set(derivedData as Record<string, Result[]>);
-		await tick(); // Wait for the next DOM update
-	}
-
-	async function handleCheckboxChange() {
-		isLoading = true;
-		await updateDerivedData();
-		isLoading = false;
-	}
 
 	async function performSearch(): Promise<void> {
 		console.log('performSearch');
@@ -438,14 +385,7 @@
 						<Stats {corpusNorm} {filteredResultCount} {searchElapsedTime} {formatNumber} />
 					{/if}
 					{#if optionsDropdownOpen}
-						<Options
-							{useNormalization}
-							{selectedCorpora}
-							{getColor}
-							{getSolidColor}
-							{corpusNorm}
-							{handleCheckboxChange}
-						/>
+						<Options {useNormalization} {selectedCorpora} {getColor} {getSolidColor} {corpusNorm} />
 					{/if}
 				</div>
 				<ThemeSwitch />
@@ -517,7 +457,6 @@
 								{getColor}
 								{getSolidColor}
 								{corpusNorm}
-								{handleCheckboxChange}
 							/>
 						</div>
 					{/if}
