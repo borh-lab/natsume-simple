@@ -36,8 +36,15 @@ test('supports both query directions and theme control', async ({ page }) => {
 	await direction.selectOption('verb');
 	await search.fill('集める');
 	await Promise.all([
-		page.waitForResponse((response) => response.url().includes('pos=verb')),
-		search.press('Enter')
+		page.waitForResponse((response) => {
+			const url = new URL(response.url());
+			return (
+				url.pathname === '/api/collocations' &&
+				url.searchParams.get('pos') === 'verb' &&
+				url.searchParams.get('term') === '集める'
+			);
+		}),
+		page.getByRole('button', { name: 'Go' }).click()
 	]);
 	await expect(page.locator('summary').filter({ hasText: '情報' })).toBeVisible();
 
