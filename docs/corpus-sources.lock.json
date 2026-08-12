@@ -27,7 +27,20 @@
         "nixSri": "sha256-b3F3bPGcO2KmZ41iLVKgQxkxtN4B612nG/cWAx8SEsY=",
         "mutableUpstreamUrl": "https://www.anlp.jp/resource/journal_latex/NLP_LATEX_CORPUS.zip",
         "sourcePage": "https://www.anlp.jp/resource/journal_latex/",
-        "upstreamLicense": "CC-BY-4.0"
+        "upstreamLicense": "CC-BY-4.0",
+        "verification": {
+          "archiveMemberCount": 634,
+          "convertedMemberCount": 549,
+          "failedMemberCount": 85,
+          "convertedOutputBytes": 27861043,
+          "conversionManifestSha256": "14a23fccdae0ec9c3008ca9ffddffff96d6297c2c7973fb1e7c5de18f61f34dc",
+          "repeatMismatchCount": 0,
+          "plannedLegacyEquivalentMemberCount": 459,
+          "plannedOrderedIdentityListSha256": "0578102b0b4d719eb1ade968499b2d2778986b9d89aa299d402d844c8673d0c1",
+          "plannedMemberConversionFailures": 0,
+          "representativeSentenceSha256": "5b55c4cf3e73d8a32eae9d58732559d3a80220bed1eda1be1bda31825f7aa2b2",
+          "representativeSentenceOccursInPlainText": true
+        }
       }
     },
     {
@@ -43,6 +56,17 @@
         "urlTemplate": "https://huggingface.co/datasets/wikimedia/wikipedia/resolve/b8e579a0c09383e0e254c9980d56833d16048707/20231101.ja/{name}?download=true",
         "upstreamLicenseMetadata": ["cc-by-sa-3.0", "gfdl"],
         "controllingLicenseEvidence": "https://dumps.wikimedia.org/legal.html",
+        "verification": {
+          "verifiedShard": "train-00000-of-00015.parquet",
+          "firstRowsInspected": 1000,
+          "legacyPrefilterAccepted": 971,
+          "legacySourceTitleMatches": 971,
+          "legacySourceTitleMismatches": 0,
+          "legacySentencesChecked": 216568,
+          "legacySentencesFoundVerbatim": 216568,
+          "orderedIdentityListSha256": "249dc639f646da4db3711571ea97231a22421c22a5a90ebedf86e7ee3b471991",
+          "observationManifestSha256": "2cb160d13631d65359b9490071ad195095018d6e8eecc878c4a950003b2c0164"
+        },
         "files": [
           {
             "name": "train-00000-of-00015.parquet",

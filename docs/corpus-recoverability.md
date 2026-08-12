@@ -64,18 +64,28 @@ reacquire missing bytes. Gate passage requires one of:
    contemporaneous license confirmation; or
 2. an explicit decision to adopt, checksum, and durably retain a newer release.
 
-The representative `V01/V01N01-01.tex` conversion ran twice with an empty
-environment except the pinned Nix binaries:
+The full archive conversion ran twice with an empty environment except the
+pinned `nkf 2.1.5` and `pandoc 3.7.0.2` binaries. Of 634 LaTeX members, 549
+converted successfully, 85 failed deterministically, and the successful output
+totalled 27,861,043 bytes. The canonical manifest of successful output hashes,
+sizes, and failed member paths has SHA-256
+`14a23fccdae0ec9c3008ca9ffddffff96d6297c2c7973fb1e7c5de18f61f34dc`.
+The second run had zero output or disposition mismatches.
 
-- `nkf 2.1.5`;
-- `pandoc 3.7.0.2`;
-- normalized LaTeX SHA-256:
-  `3bdde8203e1207cd4afba90581763672aeae90d0b88df93747a587da2b1437d1`;
-- plain-text SHA-256:
-  `a3ff9f8dce6067a4ced5fa62097aa9bc86fe6a951361c36b4d7be86ad514f6ce`.
+The metadata workbook contains 837 rows for the 634 archive members. Every one
+of the 459 legacy JNLP source titles maps uniquely to a member and converts
+successfully with the declared toolchain. The remaining members contain 90
+additional successful conversions and all 85 failures; they were never part of
+the legacy corpus. The planned release therefore uses an explicit ordered list
+of the 459 legacy-equivalent member identities with SHA-256
+`0578102b0b4d719eb1ade968499b2d2778986b9d89aa299d402d844c8673d0c1`.
+It does not silently add the other 90 convertible papers.
 
-Both executions were byte-identical. This proves the declared conversion path
-for one representative paper, not the full 634-file archive.
+As a content check, an 81-code-point body sentence from
+`V01/V01N01-03.tex`, identified by SHA-256
+`5b55c4cf3e73d8a32eae9d58732559d3a80220bed1eda1be1bda31825f7aa2b2`,
+occurs verbatim in the converted plaintext. No corpus text is stored in this
+record or the source lock.
 
 ## Japanese Wikipedia 2023-11-01
 
@@ -88,6 +98,19 @@ Hugging Face revision
 The source lock records every file's size and SHA-256. Acquisition can download
 those explicit immutable URLs and a local adapter can read `id`, `url`, `title`,
 and `text` with a Parquet reader; it does not execute a dataset loader script.
+
+The pinned first shard was downloaded and independently checked at 611,504,422
+bytes with SHA-256
+`4751c14478e712fd637bd83c2cf3537b0e299ea5115e9a78ddededf42f34c29d`.
+Applying the legacy prefilter to its first 1,000 rows selects exactly 971 unique
+titles, matching all 971 legacy Wikipedia sources with no missing or additional
+title. All 216,568 legacy Wikipedia sentences occur verbatim in the pinned
+article text for their matched source. The ordered upstream article-ID list has
+SHA-256 `249dc639f646da4db3711571ea97231a22421c22a5a90ebedf86e7ee3b471991`;
+the hash-only observation manifest has SHA-256
+`2cb160d13631d65359b9490071ad195095018d6e8eecc878c4a950003b2c0164`.
+This proves the source selection and legacy identity reconciliation without
+retaining article text in the repository.
 
 The historical Wikimedia XML dump is no longer retained and the cleaning
 implementation used to create these Parquet files is not fully pinned. The
@@ -162,12 +185,14 @@ Gate 3A is not yet passed for the planned JNLP + Wikipedia public release.
 - the exact local JNLP archive lacks a resolvable durable location and stronger
   exact-snapshot license evidence.
 
-### Unfinished engineering
+### Engineering disposition
 
-- the full 634-file JNLP conversion proof has not run;
-- the pinned Wikipedia adapter still needs its committed representative fixture;
-  and
-- the applicable JNLP/Wikipedia gate checks must be rerun together.
+No Gate 3A source-adapter engineering remains for the planned corpus identities.
+The full JNLP conversion audit, the explicit 459-member selection, and the
+Wikipedia source/legacy reconciliation have recorded evidence. Production
+builder implementation, NLP extraction, schema validation, and query
+reconciliation remain Spec 3 work; they cannot begin against production inputs
+until the owner or external decisions above are closed.
 
 ### Conditional TED work
 
