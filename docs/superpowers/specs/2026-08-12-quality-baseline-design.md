@@ -122,9 +122,14 @@ occurrence construction, aggregation, and request/query parameter semantics.
 HTTP lifecycle orchestration and trivial getters use integration tests instead
 of ceremonial doctests.
 
-Examples are adjacent to the code they explain, deterministic, and readable
-without the production corpus. A reviewer may reject a helper or abstraction
-that makes the walkthrough harder to read even when it reduces local line count.
+Small examples stay adjacent to the code they explain as doctests. Examples
+that need pytest fixtures such as `tmp_path`, `monkeypatch`, captured token
+observations, or relational data live in `tests/test_teaching_examples.py` and
+are named by `tests/teaching_boundaries.toml`; that inventory is the navigation
+point from each taught boundary to its executable example. Both forms are
+deterministic and readable without the
+production corpus. A reviewer may reject a helper or abstraction that makes
+the walkthrough harder to read even when it reduces local line count.
 
 The pattern-extraction notebook demonstrates the module rather than forking it.
 Before deletion, its normalization expectations migrate to the table above and
@@ -327,6 +332,7 @@ than suppressing or weakening the new check.
 | Split model-free policy from model integration               | Accepted | Ordinary checks stay small while release evidence still covers actual GiNZA output                                             | The model becomes cheap enough for every default check              |
 | Baseline owns non-mutating wrappers and minimal flake checks | Accepted | Its acceptance criteria otherwise depend circularly on Spec 6                                                                  | Full derivations land in Spec 6                                     |
 | Preserve boundary-mapped walkthrough examples               | Accepted | Coverage by taught boundary detects loss or concentration that a total prompt count cannot                                      | The repository is no longer used for instruction                    |
+| Keep fixture-heavy examples in the mapped pytest lesson      | Accepted | Their setup is clearer with pytest fixtures than in docstrings; the boundary inventory provides the walkthrough link             | A boundary can be explained with a short self-contained doctest     |
 | Do not require doctests on orchestration/getters             | Accepted | A per-function quota creates ceremonial examples; integration tests explain lifecycle behavior better                           | Learner feedback identifies a missing executable seam               |
 | Replace local `pairwise` with the standard primitive         | Accepted | Python 3.12 is required; teaching the standard API is clearer and explicitly accounts for three removed examples                 | A domain-specific pairing rule appears                              |
 | Migrate notebook behavior before making it a consumer        | Accepted | Twelve normalization cases and extraction/exclusion cases must survive removal of duplicate implementations and unittest classes | The notebook needs a genuinely experimental algorithm             |
