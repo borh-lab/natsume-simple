@@ -3,7 +3,7 @@
   "generatedAt": "2026-08-12",
   "gateStatus": "blocked",
   "plannedArtifact": {
-    "corpusIds": ["jnlp", "wikipedia-ja-20231101"],
+    "corpusIds": ["jnlp", "wiki"],
     "licenseConclusion": {
       "status": "conditional",
       "spdxExpression": "CC-BY-SA-4.0",
@@ -14,6 +14,7 @@
   "sources": [
     {
       "corpusId": "jnlp",
+      "servingCorpusId": "jnlp",
       "plannedPublic": true,
       "status": "blocked",
       "reason": "The exact local snapshot has no durable immutable download location and its embedded readme does not contain the current CC BY 4.0 grant.",
@@ -31,6 +32,7 @@
     },
     {
       "corpusId": "wikipedia-ja-20231101",
+      "servingCorpusId": "wiki",
       "plannedPublic": true,
       "status": "candidate",
       "candidate": {

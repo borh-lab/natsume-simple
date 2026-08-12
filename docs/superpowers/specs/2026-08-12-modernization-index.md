@@ -182,7 +182,7 @@ Nix flake ──► frontend package
   artifact rollout, and availability ownership.
 - Online corpus writes require a new persistence and synchronization design.
 - An external API consumer requires explicit compatibility/versioning policy.
-- A consumer needing more than 150 collocations per particle triggers cursor
+- A consumer needing more than 200 collocations per particle triggers cursor
   pagination design.
 - A supported token-level research workflow triggers a separate analytical
   artifact rather than widening the serving schema.
@@ -215,8 +215,9 @@ Nix flake ──► frontend package
 - The planned public artifact contains JNLP and Wikipedia. TED remains
   synthetic-fixture-only unless a new license/product decision and talk-level
   adapter are approved.
-- Results are limited to 150 collocations per particle until a present consumer
-  justifies pagination.
+- Results are limited to 200 collocations per particle for the planned
+  two-corpus release. The item/corpus budget automatically limits a three-corpus
+  selection to 150 until a present consumer justifies pagination.
 - CPU is the mandatory full CI path; accelerator claims require scheduled
   matching-hardware evidence rather than every-commit full runs.
 - Filtered collocation aggregation remains a view; recorded corpus and lemma

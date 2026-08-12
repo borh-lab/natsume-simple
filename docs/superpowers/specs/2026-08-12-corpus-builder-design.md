@@ -222,7 +222,8 @@ Exactly one row:
 
 ### `corpus`
 
-- `id TEXT PRIMARY KEY`, 1–32 ASCII characters.
+- `id TEXT PRIMARY KEY`, 1–12 lowercase ASCII letters, digits, or hyphens,
+  beginning with a letter.
 - `label TEXT NOT NULL`, 1–64 Unicode code points.
 - A publishable schema-v1 artifact contains one to three corpora; adding a
   fourth requires re-sizing the public response contract.

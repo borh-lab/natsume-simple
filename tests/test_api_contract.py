@@ -67,6 +67,7 @@ def test_ready_and_corpora_describe_the_deployed_artifact(tmp_path: Path):
         ("schema", "unsupported_schema"),
         ("invalid_database", "database_unreadable"),
         ("corpus_count", "invalid_corpus_count"),
+        ("corpus_id", "invalid_corpus_id"),
     ],
 )
 def test_invalid_artifact_stays_live_but_never_becomes_ready(
@@ -92,11 +93,21 @@ def test_invalid_artifact_stays_live_but_never_becomes_ready(
             database_path.read_bytes()
         ).hexdigest()
         manifest_path.write_text(json.dumps(manifest))
-    else:
+    elif damage == "corpus_count":
         database_path = artifact_dir / "corpus.duckdb"
         with duckdb.connect(str(database_path)) as connection:
             connection.execute(
                 "INSERT INTO corpus VALUES ('extra', 'Extra'), ('extra2', 'Extra 2')"
+            )
+        manifest["databaseSha256"] = hashlib.sha256(
+            database_path.read_bytes()
+        ).hexdigest()
+        manifest_path.write_text(json.dumps(manifest))
+    else:
+        database_path = artifact_dir / "corpus.duckdb"
+        with duckdb.connect(str(database_path)) as connection:
+            connection.execute(
+                "INSERT INTO corpus VALUES ('thirteenchars', 'Invalid ID')"
             )
         manifest["databaseSha256"] = hashlib.sha256(
             database_path.read_bytes()
@@ -313,10 +324,20 @@ def test_collocations_select_and_rank_before_applying_the_limit(tmp_path: Path):
     ]
 
 
-def test_maximum_responses_stay_below_one_mebibyte(tmp_path: Path):
+def test_maximum_budgeted_responses_stay_below_one_mebibyte(tmp_path: Path):
     artifact_dir = build_maximum_response_artifact(tmp_path / "artifact")
     with TestClient(create_app(artifact_dir)) as client:
         collocations = client.get(
+            "/api/collocations",
+            params={
+                "term": "名" * 64,
+                "pos": "noun",
+                "corpusId": ["max-a", "max-b"],
+                "rankBy": "meanPerMillion",
+                "limitPerParticle": 200,
+            },
+        )
+        three_corpus_collocations = client.get(
             "/api/collocations",
             params={
                 "term": "名" * 64,
@@ -341,14 +362,20 @@ def test_maximum_responses_stay_below_one_mebibyte(tmp_path: Path):
     assert len(collocations.content) < 1024 * 1024
     assert len(collocations.json()["particleGroups"]) == 8
     assert all(
-        group["returnedCount"] == 150 for group in collocations.json()["particleGroups"]
+        group["returnedCount"] == 200 for group in collocations.json()["particleGroups"]
+    )
+    assert three_corpus_collocations.status_code == 200
+    assert len(three_corpus_collocations.content) < 1024 * 1024
+    assert all(
+        group["returnedCount"] == 150
+        for group in three_corpus_collocations.json()["particleGroups"]
     )
     assert examples.status_code == 200
     assert len(examples.content) < 1024 * 1024
     assert len(examples.json()["examples"]) == 20
 
 
-def test_collocation_limit_rejects_values_above_the_sized_bound(tmp_path: Path):
+def test_collocation_budget_rejects_three_corpora_above_150_items(tmp_path: Path):
     with fixture_client(tmp_path) as client:
         response = client.get(
             "/api/collocations",
@@ -356,7 +383,45 @@ def test_collocation_limit_rejects_values_above_the_sized_bound(tmp_path: Path):
                 "term": "情報",
                 "pos": "noun",
                 "rankBy": "raw",
+                "corpusId": ["alpha", "beta"],
+                "limitPerParticle": 200,
+            },
+        )
+
+    assert response.status_code == 200
+
+    artifact_dir = build_maximum_response_artifact(tmp_path / "maximum-artifact")
+    with TestClient(create_app(artifact_dir)) as client:
+        response = client.get(
+            "/api/collocations",
+            params={
+                "term": "名" * 64,
+                "pos": "noun",
+                "rankBy": "raw",
                 "limitPerParticle": 151,
+            },
+            headers={"X-Request-ID": "over-budget"},
+        )
+
+    assert response.status_code == 400
+    assert response.json() == {
+        "error": {
+            "code": "invalid_parameter",
+            "message": "limitPerParticle is too large for the selected corpus count",
+            "requestId": "over-budget",
+        }
+    }
+
+
+def test_collocation_limit_rejects_values_above_200(tmp_path: Path):
+    with fixture_client(tmp_path) as client:
+        response = client.get(
+            "/api/collocations",
+            params={
+                "term": "情報",
+                "pos": "noun",
+                "rankBy": "raw",
+                "limitPerParticle": 201,
             },
         )
 

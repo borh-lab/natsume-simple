@@ -124,7 +124,10 @@ Parameters:
   are normalized; an empty or unknown value is `400`. Artifact validation
   guarantees that the complete known set contains at most three corpora.
 - `rankBy`: required enum `raw | meanPerMillion`.
-- `limitPerParticle`: default 100, integer 1–150.
+- `limitPerParticle`: default 100, integer 1–200. The product of this limit and
+  the selected corpus count may not exceed 450; exceeding that response budget
+  is `400`. Therefore one or two selected corpora permit 200, while three
+  selected corpora permit 150.
 
 At most the configured eight particle groups are returned. Each group contains
 `particle`, `totalMatchingCollocations`, `returnedCount`, bounded `items`, and
@@ -197,7 +200,7 @@ Every non-success JSON response uses:
 {
   "error": {
     "code": "invalid_parameter",
-    "message": "limitPerParticle must be between 1 and 150",
+    "message": "limitPerParticle is too large for the selected corpus count",
     "requestId": "01..."
   }
 }
@@ -251,19 +254,18 @@ document, and filter all response fields as recommended by FastAPI:
   error.
 - Every valid response must remain below 1 MiB when serialized.
 - The immutable artifact makes this limit structural: a published schema-v1
-  artifact contains at most three corpora, corpus IDs are at most 32 ASCII
+  artifact contains at most three corpora, corpus IDs are at most 12 ASCII
   characters, labels and normalized lemmas are at most 64 code points, source
   titles are at most 512 code points, and sentences are at most 4,096 code
   points. Builder validation rejects rather than truncates an over-bound fact.
-  With those bounds, the measured eight-particle/150-item/three-contribution
-  collocation fixture is about 724 KiB and the 20-example maximum is about
+  With those bounds, the measured eight-particle/200-item/two-contribution
+  collocation fixture is about 903 KiB and the 20-example maximum is about
   274 KiB under FastAPI's actual JSON serialization. A conservative structural
-  model using 32-character corpus IDs and widest expected integer/float
-  encodings is about 864 KiB. The same conservative model at 200 items is about
-  1,150 KiB, so removing the redundant contribution rate does not safely restore
-  the former limit. Tightening IDs to 12 characters was measured separately at
-  1,081,309 bytes (about 1,056 KiB) for 200 items, still 32,733 bytes over the
-  cap; identifier headroom is not the binding degree of freedom.
+  model using 12-character corpus IDs and widest expected integer/float
+  encodings is about 971 KiB, leaving about 53 KiB below the cap. Three selected
+  corpora use the 150-item budget; the measured fixture is about 724 KiB and its
+  structural model about 793 KiB. The bounded product prevents the unsafe
+  three-corpus/200-item combination, measured structurally at about 1,056 KiB.
 - The initial capacity gate runs a curated search set at 10 concurrent clients;
   p95 end-to-end API latency must remain below 1 second on the documented
   production host class. The benchmark records host CPU, memory, DuckDB settings,
@@ -353,7 +355,7 @@ not supported.
 | No API version namespace                            | Accepted | No external consumers; atomic deployment                                                                                                                                   | First external consumer                                            |
 | Per-corpus rate plus equal-weight selected mean     | Accepted | Keeps the per-million denominator honest and avoids aggregate magnitude scaling with corpus count                                                                          | Domain analysis prefers pooled corpus-size weighting               |
 | Selection and ranking happen before limiting        | Accepted | A globally truncated response cannot produce correct selection-specific top N client-side                                                                                  | Cursor pagination or unbounded result transfer is introduced       |
-| Limit to 150 items per particle                     | Accepted | Removing the derived item contribution rate lowers the measured 150-item fixture to about 724 KiB, but the 32-character-ID structural model at 200 remains about 1,150 KiB | Present consumer needs deeper results and pagination is designed   |
+| Bound item/corpus product to 450; maximum 200 items | Accepted | The public two-corpus artifact measures about 903 KiB at 200 items (971 KiB structural); a three-corpus selection automatically tightens to 150                     | Present consumer needs deeper results and pagination is designed   |
 | Request-local read-only connections                 | Accepted | Matches DuckDB Python concurrency guidance                                                                                                                                 | Measured connection overhead becomes material                      |
 | No production CORS                                  | Accepted | Frontend and API are same-origin                                                                                                                                           | Separate trusted frontend origin is deployed                       |
 | OpenAPI-generated compile-time types only           | Accepted | Prevents drift without runtime client machinery                                                                                                                            | Multiple clients need richer generation                            |

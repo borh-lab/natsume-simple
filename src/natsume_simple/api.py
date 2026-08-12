@@ -20,6 +20,7 @@ from pydantic import BaseModel
 
 QUERY_CAPACITY = 16
 QUERY_TIMEOUT_SECONDS = 2.0
+COLLOCATION_ITEM_CORPUS_BUDGET = 450
 request_logger = logging.getLogger("natsume_simple.api.requests")
 startup_logger = logging.getLogger("natsume_simple.api.startup")
 
@@ -190,6 +191,12 @@ def validate_artifact(artifact_dir: Path) -> tuple[Path, dict]:
             corpus_count = connection.execute("SELECT count(*) FROM corpus").fetchone()[
                 0
             ]
+            corpus_ids = [
+                row[0]
+                for row in connection.execute(
+                    "SELECT id FROM corpus ORDER BY id"
+                ).fetchall()
+            ]
     except duckdb.Error as error:
         raise ArtifactValidationError("database_unreadable") from error
 
@@ -197,6 +204,10 @@ def validate_artifact(artifact_dir: Path) -> tuple[Path, dict]:
         raise ArtifactValidationError("identity_mismatch")
     if not 1 <= corpus_count <= 3:
         raise ArtifactValidationError("invalid_corpus_count")
+    if any(
+        not re.fullmatch(r"[a-z][a-z0-9-]{0,11}", corpus_id) for corpus_id in corpus_ids
+    ):
+        raise ArtifactValidationError("invalid_corpus_id")
     return database_path, manifest
 
 
@@ -476,7 +487,7 @@ def create_app(artifact_dir: Path) -> FastAPI:
         pos: Literal["noun", "verb"],
         rankBy: Literal["raw", "meanPerMillion"],
         corpusId: Annotated[list[str] | None, Query()] = None,
-        limitPerParticle: Annotated[int, Query(ge=1, le=150)] = 100,
+        limitPerParticle: Annotated[int, Query(ge=1, le=200)] = 100,
     ) -> CollocationsResponse:
         request.state.rank_by = rankBy
         request.state.query_length_bucket = query_length_bucket(term)
@@ -487,6 +498,12 @@ def create_app(artifact_dir: Path) -> FastAPI:
             ).fetchall()
             corpus_counts = {row[0]: row[1] for row in corpus_rows}
             selected = select_corpora(corpusId, set(corpus_counts))
+            if limitPerParticle * len(selected) > COLLOCATION_ITEM_CORPUS_BUDGET:
+                raise PublicApiError(
+                    400,
+                    "invalid_parameter",
+                    "limitPerParticle is too large for the selected corpus count",
+                )
 
             term_column = "noun" if pos == "noun" else "verb"
             placeholders = ", ".join("?" for _ in selected)
