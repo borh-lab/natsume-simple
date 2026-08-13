@@ -57,6 +57,31 @@ def test_build_requires_at_least_one_explicit_local_corpus(tmp_path: Path, capsy
     assert "at least one local corpus input is required" in capsys.readouterr().err
 
 
+def test_build_parser_accepts_locked_wikipedia_metadata(tmp_path: Path):
+    args = builder_cli._parser().parse_args(
+        [
+            "build",
+            "--artifacts-directory",
+            str(tmp_path / "artifacts"),
+            "--wikipedia-parquet",
+            str(tmp_path / "train-00000-of-00015.parquet"),
+            "--source-lock",
+            str(tmp_path / "sources.json"),
+            "--wikipedia-subset",
+            str(tmp_path / "subset.json"),
+            "--splitter-model",
+            str(tmp_path / "model"),
+            "--content-license",
+            str(tmp_path / "license.txt"),
+            "--attribution",
+            str(tmp_path / "attribution.md"),
+        ]
+    )
+
+    assert args.source_lock == tmp_path / "sources.json"
+    assert args.wikipedia_subset == tmp_path / "subset.json"
+
+
 def test_publish_command_delegates_to_atomic_registry(monkeypatch, tmp_path: Path):
     artifact = tmp_path / "artifact"
     deploy = tmp_path / "deploy"

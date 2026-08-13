@@ -17,6 +17,9 @@ from natsume_simple.release_inputs import (
 )
 
 SOURCE_LOCK = Path(__file__).parents[1] / "docs" / "corpus-sources.lock.json"
+WIKIPEDIA_SUBSET = (
+    Path(__file__).parents[1] / "docs" / "wikipedia-ja-20231101-subset.json"
+)
 
 
 def write_source_lock(path: Path, article_ids: list[str]) -> Path:
@@ -118,6 +121,17 @@ def test_repository_lock_selects_the_planned_release_files():
     assert (
         sources.wikipedia_shard.sha256
         == "4751c14478e712fd637bd83c2cf3537b0e299ea5115e9a78ddededf42f34c29d"
+    )
+
+
+def test_repository_subset_matches_the_locked_identity():
+    sources = load_release_sources(SOURCE_LOCK)
+
+    subset = load_wikipedia_subset(WIKIPEDIA_SUBSET, sources=sources)
+
+    assert len(subset.article_ids) == len(set(subset.article_ids)) == 971
+    assert canonical_article_ids_sha256(subset.article_ids) == (
+        "249dc639f646da4db3711571ea97231a22421c22a5a90ebedf86e7ee3b471991"
     )
 
 

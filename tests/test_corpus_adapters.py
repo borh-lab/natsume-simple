@@ -95,27 +95,24 @@ def test_jnlp_adapter_reads_metadata_and_counts_missing_plaintext(tmp_path: Path
     )
 
 
-def test_wikipedia_adapter_reads_local_parquet_in_identity_order(tmp_path: Path):
-    second = tmp_path / "second.parquet"
-    first = tmp_path / "first.parquet"
+def test_wikipedia_adapter_reads_only_selected_articles_in_identity_order(
+    tmp_path: Path,
+):
+    source = tmp_path / "source.parquet"
     pl.DataFrame(
         {
-            "id": ["2"],
-            "url": ["https://ja.wikipedia.org/wiki/第二"],
-            "title": ["第二"],
-            "text": ["第三文。"],
+            "id": ["2", "1", "3"],
+            "url": [
+                "https://ja.wikipedia.org/wiki/第二",
+                "https://ja.wikipedia.org/wiki/第一",
+                "https://ja.wikipedia.org/wiki/除外",
+            ],
+            "title": ["第二", "第一", "除外"],
+            "text": ["第三文。", "第一文。第二文。", "除外文。"],
         }
-    ).write_parquet(second)
-    pl.DataFrame(
-        {
-            "id": ["1"],
-            "url": ["https://ja.wikipedia.org/wiki/第一"],
-            "title": ["第一"],
-            "text": ["第一文。第二文。"],
-        }
-    ).write_parquet(first)
+    ).write_parquet(source)
 
-    result = adapt_wikipedia_parquet([second, first])
+    result = adapt_wikipedia_parquet(source, article_ids={"1", "2"})
 
     assert result.rejections == {}
     assert [document.external_id for document in result.documents] == ["1", "2"]
@@ -124,6 +121,30 @@ def test_wikipedia_adapter_reads_local_parquet_in_identity_order(tmp_path: Path)
         result.documents[0].content_sha256
         == "ff2f1c663b5c075a8459ea9e9a82eec69b8872d64bcd93a2f3f9f47784d0cb9e"
     )
+
+
+@pytest.mark.parametrize(
+    ("ids", "reason"),
+    [
+        (["1"], "wikipedia_identity_missing"),
+        (["1", "1", "2"], "wikipedia_identity_duplicate"),
+    ],
+)
+def test_wikipedia_adapter_requires_exact_selected_membership(
+    tmp_path: Path, ids: list[str], reason: str
+):
+    source = tmp_path / "source.parquet"
+    pl.DataFrame(
+        {
+            "id": ids,
+            "url": [None] * len(ids),
+            "title": [f"title-{index}" for index in range(len(ids))],
+            "text": ["本文です。"] * len(ids),
+        }
+    ).write_parquet(source)
+
+    with pytest.raises(ValueError, match=reason):
+        adapt_wikipedia_parquet(source, article_ids={"1", "2"})
 
 
 def test_segmentation_assigns_stable_ordinals_and_drops_empty_results():
@@ -235,7 +256,7 @@ def test_pipeline_builds_api_artifact_and_records_real_rejections(
             "text": ["ことを説明するならば", None],
         }
     ).write_parquet(source)
-    adaptation = adapt_wikipedia_parquet([source])
+    adaptation = adapt_wikipedia_parquet(source, article_ids={"1", "2"})
     monkeypatch.setattr(
         "natsume_simple.pattern_extraction.ginza.bunsetu_span",
         lambda token: token.doc[token.i :],

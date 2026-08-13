@@ -62,6 +62,8 @@ def _parser() -> argparse.ArgumentParser:
     build.add_argument("--artifacts-directory", type=Path, required=True)
     build.add_argument("--jnlp-root", type=Path)
     build.add_argument("--wikipedia-parquet", type=Path, action="append", default=[])
+    build.add_argument("--source-lock", type=Path)
+    build.add_argument("--wikipedia-subset", type=Path)
     build.add_argument("--splitter-model", type=Path, required=True)
     build.add_argument("--content-license", type=Path, required=True)
     build.add_argument("--attribution", type=Path, required=True)
@@ -83,6 +85,10 @@ def _parser() -> argparse.ArgumentParser:
 def _build(args: argparse.Namespace) -> Path:
     if args.jnlp_root is None and not args.wikipedia_parquet:
         raise ValueError("at least one local corpus input is required")
+    if args.wikipedia_parquet and (
+        args.source_lock is None or args.wikipedia_subset is None
+    ):
+        raise ValueError("Wikipedia requires --source-lock and --wikipedia-subset")
     if not args.splitter_model.exists():
         raise FileNotFoundError(args.splitter_model)
 
@@ -134,7 +140,20 @@ def _build(args: argparse.Namespace) -> Path:
         adaptations.append(adapt_jnlp_directory(args.jnlp_root))
         corpora.append(CorpusRecord("jnlp", "自然言語処理"))
     if args.wikipedia_parquet:
-        adaptations.append(adapt_wikipedia_parquet(args.wikipedia_parquet))
+        from natsume_simple.release_inputs import (
+            load_release_sources,
+            load_wikipedia_subset,
+            validate_wikipedia_paths,
+        )
+
+        sources = load_release_sources(args.source_lock)
+        subset = load_wikipedia_subset(args.wikipedia_subset, sources=sources)
+        wikipedia_path = validate_wikipedia_paths(
+            args.wikipedia_parquet, sources=sources
+        )
+        adaptations.append(
+            adapt_wikipedia_parquet(wikipedia_path, article_ids=subset.article_ids)
+        )
         corpora.append(CorpusRecord("wiki", "日本語版Wikipedia"))
 
     instance_id = args.artifact_instance_id or new_artifact_instance_id()

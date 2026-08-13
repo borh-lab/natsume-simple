@@ -277,7 +277,7 @@ The file may be pretty-printed; its identity is the compact serialization of the
 - [ ] Compare the selected titles to the present legacy oracle before accepting or changing the identity checksum.
 
 ```sql
-SELECT title FROM source WHERE corpus = 'wiki' ORDER BY title
+SELECT title FROM source WHERE corpus = 'Wikipedia' ORDER BY title
 ```
 
 For this first release, `data/corpus.db` is present and the 971-title comparison is required evidence: stop if the titles differ. Only after all 971 titles match may the canonical ID checksum replace the currently locked undocumented value; update only `orderedIdentityListSha256` in `docs/corpus-sources.lock.json` and add a nearby explanatory note field. Future rebuilds use the committed subset without requiring the legacy database.

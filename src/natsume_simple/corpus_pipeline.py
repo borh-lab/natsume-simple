@@ -2,7 +2,7 @@ import hashlib
 import subprocess
 import zipfile
 from collections import Counter
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Collection, Iterable
 from dataclasses import dataclass, replace
 from pathlib import Path
 
@@ -134,40 +134,52 @@ def adapt_jnlp_directory(
     )
 
 
-def adapt_wikipedia_parquet(paths: Sequence[Path]) -> AdaptationResult:
-    """Adapt local data-only Wikipedia Parquet shards without remote code."""
+def adapt_wikipedia_parquet(
+    path: Path, *, article_ids: Collection[str]
+) -> AdaptationResult:
+    """Adapt exactly the selected articles from one local Parquet shard."""
     documents: list[SourceDocument] = []
     rejections: Counter[str] = Counter()
 
-    for path in sorted(paths):
-        for row in pl.read_parquet(
-            path, columns=["id", "url", "title", "text"]
-        ).iter_rows(named=True):
-            external_id = _optional_text(row["id"])
-            title = _optional_text(row["title"])
-            text = _optional_text(row["text"])
-            if external_id is None:
-                rejections["missing_external_id"] += 1
-                continue
-            if title is None:
-                rejections["missing_title"] += 1
-                continue
-            if text is None:
-                rejections["empty_text"] += 1
-                continue
-            documents.append(
-                SourceDocument(
-                    corpus_id="wiki",
-                    external_id=external_id,
-                    title=title,
-                    year=2023,
-                    author="Wikipedia Contributors",
-                    publisher="Wikimedia Foundation",
-                    url=_optional_text(row["url"]),
-                    text_units=(text,),
-                    content_sha256=_text_sha256(text),
-                )
+    requested = set(article_ids)
+    selected = (
+        pl.scan_parquet(path)
+        .select("id", "url", "title", "text")
+        .filter(pl.col("id").is_in(list(requested)))
+        .collect()
+    )
+    selected_ids = [str(value) for value in selected["id"].to_list()]
+    if len(selected_ids) != len(set(selected_ids)):
+        raise ValueError("wikipedia_identity_duplicate")
+    if set(selected_ids) != requested:
+        raise ValueError("wikipedia_identity_missing")
+
+    for row in selected.iter_rows(named=True):
+        external_id = _optional_text(row["id"])
+        title = _optional_text(row["title"])
+        text = _optional_text(row["text"])
+        if external_id is None:
+            rejections["missing_external_id"] += 1
+            continue
+        if title is None:
+            rejections["missing_title"] += 1
+            continue
+        if text is None:
+            rejections["empty_text"] += 1
+            continue
+        documents.append(
+            SourceDocument(
+                corpus_id="wiki",
+                external_id=external_id,
+                title=title,
+                year=2023,
+                author="Wikipedia Contributors",
+                publisher="Wikimedia Foundation",
+                url=_optional_text(row["url"]),
+                text_units=(text,),
+                content_sha256=_text_sha256(text),
             )
+        )
 
     return AdaptationResult(
         "wiki",
