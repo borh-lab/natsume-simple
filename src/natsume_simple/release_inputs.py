@@ -2,8 +2,12 @@
 
 import hashlib
 import json
-from collections.abc import Sequence
+import os
+import tempfile
+import urllib.request
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from io import BufferedIOBase
 from pathlib import Path
 from typing import Any
 
@@ -133,6 +137,50 @@ def verify_file(path: Path, locked: LockedFile) -> None:
         raise ReleaseInputError("source_size_mismatch")
     if digest.hexdigest() != locked.sha256:
         raise ReleaseInputError("source_checksum_mismatch")
+
+
+def acquire_locked_file(
+    locked: LockedFile,
+    output_directory: Path,
+    *,
+    opener: Callable[..., BufferedIOBase] = urllib.request.urlopen,
+) -> Path:
+    """Download, verify, and atomically expose one locked source file."""
+    output_directory.mkdir(parents=True, exist_ok=True)
+    destination = output_directory / locked.local_name
+    if destination.exists():
+        verify_file(destination, locked)
+        return destination
+
+    descriptor, temporary_name = tempfile.mkstemp(
+        dir=output_directory, prefix=f"{locked.local_name}.part-"
+    )
+    os.close(descriptor)
+    temporary = Path(temporary_name)
+    try:
+        with opener(locked.url, timeout=60) as response, temporary.open("wb") as target:
+            for chunk in iter(lambda: response.read(1024 * 1024), b""):
+                target.write(chunk)
+        verify_file(temporary, locked)
+        os.replace(temporary, destination)
+    except OSError as error:
+        raise ReleaseInputError("source_download_failed") from error
+    finally:
+        temporary.unlink(missing_ok=True)
+    return destination
+
+
+def acquire_release_inputs(
+    sources: ReleaseSources,
+    output_directory: Path,
+    *,
+    opener: Callable[..., BufferedIOBase] = urllib.request.urlopen,
+) -> tuple[Path, Path]:
+    """Acquire the locked JNLP archive and Wikipedia shard."""
+    return (
+        acquire_locked_file(sources.jnlp_archive, output_directory, opener=opener),
+        acquire_locked_file(sources.wikipedia_shard, output_directory, opener=opener),
+    )
 
 
 def _read_json(path: Path, reason: str) -> dict[str, Any]:

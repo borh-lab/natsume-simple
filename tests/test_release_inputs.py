@@ -1,4 +1,5 @@
 import hashlib
+import io
 import json
 from pathlib import Path
 
@@ -6,6 +7,8 @@ import pytest
 
 from natsume_simple.release_inputs import (
     ReleaseInputError,
+    acquire_locked_file,
+    acquire_release_inputs,
     canonical_article_ids_sha256,
     load_release_sources,
     load_wikipedia_subset,
@@ -230,3 +233,100 @@ def test_verifies_locked_file_size_and_checksum(tmp_path: Path):
     archive.write_bytes(b"nope")
     with pytest.raises(ReleaseInputError, match="source_checksum_mismatch"):
         verify_file(archive, sources.jnlp_archive)
+
+
+def test_acquires_a_locked_file_before_exposing_its_final_name(tmp_path: Path):
+    article_ids = [str(index) for index in range(971)]
+    locked = load_release_sources(
+        write_source_lock(tmp_path / "lock.json", article_ids)
+    ).jnlp_archive
+    calls: list[tuple[str, int]] = []
+
+    class ObservedStream(io.BytesIO):
+        def read(self, size: int = -1) -> bytes:
+            assert not (tmp_path / locked.local_name).exists()
+            assert list(tmp_path.glob(f"{locked.local_name}.part-*"))
+            return super().read(size)
+
+    def opener(url: str, *, timeout: int):
+        calls.append((url, timeout))
+        return ObservedStream(b"jnlp")
+
+    destination = acquire_locked_file(locked, tmp_path, opener=opener)
+
+    assert destination == tmp_path / locked.local_name
+    assert destination.read_bytes() == b"jnlp"
+    assert calls == [(locked.url, 60)]
+    assert not list(tmp_path.glob(f"{locked.local_name}.part-*"))
+
+
+def test_reuses_a_valid_acquired_file_without_network(tmp_path: Path):
+    article_ids = [str(index) for index in range(971)]
+    locked = load_release_sources(
+        write_source_lock(tmp_path / "lock.json", article_ids)
+    ).jnlp_archive
+    destination = tmp_path / locked.local_name
+    destination.write_bytes(b"jnlp")
+
+    assert (
+        acquire_locked_file(
+            locked,
+            tmp_path,
+            opener=lambda *_args, **_kwargs: pytest.fail("network opened"),
+        )
+        == destination
+    )
+
+
+def test_rejects_an_invalid_existing_destination_without_overwriting(tmp_path: Path):
+    article_ids = [str(index) for index in range(971)]
+    locked = load_release_sources(
+        write_source_lock(tmp_path / "lock.json", article_ids)
+    ).jnlp_archive
+    destination = tmp_path / locked.local_name
+    destination.write_bytes(b"bad")
+
+    with pytest.raises(ReleaseInputError, match="source_size_mismatch"):
+        acquire_locked_file(
+            locked,
+            tmp_path,
+            opener=lambda *_args, **_kwargs: pytest.fail("network opened"),
+        )
+
+    assert destination.read_bytes() == b"bad"
+
+
+def test_removes_a_download_that_fails_verification(tmp_path: Path):
+    article_ids = [str(index) for index in range(971)]
+    locked = load_release_sources(
+        write_source_lock(tmp_path / "lock.json", article_ids)
+    ).jnlp_archive
+
+    with pytest.raises(ReleaseInputError, match="source_size_mismatch"):
+        acquire_locked_file(
+            locked,
+            tmp_path,
+            opener=lambda *_args, **_kwargs: io.BytesIO(b"bad"),
+        )
+
+    assert not (tmp_path / locked.local_name).exists()
+    assert not list(tmp_path.glob(f"{locked.local_name}.part-*"))
+
+
+def test_acquires_both_release_inputs(tmp_path: Path):
+    article_ids = [str(index) for index in range(971)]
+    sources = load_release_sources(
+        write_source_lock(tmp_path / "lock.json", article_ids)
+    )
+    payloads = {sources.jnlp_archive.url: b"jnlp", sources.wikipedia_shard.url: b"wiki"}
+
+    acquired = acquire_release_inputs(
+        sources,
+        tmp_path / "inputs",
+        opener=lambda url, **_kwargs: io.BytesIO(payloads[url]),
+    )
+
+    assert acquired == (
+        tmp_path / "inputs" / sources.jnlp_archive.local_name,
+        tmp_path / "inputs" / sources.wikipedia_shard.local_name,
+    )

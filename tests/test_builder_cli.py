@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from natsume_simple import builder_cli
+from natsume_simple import release_inputs
 
 
 def test_artifact_instance_id_is_utc_timestamp_plus_128_bits():
@@ -71,3 +72,36 @@ def test_publish_command_delegates_to_atomic_registry(monkeypatch, tmp_path: Pat
 
     assert builder_cli.main(["publish", str(artifact), str(deploy)]) == 0
     assert calls == [(artifact, deploy)]
+
+
+def test_acquire_release_inputs_command_uses_the_source_lock(
+    monkeypatch, tmp_path: Path, capsys
+):
+    source_lock = tmp_path / "sources.json"
+    output_directory = tmp_path / "inputs"
+    sources = object()
+    acquired = (output_directory / "jnlp.zip", output_directory / "wiki.parquet")
+    monkeypatch.setattr(release_inputs, "load_release_sources", lambda path: sources)
+    monkeypatch.setattr(
+        release_inputs,
+        "acquire_release_inputs",
+        lambda selected, output: (
+            acquired
+            if (selected, output) == (sources, output_directory)
+            else pytest.fail("unexpected acquisition arguments")
+        ),
+    )
+
+    assert (
+        builder_cli.main(
+            [
+                "acquire-release-inputs",
+                "--source-lock",
+                str(source_lock),
+                "--output-directory",
+                str(output_directory),
+            ]
+        )
+        == 0
+    )
+    assert capsys.readouterr().out.splitlines() == [str(path) for path in acquired]

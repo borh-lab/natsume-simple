@@ -50,6 +50,12 @@ def _parser() -> argparse.ArgumentParser:
     prepare.add_argument("archive", type=Path)
     prepare.add_argument("output", type=Path)
 
+    acquire = commands.add_parser(
+        "acquire-release-inputs", help="download and verify the locked release files"
+    )
+    acquire.add_argument("--source-lock", type=Path, required=True)
+    acquire.add_argument("--output-directory", type=Path, required=True)
+
     build = commands.add_parser(
         "build", help="build one immutable artifact from already-local inputs"
     )
@@ -193,14 +199,27 @@ def main(argv: Sequence[str] | None = None) -> int:
             from natsume_simple.corpus_pipeline import prepare_jnlp_archive
 
             result = prepare_jnlp_archive(args.archive, args.output)
+        elif args.command == "acquire-release-inputs":
+            from natsume_simple.release_inputs import (
+                acquire_release_inputs,
+                load_release_sources,
+            )
+
+            result = acquire_release_inputs(
+                load_release_sources(args.source_lock), args.output_directory
+            )
         elif args.command == "build":
             result = _build(args)
         elif args.command == "publish":
             result = publish_artifact(args.artifact, args.deploy_directory)
         else:
             result = current_artifact(args.deploy_directory)
-    except ValueError as error:
+    except (OSError, ValueError) as error:
         parser.error(str(error))
+    if isinstance(result, tuple):
+        for path in result:
+            print(path)
+        return 0
     print(result)
     return 0
 
