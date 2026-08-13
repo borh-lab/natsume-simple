@@ -259,7 +259,10 @@ def create_app(artifact_dir: Path, *, frontend_dir: Path | None = None) -> FastA
         api.state.query_limiter = CapacityLimiter(QUERY_CAPACITY)
 
         try:
-            database_path, manifest = validate_artifact(artifact_dir)
+            selected_artifact = artifact_dir.resolve(strict=True)
+            database_path, manifest = validate_artifact(selected_artifact)
+        except OSError:
+            log_artifact_rejection("artifact_path_unresolvable")
         except ArtifactValidationError as error:
             log_artifact_rejection(error.reason)
         else:

@@ -8,10 +8,12 @@ import pytest
 from fastapi.testclient import TestClient
 
 from natsume_simple.api import create_app
+from natsume_simple.artifact_registry import publish_artifact
 from tests.database_fixture import (
     build_maximum_response_artifact,
     build_search_artifact,
 )
+from tests.test_artifact_builder import build_fixture
 
 
 def fixture_client(tmp_path: Path) -> TestClient:
@@ -57,6 +59,32 @@ def test_ready_and_corpora_describe_the_deployed_artifact(tmp_path: Path):
             ],
             "databaseBuildId": "fixture-build-001",
         }
+
+
+def test_startup_resolves_artifact_once(tmp_path: Path):
+    artifacts = tmp_path / "artifacts"
+    artifacts.mkdir()
+    first = build_fixture(artifacts / "first", "first-build")
+    second = build_fixture(artifacts / "second", "second-build")
+    database_path = second / "corpus.duckdb"
+    with duckdb.connect(str(database_path)) as connection:
+        connection.execute("UPDATE corpus SET label = 'Changed' WHERE id = 'alpha'")
+    manifest_path = second / "manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["databaseSha256"] = hashlib.sha256(database_path.read_bytes()).hexdigest()
+    manifest_path.write_text(json.dumps(manifest))
+
+    deploy = tmp_path / "deploy"
+    publish_artifact(first, deploy)
+    with TestClient(create_app(deploy / "current")) as client:
+        publish_artifact(second, deploy)
+
+        assert (
+            client.get("/api/health/ready").json()["databaseBuildId"] == "first-build"
+        )
+        corpora = client.get("/api/corpora").json()["corpora"]
+
+    assert [corpus["label"] for corpus in corpora] == ["Alpha", "Beta"]
 
 
 @pytest.mark.parametrize(
