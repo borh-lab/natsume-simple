@@ -441,6 +441,22 @@
                 pkgs.uv
               ];
             };
+            test = pkgs.mkShell {
+              packages = [
+                testPython
+                pkgs.mypy
+                pkgs.ruff
+              ];
+            };
+            release = pkgs.mkShell {
+              packages = [
+                corpusBuilder
+                server
+                pkgs.curl
+                pkgs.nginx
+                pkgs.time
+              ];
+            };
             frontend = pkgs.mkShell {
               packages = [
                 pkgs.nodejs

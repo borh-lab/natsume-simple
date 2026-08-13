@@ -53,7 +53,7 @@ The `test` shell is the one environment for focused Python tests and static chec
 - [ ] Verify the environment before using it elsewhere in the plan.
 
 ```bash
-nix develop .#test --command python -c 'import fastapi, polars, spacy, torch, pytest, httpx'
+nix develop .#test --command python -c 'import fastapi, polars, spacy, torch, pytest, httpx2'
 nix develop .#test --command mypy --version
 nix develop .#test --command ruff --version
 nix develop .#release --command sh -c 'command -v natsume-corpus; command -v natsume-serve; command -v nginx; command -v time; command -v curl'
