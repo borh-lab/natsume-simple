@@ -20,7 +20,6 @@
 <header class="border-b bg-white dark:border-gray-700 dark:bg-gray-900">
 	<div class="mx-auto flex max-w-screen-2xl flex-wrap items-center justify-between gap-3 p-4">
 		<h1 class="text-2xl font-bold">Natsume Simple</h1>
-		<ThemeSwitch />
 		<SearchControls
 			bind:term={controller.term}
 			bind:pos={controller.pos}
@@ -28,6 +27,7 @@
 			onsubmit={() => controller.submit()}
 			findSuggestions={async (query, pos) => (await client.getSuggestions(query, pos)).suggestions}
 		/>
+		<ThemeSwitch />
 	</div>
 </header>
 

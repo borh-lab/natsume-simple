@@ -31,6 +31,11 @@ test('searches, filters, reranks, and safely expands examples', async ({ page })
 test('supports both query directions and theme control', async ({ page }) => {
 	await page.goto('/');
 	await expect(page.getByRole('button', { name: 'Go' })).toBeEnabled();
+	expect(
+		await page
+			.locator('header > div > *')
+			.evaluateAll((elements) => elements.map((element) => element.tagName))
+	).toEqual(['H1', 'FORM', 'BUTTON']);
 	const direction = page.getByLabel('Search direction');
 	const search = page.getByRole('combobox', { name: 'Search term' });
 	await direction.selectOption('verb');

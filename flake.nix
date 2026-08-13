@@ -125,7 +125,7 @@
             name = "natsume-serve";
             runtimeInputs = [ serverPython ];
             text = ''
-              artifact_dir="''${NATSUME_ARTIFACT_DIR:-/var/lib/natsume/artifact}"
+              artifact_dir="''${NATSUME_ARTIFACT_DIR:-deploy/current}"
               host="''${NATSUME_HOST:-127.0.0.1}"
               port="''${NATSUME_PORT:-8000}"
 
@@ -238,8 +238,10 @@
               ''
                 cp -r ${./tests} tests
                 python -c 'from pathlib import Path; from tests.database_fixture import build_search_artifact; build_search_artifact(Path("artifact"))'
+                mkdir -p deploy
+                ln -s ../artifact deploy/current
 
-                ${server}/bin/natsume-serve --artifact-dir "$PWD/artifact" --port 18000 >server.log 2>&1 &
+                ${server}/bin/natsume-serve --port 18000 >server.log 2>&1 &
                 server_pid=$!
                 trap 'cat server.log >&2; kill "$server_pid" 2>/dev/null || true' ERR
                 trap 'kill "$server_pid" 2>/dev/null || true' EXIT
