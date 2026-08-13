@@ -1,11 +1,15 @@
 import hashlib
+import json
 import re
+from types import SimpleNamespace
 from pathlib import Path
 
 import pytest
 
 from natsume_simple import builder_cli
 from natsume_simple import release_inputs
+from natsume_simple.corpus_pipeline import AdaptationResult
+from natsume_simple.release_inputs import LockedFile, ReleaseSources, WikipediaSubset
 
 
 def test_artifact_instance_id_is_utc_timestamp_plus_128_bits():
@@ -80,6 +84,196 @@ def test_build_parser_accepts_locked_wikipedia_metadata(tmp_path: Path):
 
     assert args.source_lock == tmp_path / "sources.json"
     assert args.wikipedia_subset == tmp_path / "subset.json"
+
+
+def test_split_japanese_sentences_keeps_language_policy_outside_segmentation():
+    class Splitter:
+        def split(self, paragraphs: list[str]):
+            assert paragraphs == ["日本語の段落です。", "English paragraph."]
+            return [["日本語の文章です。"], ["English sentence."]]
+
+    assert list(
+        builder_cli.split_japanese_sentences(
+            ("日本語の段落です。\nEnglish paragraph.",), splitter=Splitter()
+        )
+    ) == ["日本語の文章です。"]
+
+
+def test_inspect_inputs_prints_adapter_counts(monkeypatch, tmp_path: Path, capsys):
+    summary = {
+        "jnlp": {"acceptedSources": 5, "rejections": {"missing_source_path": 1}},
+        "wiki": {"acceptedSources": 971, "rejections": {}},
+    }
+    monkeypatch.setattr(builder_cli, "_inspect_inputs", lambda args: summary)
+
+    assert (
+        builder_cli.main(
+            [
+                "inspect-inputs",
+                "--source-lock",
+                str(tmp_path / "sources.json"),
+                "--wikipedia-subset",
+                str(tmp_path / "subset.json"),
+                "--jnlp-root",
+                str(tmp_path / "jnlp"),
+                "--wikipedia-parquet",
+                str(tmp_path / "train-00000-of-00015.parquet"),
+            ]
+        )
+        == 0
+    )
+    assert json.loads(capsys.readouterr().out) == summary
+
+
+def test_build_rejects_wrong_wikipedia_bytes_before_model_loading(
+    monkeypatch, tmp_path: Path, capsys
+):
+    model = tmp_path / "model"
+    model.mkdir()
+    wikipedia = tmp_path / "train-00000-of-00015.parquet"
+    wikipedia.write_bytes(b"wrong")
+    license_file = tmp_path / "license.txt"
+    license_file.write_text("license")
+    attribution = tmp_path / "attribution.md"
+    attribution.write_text("attribution")
+    monkeypatch.setattr(
+        "wtpsplit.SaT", lambda *_args, **_kwargs: pytest.fail("model loaded")
+    )
+
+    with pytest.raises(SystemExit, match="2"):
+        builder_cli.main(
+            [
+                "build",
+                "--artifacts-directory",
+                str(tmp_path / "artifacts"),
+                "--wikipedia-parquet",
+                str(wikipedia),
+                "--source-lock",
+                "docs/corpus-sources.lock.json",
+                "--wikipedia-subset",
+                "docs/wikipedia-ja-20231101-subset.json",
+                "--splitter-model",
+                str(model),
+                "--content-license",
+                str(license_file),
+                "--attribution",
+                str(attribution),
+            ]
+        )
+    assert "source_size_mismatch" in capsys.readouterr().err
+
+
+def test_build_records_release_sources_and_sentence_policy(monkeypatch, tmp_path: Path):
+    import spacy
+    import torch
+    import wtpsplit
+    from natsume_simple import corpus_pipeline
+
+    model = tmp_path / "model"
+    model.mkdir()
+    (model / "weights").write_bytes(b"model")
+    wikipedia = tmp_path / "train-00000-of-00015.parquet"
+    wikipedia.write_bytes(b"fixture")
+    license_file = tmp_path / "license.txt"
+    license_file.write_text("license")
+    attribution = tmp_path / "attribution.md"
+    attribution.write_text("attribution")
+    jnlp = LockedFile("jnlp", "NLP_LATEX_CORPUS.zip", "jnlp.zip", "jnlp", 1, "a" * 64)
+    wiki = LockedFile(
+        "wikipedia-ja-20231101",
+        wikipedia.name,
+        wikipedia.name,
+        "wiki",
+        len(b"fixture"),
+        hashlib.sha256(b"fixture").hexdigest(),
+    )
+    sources = ReleaseSources(jnlp, wiki, "c" * 64)
+    captured = {}
+
+    class Splitter:
+        def eval(self):
+            return self
+
+        def to(self, _device: str):
+            return self
+
+        def split(self, paragraphs: list[str]):
+            return [[paragraph] for paragraph in paragraphs]
+
+    monkeypatch.setattr(release_inputs, "load_release_sources", lambda _path: sources)
+    monkeypatch.setattr(
+        release_inputs,
+        "load_wikipedia_subset",
+        lambda _path, *, sources: WikipediaSubset(
+            "wikipedia-ja-20231101", tuple(str(index) for index in range(971))
+        ),
+    )
+    monkeypatch.setattr(
+        release_inputs, "validate_wikipedia_paths", lambda paths, *, sources: paths[0]
+    )
+    monkeypatch.setattr(release_inputs, "verify_file", lambda _path, _locked: None)
+    monkeypatch.setattr(
+        corpus_pipeline,
+        "adapt_wikipedia_parquet",
+        lambda _path, *, article_ids: AdaptationResult("wiki", (), {}),
+    )
+    monkeypatch.setattr(
+        corpus_pipeline,
+        "build_corpus_artifact",
+        lambda output, **kwargs: captured.update(kwargs) or output,
+    )
+    monkeypatch.setattr(wtpsplit, "SaT", lambda _path: Splitter())
+    monkeypatch.setattr(spacy, "load", lambda _name: object())
+    monkeypatch.setattr(torch, "set_num_threads", lambda _count: None)
+    monkeypatch.setattr(torch, "set_num_interop_threads", lambda _count: None)
+    monkeypatch.setattr(torch, "use_deterministic_algorithms", lambda _enabled: None)
+    monkeypatch.setattr(torch, "are_deterministic_algorithms_enabled", lambda: True)
+    monkeypatch.setattr(torch, "get_num_threads", lambda: 1)
+    monkeypatch.setattr(torch, "get_num_interop_threads", lambda: 1)
+    monkeypatch.setattr(torch, "__version__", "fixture-torch")
+    monkeypatch.setattr(
+        builder_cli.importlib.metadata,
+        "version",
+        lambda name: {
+            "natsume-simple": "0.3.0",
+            "spacy": "3.8.11",
+            "ja-ginza": "5.2.0",
+            "wtpsplit": "2.2.1",
+        }[name],
+    )
+    args = SimpleNamespace(
+        jnlp_root=None,
+        wikipedia_parquet=[wikipedia],
+        source_lock=tmp_path / "sources.json",
+        wikipedia_subset=tmp_path / "subset.json",
+        splitter_model=model,
+        artifacts_directory=tmp_path / "artifacts",
+        artifact_instance_id="fixture-build",
+        content_license=license_file,
+        attribution=attribution,
+        max_rejections=2,
+        max_rejection_fraction=0.5,
+    )
+
+    builder_cli._build(args)
+
+    identity = captured["metadata"].identity_inputs
+    assert identity["sentenceFilter"] == {"name": "is_japanese", "minLength": 5}
+    assert identity["sentenceSplitter"]["modelSha256"] == builder_cli.path_sha256(model)
+    assert identity["sourceFiles"] == [
+        {
+            "corpusId": "jnlp",
+            "name": "NLP_LATEX_CORPUS.zip",
+            "sha256": "a" * 64,
+            "size": 1,
+        },
+        {
+            "corpusId": "wikipedia-ja-20231101",
+            "name": wikipedia.name,
+            "sha256": hashlib.sha256(b"fixture").hexdigest(),
+            "size": len(b"fixture"),
+        },
+    ]
 
 
 def test_publish_command_delegates_to_atomic_registry(monkeypatch, tmp_path: Path):

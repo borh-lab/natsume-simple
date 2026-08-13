@@ -3,13 +3,35 @@
 import argparse
 import hashlib
 import importlib.metadata
+import json
+import logging
 import os
 import secrets
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 
 from natsume_simple.artifact_registry import current_artifact, publish_artifact
+
+
+def split_japanese_sentences(
+    text_units: tuple[str, ...], *, splitter: object
+) -> Iterable[str]:
+    """Split paragraphs and retain the public Japanese-content policy."""
+    from natsume_simple.data import is_japanese
+
+    paragraphs = [
+        paragraph.strip()
+        for text in text_units
+        for paragraph in text.splitlines()
+        if paragraph.strip()
+    ]
+    return (
+        sentence.strip()
+        for group in splitter.split(paragraphs)  # type: ignore[attr-defined]
+        for sentence in group
+        if sentence.strip() and is_japanese(sentence.strip(), min_length=5)
+    )
 
 
 def new_artifact_instance_id(
@@ -56,6 +78,14 @@ def _parser() -> argparse.ArgumentParser:
     acquire.add_argument("--source-lock", type=Path, required=True)
     acquire.add_argument("--output-directory", type=Path, required=True)
 
+    inspect = commands.add_parser(
+        "inspect-inputs", help="validate release inputs before model loading"
+    )
+    inspect.add_argument("--source-lock", type=Path, required=True)
+    inspect.add_argument("--wikipedia-subset", type=Path, required=True)
+    inspect.add_argument("--jnlp-root", type=Path, required=True)
+    inspect.add_argument("--wikipedia-parquet", type=Path, required=True)
+
     build = commands.add_parser(
         "build", help="build one immutable artifact from already-local inputs"
     )
@@ -92,11 +122,6 @@ def _build(args: argparse.Namespace) -> Path:
     if not args.splitter_model.exists():
         raise FileNotFoundError(args.splitter_model)
 
-    # Heavy builder dependencies remain outside import and server paths.
-    import spacy
-    import torch
-    from wtpsplit import SaT
-
     from natsume_simple.artifact_builder import BuildMetadata, CorpusRecord
     from natsume_simple.corpus_pipeline import (
         RejectionLimits,
@@ -104,6 +129,36 @@ def _build(args: argparse.Namespace) -> Path:
         adapt_wikipedia_parquet,
         build_corpus_artifact,
     )
+
+    adaptations = []
+    corpora = []
+    release_sources = None
+    if args.jnlp_root is not None:
+        adaptations.append(adapt_jnlp_directory(args.jnlp_root))
+        corpora.append(CorpusRecord("jnlp", "自然言語処理"))
+    if args.wikipedia_parquet:
+        from natsume_simple.release_inputs import (
+            load_release_sources,
+            load_wikipedia_subset,
+            validate_wikipedia_paths,
+            verify_file,
+        )
+
+        release_sources = load_release_sources(args.source_lock)
+        subset = load_wikipedia_subset(args.wikipedia_subset, sources=release_sources)
+        wikipedia_path = validate_wikipedia_paths(
+            args.wikipedia_parquet, sources=release_sources
+        )
+        verify_file(wikipedia_path, release_sources.wikipedia_shard)
+        adaptations.append(
+            adapt_wikipedia_parquet(wikipedia_path, article_ids=subset.article_ids)
+        )
+        corpora.append(CorpusRecord("wiki", "日本語版Wikipedia"))
+
+    # Heavy model loading happens only after every cheap input check and adapter pass.
+    import spacy
+    import torch
+    from wtpsplit import SaT
 
     os.environ.update(
         {
@@ -120,42 +175,6 @@ def _build(args: argparse.Namespace) -> Path:
     splitter.eval().to("cpu")
     nlp = spacy.load("ja_ginza")
 
-    def split(text_units: tuple[str, ...]):
-        paragraphs = [
-            paragraph.strip()
-            for text in text_units
-            for paragraph in text.splitlines()
-            if paragraph.strip()
-        ]
-        return (
-            sentence.strip()
-            for group in splitter.split(paragraphs)
-            for sentence in group
-            if sentence.strip()
-        )
-
-    adaptations = []
-    corpora = []
-    if args.jnlp_root is not None:
-        adaptations.append(adapt_jnlp_directory(args.jnlp_root))
-        corpora.append(CorpusRecord("jnlp", "自然言語処理"))
-    if args.wikipedia_parquet:
-        from natsume_simple.release_inputs import (
-            load_release_sources,
-            load_wikipedia_subset,
-            validate_wikipedia_paths,
-        )
-
-        sources = load_release_sources(args.source_lock)
-        subset = load_wikipedia_subset(args.wikipedia_subset, sources=sources)
-        wikipedia_path = validate_wikipedia_paths(
-            args.wikipedia_parquet, sources=sources
-        )
-        adaptations.append(
-            adapt_wikipedia_parquet(wikipedia_path, article_ids=subset.article_ids)
-        )
-        corpora.append(CorpusRecord("wiki", "日本語版Wikipedia"))
-
     instance_id = args.artifact_instance_id or new_artifact_instance_id()
     args.artifacts_directory.mkdir(parents=True, exist_ok=True)
     output = args.artifacts_directory / instance_id
@@ -168,7 +187,9 @@ def _build(args: argparse.Namespace) -> Path:
         output,
         corpora=tuple(corpora),
         adaptations=tuple(adaptations),
-        split=split,
+        split=lambda text_units: split_japanese_sentences(
+            text_units, splitter=splitter
+        ),
         parse=nlp,
         metadata=BuildMetadata(
             artifact_instance_id=instance_id,
@@ -177,11 +198,28 @@ def _build(args: argparse.Namespace) -> Path:
                     "NATSUME_BUILDER_REVISION", f"natsume-simple-{package_version}"
                 ),
                 "sourceAdapters": [adaptation.corpus_id for adaptation in adaptations],
+                "sourceFiles": (
+                    [
+                        {
+                            "corpusId": locked.source_lock_corpus_id,
+                            "name": locked.name,
+                            "sha256": locked.sha256,
+                            "size": locked.size,
+                        }
+                        for locked in (
+                            release_sources.jnlp_archive,
+                            release_sources.wikipedia_shard,
+                        )
+                    ]
+                    if release_sources is not None
+                    else []
+                ),
                 "sentenceSplitter": {
                     "name": "wtpsplit",
                     "version": wtpsplit_version,
                     "modelSha256": path_sha256(args.splitter_model),
                 },
+                "sentenceFilter": {"name": "is_japanese", "minLength": 5},
                 "nlpModel": {
                     "name": "ja_ginza",
                     "version": ginza_version,
@@ -209,8 +247,38 @@ def _build(args: argparse.Namespace) -> Path:
     )
 
 
+def _inspect_inputs(args: argparse.Namespace) -> dict[str, object]:
+    from natsume_simple.corpus_pipeline import (
+        adapt_jnlp_directory,
+        adapt_wikipedia_parquet,
+    )
+    from natsume_simple.release_inputs import (
+        load_release_sources,
+        load_wikipedia_subset,
+        validate_wikipedia_paths,
+        verify_file,
+    )
+
+    sources = load_release_sources(args.source_lock)
+    subset = load_wikipedia_subset(args.wikipedia_subset, sources=sources)
+    wikipedia_path = validate_wikipedia_paths([args.wikipedia_parquet], sources=sources)
+    verify_file(wikipedia_path, sources.wikipedia_shard)
+    adaptations = (
+        adapt_jnlp_directory(args.jnlp_root),
+        adapt_wikipedia_parquet(wikipedia_path, article_ids=subset.article_ids),
+    )
+    return {
+        adaptation.corpus_id: {
+            "acceptedSources": len(adaptation.documents),
+            "rejections": adaptation.rejections,
+        }
+        for adaptation in adaptations
+    }
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Run an operator command and return a process exit status."""
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
     parser = _parser()
     args = parser.parse_args(argv)
     try:
@@ -227,6 +295,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             result = acquire_release_inputs(
                 load_release_sources(args.source_lock), args.output_directory
             )
+        elif args.command == "inspect-inputs":
+            result = _inspect_inputs(args)
         elif args.command == "build":
             result = _build(args)
         elif args.command == "publish":
@@ -238,6 +308,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     if isinstance(result, tuple):
         for path in result:
             print(path)
+        return 0
+    if isinstance(result, dict):
+        print(json.dumps(result, ensure_ascii=False, sort_keys=True))
         return 0
     print(result)
     return 0

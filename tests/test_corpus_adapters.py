@@ -284,3 +284,5 @@ def test_pipeline_builds_api_artifact_and_records_real_rejections(
         "extraction": {},
         "wiki": {"empty_text": 1},
     }
+    assert manifest["rejectionLimits"] == {"maxCount": 2, "maxFraction": 0.75}
+    assert manifest["rejectionTotals"] == {"extraction": 1, "wiki": 2}

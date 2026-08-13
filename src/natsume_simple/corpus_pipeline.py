@@ -1,4 +1,5 @@
 import hashlib
+import logging
 import subprocess
 import zipfile
 from collections import Counter
@@ -19,6 +20,8 @@ from natsume_simple.artifact_builder import (
     build_artifact,
 )
 from natsume_simple.pattern_extraction import npv_matcher
+
+logger = logging.getLogger(__name__)
 
 
 class PipelineRejected(ValueError):
@@ -219,7 +222,7 @@ def extract_collocations(
     """Parse canonical sentences into identity-preserving occurrences."""
     occurrences: list[CollocationOccurrence] = []
     rejections: Counter[str] = Counter()
-    for sentence in sentences:
+    for parsed_count, sentence in enumerate(sentences, start=1):
         doc = parse(sentence.text)
         if not doc.has_annotation("DEP"):
             rejections["missing_dependency_parse"] += 1
@@ -238,6 +241,8 @@ def extract_collocations(
                     extractor_id=extractor_id,
                 )
             )
+        if parsed_count % 1_000 == 0:
+            logger.info("parsed sentences=%d", parsed_count)
     return ExtractionResult(tuple(occurrences), dict(sorted(rejections.items())))
 
 
@@ -269,6 +274,7 @@ def build_corpus_artifact(
     """Compose adapted sources, segmentation, extraction, and persistence."""
     documents: list[SourceDocument] = []
     rejection_counts: dict[str, dict[str, int]] = {}
+    rejection_totals: dict[str, int] = {}
     for adaptation in adaptations:
         total = len(adaptation.documents) + sum(adaptation.rejections.values())
         enforce_rejection_limits(
@@ -276,15 +282,25 @@ def build_corpus_artifact(
         )
         documents.extend(adaptation.documents)
         rejection_counts[adaptation.corpus_id] = adaptation.rejections
+        rejection_totals[adaptation.corpus_id] = total
+        logger.info(
+            "adapted corpus=%s accepted=%d rejected=%d",
+            adaptation.corpus_id,
+            len(adaptation.documents),
+            sum(adaptation.rejections.values()),
+        )
 
     sentences = segment_documents(documents, split)
+    logger.info("segmented sentences=%d", len(sentences))
     extraction = extract_collocations(sentences, parse, extractor_id=extractor_id)
     enforce_rejection_limits(
         extraction.rejections, total=len(sentences), limits=rejection_limits
     )
     rejection_counts["extraction"] = extraction.rejections
+    rejection_totals["extraction"] = len(sentences)
+    logger.info("extracted occurrences=%d", len(extraction.occurrences))
 
-    return build_artifact(
+    artifact = build_artifact(
         output_directory,
         records=ArtifactRecords(
             corpora=corpora,
@@ -292,8 +308,18 @@ def build_corpus_artifact(
             sentences=sentences,
             occurrences=extraction.occurrences,
         ),
-        metadata=replace(metadata, rejection_counts=rejection_counts),
+        metadata=replace(
+            metadata,
+            rejection_counts=rejection_counts,
+            rejection_limits={
+                "maxCount": rejection_limits.max_count,
+                "maxFraction": rejection_limits.max_fraction,
+            },
+            rejection_totals=rejection_totals,
+        ),
     )
+    logger.info("completed artifact=%s", artifact.name)
+    return artifact
 
 
 def _jnlp_source_path(raw_path: str, volume: int) -> Path:
