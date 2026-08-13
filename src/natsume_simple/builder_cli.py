@@ -174,7 +174,7 @@ def _build(args: argparse.Namespace) -> Path:
             "MKL_NUM_THREADS": "1",
         }
     )
-    torch.set_num_threads(1)
+    torch.set_num_threads(8)
     torch.set_num_interop_threads(1)
     torch.use_deterministic_algorithms(True)
 

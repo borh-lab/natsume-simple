@@ -1,4 +1,5 @@
 import json
+import logging
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -147,7 +148,7 @@ def test_wikipedia_adapter_requires_exact_selected_membership(
         adapt_wikipedia_parquet(source, article_ids={"1", "2"})
 
 
-def test_segmentation_assigns_stable_ordinals_and_drops_empty_results():
+def test_segmentation_assigns_stable_ordinals_and_reports_progress(caplog):
     documents = (
         SourceDocument(
             "wiki",
@@ -178,8 +179,10 @@ def test_segmentation_assigns_stable_ordinals_and_drops_empty_results():
             return ["第一文。", "", "第二文。"]
         return ["第三文。"]
 
-    sentences = segment_documents(documents, split)
+    with caplog.at_level(logging.INFO, logger="natsume_simple.corpus_pipeline"):
+        sentences = segment_documents(documents, split)
 
+    assert "segmented documents=2/2 sentences=3" in caplog.text
     assert [
         (sentence.source_identity, sentence.ordinal, sentence.text)
         for sentence in sentences

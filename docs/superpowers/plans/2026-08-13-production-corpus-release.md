@@ -397,7 +397,7 @@ Acquisition verifies the local JNLP archive before preparation. Inspection and b
 
 - [ ] Add simple progress logging without a callback abstraction.
 
-Configure `logging.basicConfig` once in the CLI. At INFO level, log accepted source counts, sentence count after segmentation, every 1,000 parsed sentences, occurrence count, and artifact completion. Keep extraction single-threaded and eager.
+Configure `logging.basicConfig` once in the CLI. At INFO level, log accepted source counts, segmentation progress every 50 sources, sentence count after segmentation, every 1,000 parsed sentences, occurrence count, and artifact completion. Keep the extraction loop single-threaded and eager; use the fixed, manifest-recorded thread count for splitter inference.
 
 - [ ] Run focused tests and the default backend gate.
 

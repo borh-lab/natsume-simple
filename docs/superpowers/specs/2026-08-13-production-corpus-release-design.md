@@ -117,8 +117,8 @@ artifact manifest and release notes. Extraction-limit failure still occurs
 after extraction because the missing dependency annotation is not knowable
 earlier.
 
-The build emits stage counts and periodic extraction progress so a multi-hour,
-single-threaded CPU run is distinguishable from a hung process. This release
+The build emits stage counts and periodic segmentation and extraction progress
+so a multi-hour, fixed-profile CPU run is distinguishable from a hung process. This release
 does not add checkpoints: interruption restarts the build. The release notes
 record start time, finish time, wall-clock duration, peak resident memory, and
 host CPU/memory.

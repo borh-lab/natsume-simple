@@ -190,6 +190,7 @@ def test_build_records_release_sources_and_sentence_policy(monkeypatch, tmp_path
     )
     sources = ReleaseSources(jnlp, wiki, "c" * 64)
     captured = {}
+    torch_thread_counts: list[int] = []
 
     class Splitter:
         def eval(self):
@@ -225,11 +226,11 @@ def test_build_records_release_sources_and_sentence_policy(monkeypatch, tmp_path
     )
     monkeypatch.setattr(wtpsplit, "SaT", lambda _path: Splitter())
     monkeypatch.setattr(spacy, "load", lambda _name: object())
-    monkeypatch.setattr(torch, "set_num_threads", lambda _count: None)
+    monkeypatch.setattr(torch, "set_num_threads", torch_thread_counts.append)
     monkeypatch.setattr(torch, "set_num_interop_threads", lambda _count: None)
     monkeypatch.setattr(torch, "use_deterministic_algorithms", lambda _enabled: None)
     monkeypatch.setattr(torch, "are_deterministic_algorithms_enabled", lambda: True)
-    monkeypatch.setattr(torch, "get_num_threads", lambda: 1)
+    monkeypatch.setattr(torch, "get_num_threads", lambda: 8)
     monkeypatch.setattr(torch, "get_num_interop_threads", lambda: 1)
     monkeypatch.setattr(torch, "__version__", "fixture-torch")
     monkeypatch.setattr(
@@ -259,6 +260,8 @@ def test_build_records_release_sources_and_sentence_policy(monkeypatch, tmp_path
     builder_cli._build(args)
 
     identity = captured["metadata"].identity_inputs
+    assert torch_thread_counts == [8]
+    assert identity["executionProfile"]["torchThreads"] == 8
     assert identity["sentenceFilter"] == {"name": "is_japanese", "minLength": 5}
     assert identity["sentenceSplitter"]["modelSha256"] == builder_cli.path_sha256(model)
     assert identity["sourceFiles"] == [

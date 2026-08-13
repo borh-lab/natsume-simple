@@ -196,10 +196,11 @@ def segment_documents(
     split: Callable[[tuple[str, ...]], Iterable[str]],
 ) -> tuple[SentenceRecord, ...]:
     """Split source text into stable, source-ordered sentence records."""
+    ordered_documents = tuple(
+        sorted(documents, key=lambda item: (item.corpus_id, item.external_id))
+    )
     sentences: list[SentenceRecord] = []
-    for document in sorted(
-        documents, key=lambda item: (item.corpus_id, item.external_id)
-    ):
+    for document_count, document in enumerate(ordered_documents, start=1):
         ordinal = 0
         for text in split(document.text_units):
             if not text:
@@ -210,6 +211,13 @@ def segment_documents(
                 )
             )
             ordinal += 1
+        if document_count % 50 == 0 or document_count == len(ordered_documents):
+            logger.info(
+                "segmented documents=%d/%d sentences=%d",
+                document_count,
+                len(ordered_documents),
+                len(sentences),
+            )
     return tuple(sentences)
 
 
