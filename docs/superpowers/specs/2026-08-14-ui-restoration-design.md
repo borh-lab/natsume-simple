@@ -1,7 +1,7 @@
 # UI Restoration Design
 
 **Date:** 2026-08-14  
-**Status:** Approved for implementation planning
+**Status:** Revised after review; awaiting approval
 
 ## Purpose
 
@@ -32,9 +32,10 @@ column that owns them.
 
 ### Page shell and header
 
-The page owns its full-height light and dark background and foreground colors.
-This restores a single theme boundary instead of adding dark classes to every
-otherwise transparent child.
+The `html` and `body` elements own the full-height light and dark background and
+foreground colors through the Tailwind base layer. This matches the element on
+which `themeManager` toggles `.dark`, covers the viewport even when content is
+short, and avoids adding dark classes to every otherwise transparent child.
 
 The header has two groups:
 
@@ -48,23 +49,37 @@ must not distribute the theme switch into the space between brand and search.
 ### Autocomplete
 
 Suggestion fetching remains debounced and independent from visibility. The
-listbox is visible only while the search input owns focus and suggestions exist.
-It closes on Escape, submission, selection, or focus leaving the search widget.
+listbox is visible only while focus is anywhere within the search widget and
+suggestions exist. It closes on Escape, submission, selection, or focus leaving
+the complete search widget. Moving focus from the input to a suggestion button
+therefore does not close the list before selection runs.
 The initial populated term may be fetched but must not open the listbox on page
 load. The listbox remains anchored below the input and receives a bounded height
 with native vertical scrolling.
 
 ### Spreadsheet results
 
-`ParticleOverview` is one labelled, horizontally scrollable region. Its children
-are fixed-width, non-shrinking particle columns in API order. Native horizontal
-scrolling is the only scroll mechanism; there is no synchronized header scroller,
-floating arrow state, resize listener, or custom scroll-position controller.
+`ParticleOverview` is one horizontally scrollable region with `role="region"`,
+an accessible label, `tabindex="0"`, and a visible focus ring. Its children are
+20-rem-wide, non-shrinking particle columns in API order. At the 375-pixel smoke
+viewport one complete column fits inside the page padding; at 1280 pixels roughly
+three columns and part of the next remain visible, making the horizontal
+continuation discoverable while giving Japanese examples 25% more width than the
+current 16-rem minimum.
 
-Each column uses a sticky heading within the results region, subtle vertical and
-horizontal separators, and no rounded card boundary. The heading contains the
-particle and returned/total count. Collocations remain independently ordered
-within their particle by the server response.
+The page owns vertical scrolling and the region owns horizontal scrolling. The
+particle headings are deliberately not sticky: `overflow-x: auto` also creates
+a vertical scroll container for sticky-position containment, and bounding its
+height merely to activate sticky headings would introduce an unwanted nested
+vertical scroller. Native horizontal scrolling is the only scroll mechanism;
+there is no synchronized header scroller, floating arrow state, resize listener,
+or custom scroll-position controller.
+
+Each column uses a normal heading, subtle vertical and horizontal separators,
+and no rounded card boundary. The heading contains the particle and
+returned/total count. Collocations remain independently ordered within their
+particle by the server response. The same horizontal spreadsheet interaction is
+intentional on mobile; it does not collapse back into a vertical card stack.
 
 This is visually spreadsheet-like rather than an HTML table because expanded
 examples have variable height. A transposed table would force an expanded cell
@@ -77,10 +92,12 @@ the frequency bar and noun/verb label in one aligned row. Expanded status,
 errors, and example sentences render below the summary at the full column width,
 without the current left indentation.
 
-Example responses are immutable lists and do not require keyed reconciliation.
-Render them unkeyed so multiple occurrences from one sentence remain valid. An
-occurrence is distinguished by its spans, not by inventing a new public example
-identifier.
+Each component assigns its example list once and never reorders or splices it,
+so keyed reconciliation has no present consumer. Render it unkeyed so multiple
+occurrences from one sentence remain valid. An occurrence is distinguished by
+its spans, not by inventing a new public example identifier. If pagination,
+reordering, or incremental loading is later added, define an occurrence key from
+sentence identity plus spans before changing the list behavior.
 
 ### Theme behavior
 
@@ -94,10 +111,12 @@ Browser coverage must demonstrate:
 
 - brand icon and title at the start, with search and theme grouped at the end;
 - the populated initial term does not open autocomplete until the input is
-  focused, and focus leaving the widget closes it;
-- the results region overflows horizontally while all particle columns remain
-  in one row;
-- dark-mode toggling changes computed page background and foreground colors;
+  focused, a suggestion remains clickable while focus moves to its button, and
+  focus leaving the widget closes the listbox;
+- the focusable, labelled results region overflows horizontally while all
+  20-rem particle columns remain in one row at both 375- and 1280-pixel widths;
+- dark-mode toggling changes computed `html`/`body` background and foreground
+  colors, including when the result content is short;
 - two examples sharing a sentence ID both render and no page error occurs; and
 - expanded examples begin at the column edge rather than beside or indented
   under the frequency bar.
@@ -107,9 +126,10 @@ ranking, attribution, unit, type, and production-build checks remain protected.
 
 ## Deliberate omissions
 
-- Restore synchronized header/body scrollers only if native horizontal scrolling
-  proves insufficient in user testing.
-- Add scroll arrows only if users cannot discover the native scrollbar or touch
-  gesture.
+- During each release smoke, inspect 375- and 1280-pixel viewports. Restore
+  synchronized scrollers or add scroll arrows only if that evidence shows the
+  native scrollbar, keyboard interaction, or touch gesture is insufficient.
 - Add theme persistence only when a user preference must survive reloads.
-
+- The next change to `ParticleColumn`'s serialized collocation key must replace
+  it with explicit collocation identity and preserve open examples across a
+  corpus toggle; this restoration does not need to alter that behavior.
