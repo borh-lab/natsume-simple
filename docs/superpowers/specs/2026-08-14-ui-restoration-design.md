@@ -8,8 +8,8 @@
 Restore the compact corpus-exploration workflow lost in the schema-v1 frontend
 rewrite without restoring the old scroll-synchronization machinery. The result
 should read like a well-formatted spreadsheet: particle columns remain visible
-in one horizontal plane, rows align visually, and examples expand within the
-column that owns them.
+in one horizontal plane, separators make each independent column easy to scan,
+and examples expand within the column that owns them.
 
 ## Confirmed regressions
 
@@ -115,6 +115,9 @@ Browser coverage must demonstrate:
   focus leaving the widget closes the listbox;
 - the focusable, labelled results region overflows horizontally while all
   20-rem particle columns remain in one row at both 375- and 1280-pixel widths;
+- after focusing the overflowing region, ArrowRight and End increase its
+  `scrollLeft`; the same smoke also checks keyboard focus and horizontal-scroll
+  discoverability after the page has been scrolled deep into a long column;
 - dark-mode toggling changes computed `html`/`body` background and foreground
   colors, including when the result content is short;
 - two examples sharing a sentence ID both render and no page error occurs; and
@@ -128,7 +131,9 @@ ranking, attribution, unit, type, and production-build checks remain protected.
 
 - During each release smoke, inspect 375- and 1280-pixel viewports. Restore
   synchronized scrollers or add scroll arrows only if that evidence shows the
-  native scrollbar, keyboard interaction, or touch gesture is insufficient.
+  native scrollbar, keyboard interaction, or touch gesture is insufficient,
+  including from a deep vertical-scroll position where the bottom scrollbar is
+  off screen.
 - Add theme persistence only when a user preference must survive reloads.
 - The next change to `ParticleColumn`'s serialized collocation key must replace
   it with explicit collocation identity and preserve open examples across a

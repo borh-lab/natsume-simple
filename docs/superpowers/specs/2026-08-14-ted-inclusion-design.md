@@ -42,6 +42,14 @@ absent from WIT³. None of the overlapping talks has an identical segment list o
 identical concatenated text because the releases use materially different
 caption segmentation.
 
+The difference is also syntactic, not merely duplicative: WIT³'s 548,678
+caption-timed fragments are roughly 2.5 times the 223,108
+translation-aligned, sentence-oriented IWSLT training rows. The current splitter
+treats text-unit boundaries as hard paragraph boundaries and does not merge
+across them, so using the WIT³ fragments would freeze truncated caption syntax
+before dependency parsing. IWSLT training rows are the appropriate text-unit
+granularity for the existing pipeline.
+
 The historical WIT³ dataset loader did not expose talk or segment IDs as fields
 and, due to its nested-XML condition, contributed only titles and descriptions.
 IWSLT 2017 supplied the 223,108 subtitle rows that form nearly all of the legacy
@@ -68,8 +76,12 @@ For each `<doc>` in `train.tags.ja-en.ja`:
   LLC` are retained; `year` remains absent because the training metadata does
   not carry the talk year;
 - non-tag Japanese rows in file order become ordered text units; and
-- a missing talk ID, a talk without subtitle text, duplicate talk IDs, or
-  conflicting metadata rejects the input rather than silently choosing.
+- a talk without subtitle text is a counted, talk-level rejection subject to the
+  configured limits.
+
+A missing talk ID, a duplicate talk ID, or conflicting metadata is an identity
+violation and aborts adaptation immediately. Identity violations are never
+admitted as bounded rejection counts.
 
 This intentionally corrects the legacy loader, which usually fell back to a
 process-randomized hash per translated segment and produced approximately one
@@ -86,11 +98,15 @@ record accepted-talk and subtitle-text-unit counts, while the existing
 post-segmentation `is_japanese(..., min_length=5)` policy remains the sole text
 filter.
 
-For a multi-unit talk, `content_sha256` is SHA-256 over the ASCII domain prefix
-`natsume-text-units-v1` followed by a zero byte, then for each ordered text unit
-its unsigned eight-byte big-endian UTF-8 byte length followed by its UTF-8 bytes.
-This avoids delimiter ambiguity while keeping source identity separate from
-content identity.
+All three adapters use one source-content hash, recorded in `identityInputs` as
+`sourceContentHash: "natsume-source-content-v1"`. It is SHA-256 over that ASCII
+domain prefix followed by a zero byte, then for each ordered text unit its
+unsigned eight-byte big-endian UTF-8 byte length followed by its UTF-8 bytes.
+JNLP and Wikipedia each supply their existing single text unit; TED supplies its
+ordered subtitle rows. This avoids delimiter ambiguity, makes every manifest
+source hash recomputable under one declared scheme, and intentionally gives the
+new artifact new JNLP and Wikipedia content hashes without changing old
+immutable artifacts.
 
 ## Builder and release flow
 
@@ -108,11 +124,15 @@ supplied, it adds one corpus record with ID `ted` and label `TED Talks`, and
 records the file, `iwslt2017-ja-en-training-v1`, and observed counts in
 `identityInputs`. Local builds may still omit TED by omitting the path.
 
-Production release checking expects exactly `jnlp`, `ted`, and `wiki`, confirms
-the locked TED input identities, requires the updated content notices, and
-performs the existing structural and endpoint checks. Publication still selects
-an external immutable artifact through `deploy/current`; no database is added to
-Git or a Nix closure.
+Production release checking expects exactly `jnlp`, `ted`, and `wiki`. New code
+in `release_check` asserts that the manifest's `identityInputs.sourceFiles`
+entry for TED exactly matches the selected lock entry's corpus ID, filename,
+size, and SHA-256. It does not add a frozen talk-ID manifest: unlike Wikipedia,
+the complete named TED member is consumed rather than selecting a subset from a
+larger source. Release checking also requires the declared
+`natsume-source-content-v1` scheme, updated notices, and the existing structural
+checks. Publication still selects an external immutable artifact through
+`deploy/current`; no database is added to Git or a Nix closure.
 
 With three selected corpora, the existing API response budget applies. The
 default `limitPerParticle=100` remains valid and no API shape changes. The maximum
@@ -150,7 +170,11 @@ Before a production build:
 
 1. Verify the IWSLT archive size and SHA-256 value.
 2. Run representative extraction and assert talk-level grouping, file-order
-   segments, metadata, and content-hash framing.
+   segments, metadata, and content-hash framing. Run a deterministic sample of
+   talk IDs through the pinned SaT model and Japanese filter, recording input
+   text units, candidate sentences, retained sentences, and filter drops; use
+   this rather than treating the legacy 233,222-sentence total as a fact about
+   the new pipeline.
 3. Run a complete adapter-only inspection and record talk-level rejection counts
    plus accepted-talk and subtitle-text-unit counts.
 4. Confirm repeated adaptation produces identical source identities, ordered
@@ -162,16 +186,29 @@ After the build:
 - `/api/corpora` exposes `ted` with nonzero sentence and collocation counts;
 - a curated TED collocation and example are retrievable through the public API;
 - selection and per-million ranking work for TED alone and all three corpora;
-- the response-size contract remains below one MiB; and
-- the footer and artifact notices expose TED attribution and permission status.
+- the response-size contract remains below one MiB;
+- the footer and artifact notices expose TED attribution and permission status;
+- the release record includes actual source, sentence, occurrence,
+  `lemma_frequency`, DuckDB-file-size, and sentence-filter candidate/retained/drop
+  totals; and
+- on the named release host, the same fixed direct-application request family as
+  the 20260813 release, updated to select all three corpora, receives 500/500
+  successful responses from ten concurrent clients after one warm request per
+  URL, with no 5xx and p95 below one second. The procedure and result remain
+  release evidence rather than a permanent benchmark framework.
 
-Before the full build, use the adapter-only text-unit count and the measured
-20260813 rates (468,527 sentences in 4:02:47 with 5.4 GiB peak RSS) to record a
-projected wall-time and peak-memory range. The known 223,108 input rows and
-legacy 233,222 TED sentences currently imply roughly 6–7 hours and 8–10 GiB for
-the three-corpus build; the inspection confirms the input scale before that
-projection is accepted. The operator confirms the host has the required memory
-and accepts restart cost.
+Before the full build, use the adapter count, representative SaT sample, and
+measured 20260813 rates (468,527 sentences, 623,798 occurrences, a 176,173,056
+byte DuckDB file, 4:02:47 elapsed, and 5.4 GiB peak RSS) to record projected
+sentence, occurrence, file-size, wall-time, and peak-memory ranges. The legacy
+233,222 TED sentences and 443,875 occurrences are explicitly labelled as
+cross-pipeline assumptions, not new-pipeline acceptance values. They currently
+suggest about 702,000 sentences, 1.07 million occurrences, a roughly 300 MB
+DuckDB file under linear scaling, 6–7 hours, and 8–10 GiB for the three-corpus
+build. The sample refines the sentence multiplier; occurrence density, rather
+than sentence count alone, drives the memory estimate. The operator confirms
+the host has the required memory, the projected artifact is a practical external
+release asset, and full restart cost is acceptable.
 Progress continues through existing per-document segmentation logs;
 checkpointing, streaming infrastructure, and a new orchestration service are not
 introduced.
