@@ -296,10 +296,15 @@ natsume-frontend/build/
 natsume-frontend/playwright-report/
 natsume-frontend/test-results/
 
-# Data files
-
-data/*.txt
-data/NLP_LATEX_CORPUS*
+# Corpus inputs and generated artifacts are too large to redistribute in Git.
+# Commit source locks, subset manifests, checksums, notices, and release evidence
+# instead; keep the source bytes and built databases in external storage.
+/data/
+/artifacts/
+/deploy/current
+/deploy/current.next
+*.db
+*.duckdb
 
 # Environment files
 .env

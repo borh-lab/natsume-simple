@@ -101,6 +101,13 @@ def _parser() -> argparse.ArgumentParser:
     build.add_argument("--max-rejections", type=int, default=100)
     build.add_argument("--max-rejection-fraction", type=float, default=0.01)
 
+    release_check = commands.add_parser(
+        "release-check", help="check production-release structural policy"
+    )
+    release_check.add_argument("artifact", type=Path)
+    release_check.add_argument("--source-lock", type=Path, required=True)
+    release_check.add_argument("--wikipedia-subset", type=Path, required=True)
+
     publish = commands.add_parser(
         "publish", help="atomically select a validated artifact"
     )
@@ -299,6 +306,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             result = _inspect_inputs(args)
         elif args.command == "build":
             result = _build(args)
+        elif args.command == "release-check":
+            from natsume_simple.release_check import check_release_artifact
+
+            result = check_release_artifact(
+                args.artifact,
+                source_lock=args.source_lock,
+                wikipedia_subset=args.wikipedia_subset,
+            )
         elif args.command == "publish":
             result = publish_artifact(args.artifact, args.deploy_directory)
         else:

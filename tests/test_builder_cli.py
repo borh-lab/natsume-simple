@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from natsume_simple import builder_cli
+from natsume_simple import release_check
 from natsume_simple import release_inputs
 from natsume_simple.corpus_pipeline import AdaptationResult
 from natsume_simple.release_inputs import LockedFile, ReleaseSources, WikipediaSubset
@@ -324,3 +325,37 @@ def test_acquire_release_inputs_command_uses_the_source_lock(
         == 0
     )
     assert capsys.readouterr().out.splitlines() == [str(path) for path in acquired]
+
+
+def test_release_check_command_prints_the_structural_summary(
+    monkeypatch, tmp_path: Path, capsys
+):
+    artifact = tmp_path / "artifact"
+    source_lock_path = tmp_path / "sources.json"
+    subset = tmp_path / "subset.json"
+    summary = {"artifactInstanceId": "release", "corpusIds": ["jnlp", "wiki"]}
+    monkeypatch.setattr(
+        release_check,
+        "check_release_artifact",
+        lambda selected, *, source_lock, wikipedia_subset: (
+            summary
+            if (selected, source_lock, wikipedia_subset)
+            == (artifact, source_lock_path, subset)
+            else pytest.fail("unexpected release-check arguments")
+        ),
+    )
+
+    assert (
+        builder_cli.main(
+            [
+                "release-check",
+                str(artifact),
+                "--source-lock",
+                str(source_lock_path),
+                "--wikipedia-subset",
+                str(subset),
+            ]
+        )
+        == 0
+    )
+    assert json.loads(capsys.readouterr().out) == summary

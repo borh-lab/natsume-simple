@@ -236,7 +236,7 @@ def _persist_relations(
     }
     extractor_id = records.occurrences[0].extractor_id
     source_identity_inputs = _source_identity_inputs(records.sources)
-    source_manifest_sha256 = _source_manifest_sha256(source_identity_inputs)
+    source_manifest_checksum = source_manifest_sha256(source_identity_inputs)
     connection.execute(
         """
         INSERT INTO build_metadata (
@@ -255,7 +255,7 @@ def _persist_relations(
                 sort_keys=True,
                 separators=(",", ":"),
             ),
-            source_manifest_sha256,
+            source_manifest_checksum,
             metadata.built_at,
         ],
     )
@@ -511,7 +511,8 @@ def _source_identity_inputs(
     ]
 
 
-def _source_manifest_sha256(source_identities: list[dict[str, str]]) -> str:
+def source_manifest_sha256(source_identities: list[dict[str, str]]) -> str:
+    """Hash the canonical ordered source-identity manifest."""
     serialized = json.dumps(
         source_identities, ensure_ascii=False, sort_keys=True, separators=(",", ":")
     ).encode()
