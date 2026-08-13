@@ -61,3 +61,19 @@ test('reuses the primary controls on a mobile viewport', async ({ page }) => {
 	await expect(page.getByLabel('Rank')).toBeVisible();
 	await expect(page.getByRole('button', { name: 'Toggle dark mode' })).toBeVisible();
 });
+
+test('shows corpus attribution, license, and contact information', async ({ page }) => {
+	await page.goto('/');
+
+	const footer = page.getByRole('contentinfo');
+	await expect(footer.getByText('Japanese Wikipedia')).toBeVisible();
+	await expect(footer.getByText('Journal of Natural Language Processing')).toBeVisible();
+	await expect(footer.getByRole('link', { name: 'CC BY-SA 4.0' })).toHaveAttribute(
+		'href',
+		'https://creativecommons.org/licenses/by-sa/4.0/'
+	);
+	await expect(footer.getByRole('link', { name: 'Contact' })).toHaveAttribute(
+		'href',
+		'mailto:dev@bor.space'
+	);
+});

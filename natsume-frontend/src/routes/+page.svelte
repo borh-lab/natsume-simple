@@ -55,3 +55,24 @@
 		/>
 	{/if}
 </main>
+
+<footer
+	class="mt-8 border-t bg-gray-50 text-sm text-gray-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300"
+>
+	<div class="mx-auto max-w-screen-2xl space-y-2 p-4">
+		<p>
+			Corpus sentences are extracted and normalized from the
+			<a class="underline" href="https://www.anlp.jp/resource/journal_latex/"
+				>Journal of Natural Language Processing</a
+			>
+			(<a class="underline" href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>) and
+			<a class="underline" href="https://ja.wikipedia.org/">Japanese Wikipedia</a>
+			(<a class="underline" href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a
+			>).
+		</p>
+		<p>
+			For attribution details, corrections, or takedown requests, see the corpus notices or
+			<a class="underline" href="mailto:dev@bor.space">Contact</a>.
+		</p>
+	</div>
+</footer>
