@@ -20,6 +20,52 @@
 
 ---
 
+### Task 0: Expose the repository's existing test and release environments
+
+**Files:**
+
+- Modify: `flake.nix`
+
+- [ ] Add a `test` development shell backed by the already-defined `testPython` environment and a small release-operator shell.
+
+```nix
+test = pkgs.mkShell {
+  packages = [
+    testPython
+    pkgs.mypy
+    pkgs.ruff
+  ];
+};
+
+release = pkgs.mkShell {
+  packages = [
+    corpusBuilder
+    server
+    pkgs.curl
+    pkgs.nginx
+    pkgs.time
+  ];
+};
+```
+
+The `test` shell is the one environment for focused Python tests and static checks. It selects the CPU dependency set, contains backend, builder, and test extras together, and does not create `.venv` or resolve packages from the network. The `release` shell provides only packaged operator commands plus the reference edge and measurement tools; it does not create a second build implementation.
+
+- [ ] Verify the environment before using it elsewhere in the plan.
+
+```bash
+nix develop .#test --command python -c 'import fastapi, polars, spacy, torch, pytest, httpx'
+nix develop .#test --command mypy --version
+nix develop .#test --command ruff --version
+nix develop .#release --command sh -c 'command -v natsume-corpus; command -v natsume-serve; command -v nginx; command -v time; command -v curl'
+```
+
+- [ ] Commit.
+
+```bash
+git add flake.nix
+git commit -m "build: expose hermetic test and release shells"
+```
+
 ### Task 1: Pin one validated artifact per server process
 
 **Files:**
@@ -29,12 +75,12 @@
 
 - [ ] Add a failing lifespan regression test.
 
-Build two distinguishable fixture artifacts, create `deploy/current` pointing at the first, start `create_app(deploy / "current")`, and replace the symlink with the second after startup. Assert readiness still reports the first artifact ID and `/api/corpora` still reads the first database's distinct corpus label/count.
+Build two distinguishable fixture artifacts, create `deploy/current` pointing at the first, start `create_app(deploy / "current")`, and replace the symlink with the second after startup. Assert readiness still reports the first artifact ID and `/api/corpora` still reads the first database's distinct corpus label/count. The readiness assertion is the stale-metadata half of the regression and already passes before the fix; the distinct `/api/corpora` assertion is what must fail red when request connections follow the swapped symlink.
 
 - [ ] Run the focused test and confirm it fails because request connections follow the changed symlink.
 
 ```bash
-uv run pytest tests/test_api_contract.py -k startup_resolves_artifact_once -q
+nix develop .#test --command pytest tests/test_api_contract.py -k startup_resolves_artifact_once -q
 ```
 
 - [ ] Resolve before validation in `artifact_lifespan`.
@@ -49,7 +95,7 @@ Catch `OSError` alongside `ArtifactValidationError`, log a bounded `artifact_pat
 - [ ] Run the focused test, then the API contract suite.
 
 ```bash
-uv run pytest tests/test_api_contract.py -q
+nix develop .#test --command pytest tests/test_api_contract.py -q
 ```
 
 - [ ] Commit.
@@ -82,7 +128,7 @@ Use temporary fixture JSON in unit tests; the committed real subset is added in 
 - [ ] Run the tests and confirm import/contract failures.
 
 ```bash
-uv run pytest tests/test_release_inputs.py -q
+nix develop .#test --command pytest tests/test_release_inputs.py -q
 ```
 
 - [ ] Implement only the shared values and checks.
@@ -92,6 +138,7 @@ uv run pytest tests/test_release_inputs.py -q
 class LockedFile:
     source_lock_corpus_id: str
     name: str
+    local_name: str
     url: str
     size: int
     sha256: str
@@ -120,15 +167,15 @@ validate_wikipedia_paths(paths: Sequence[Path], *, sources: ReleaseSources) -> P
 verify_file(path: Path, locked: LockedFile) -> None
 ```
 
-The lock remains the sole owner of repository/revision/URL/size/checksum. The subset owns only `sourceLockCorpusId` and `articleIds`.
+The lock remains the sole owner of repository/revision/URL/size/checksum. `local_name` is derived while loading: the Wikipedia shard keeps its locked name, and JNLP uses `NLP_LATEX_CORPUS-<observedRelease>.zip`. The subset owns only `sourceLockCorpusId` and `articleIds`.
 
 - [ ] Run focused tests and static checks.
 
 ```bash
-uv run pytest tests/test_release_inputs.py -q
-uv run mypy src/natsume_simple/release_inputs.py
-uv run ruff check src/natsume_simple/release_inputs.py tests/test_release_inputs.py
-uv run ruff format --check src/natsume_simple/release_inputs.py tests/test_release_inputs.py
+nix develop .#test --command pytest tests/test_release_inputs.py -q
+nix develop .#test --command mypy --ignore-missing-imports --show-error-context src/natsume_simple/release_inputs.py
+nix develop .#test --command ruff check src/natsume_simple/release_inputs.py tests/test_release_inputs.py
+nix develop .#test --command ruff format --check src/natsume_simple/release_inputs.py tests/test_release_inputs.py
 ```
 
 - [ ] Commit.
@@ -156,6 +203,7 @@ Use an injected byte-stream opener in unit tests. Prove that acquisition:
 - reuses a valid existing file without opening the network;
 - rejects and removes an invalid temporary file;
 - rejects an invalid pre-existing destination rather than overwriting it.
+- opens the source with the explicit 60-second socket timeout.
 
 - [ ] Add the CLI parser test.
 
@@ -167,15 +215,15 @@ natsume-corpus acquire-release-inputs \
   --output-directory data/release-inputs
 ```
 
-It creates the fixed names `NLP_LATEX_CORPUS-2026-06-15.zip` and `train-00000-of-00015.parquet` and prints their paths.
+It derives the JNLP local name from the lock's `observedRelease` as `NLP_LATEX_CORPUS-<observed-release>.zip`, preserves the locked Wikipedia shard name, and prints both paths. The release date is not repeated as a Python constant.
 
 - [ ] Confirm the focused tests fail.
 
 ```bash
-uv run pytest tests/test_release_inputs.py tests/test_builder_cli.py -k acquire -q
+nix develop .#test --command pytest tests/test_release_inputs.py tests/test_builder_cli.py -k acquire -q
 ```
 
-- [ ] Implement `acquire_locked_file` with `urllib.request.urlopen`, a unique `.part` sibling, streaming SHA-256/byte count, `os.replace`, and cleanup in `finally`.
+- [ ] Implement `acquire_locked_file` with `urllib.request.urlopen(..., timeout=60)`, a unique `.part` sibling, streaming SHA-256/byte count, `os.replace`, and cleanup in `finally`.
 
 Do not add retry, resumable-download, cache, mirror, or parallel-download abstractions. A rerun reuses a fully valid destination.
 
@@ -184,7 +232,7 @@ Do not add retry, resumable-download, cache, mirror, or parallel-download abstra
 - [ ] Run focused tests and the builder smoke-level Python suite.
 
 ```bash
-uv run pytest tests/test_release_inputs.py tests/test_builder_cli.py -q
+nix develop .#test --command pytest tests/test_release_inputs.py tests/test_builder_cli.py -q
 ```
 
 - [ ] Commit.
@@ -200,7 +248,9 @@ git commit -m "feat: acquire locked corpus sources"
 
 - Create: `docs/wikipedia-ja-20231101-subset.json`
 - Modify: `src/natsume_simple/corpus_pipeline.py`
+- Modify: `src/natsume_simple/builder_cli.py`
 - Modify: `tests/test_corpus_adapters.py`
+- Modify: `tests/test_builder_cli.py`
 - Modify: `tests/test_release_inputs.py`
 
 - [ ] Acquire the verified real shard if it is not already present.
@@ -224,13 +274,13 @@ In a temporary one-off Python program, read only the first 1,000 rows of the ver
 
 The file may be pretty-printed; its identity is the compact serialization of the `articleIds` value, not the bytes of the file.
 
-- [ ] Compare the selected titles to the optional legacy oracle and record the one-time result in the commit message or implementation notes.
+- [ ] Compare the selected titles to the present legacy oracle before accepting or changing the identity checksum.
 
 ```sql
 SELECT title FROM source WHERE corpus = 'wiki' ORDER BY title
 ```
 
-If `data/corpus.db` is absent, skip this comparison; it is not a build prerequisite. If titles match but the canonical ID checksum differs from the currently locked undocumented value, update only `orderedIdentityListSha256` in `docs/corpus-sources.lock.json` and add a nearby explanatory note field.
+For this first release, `data/corpus.db` is present and the 971-title comparison is required evidence: stop if the titles differ. Only after all 971 titles match may the canonical ID checksum replace the currently locked undocumented value; update only `orderedIdentityListSha256` in `docs/corpus-sources.lock.json` and add a nearby explanatory note field. Future rebuilds use the committed subset without requiring the legacy database.
 
 - [ ] Add failing adapter tests.
 
@@ -245,7 +295,7 @@ Test that it returns exactly the requested IDs, rejects a missing requested ID, 
 - [ ] Confirm the focused tests fail.
 
 ```bash
-uv run pytest tests/test_corpus_adapters.py tests/test_release_inputs.py -k wikipedia -q
+nix develop .#test --command pytest tests/test_corpus_adapters.py tests/test_release_inputs.py tests/test_builder_cli.py -k wikipedia -q
 ```
 
 - [ ] Implement the lazy filtered read.
@@ -254,23 +304,28 @@ uv run pytest tests/test_corpus_adapters.py tests/test_release_inputs.py -k wiki
 selected = (
     pl.scan_parquet(path)
     .select("id", "url", "title", "text")
-    .filter(pl.col("id").cast(pl.String).is_in(article_ids))
+    .filter(pl.col("id").is_in(list(article_ids)))
     .collect()
 )
 ```
 
 Compare the returned ID multiset with the requested set before constructing documents. Continue sorting adapted documents by `external_id`; do not promise manifest order from the adapter.
 
+- [ ] Update the only production caller in the same commit.
+
+Add `--source-lock` and `--wikipedia-subset` build options. When Wikipedia is present, `builder_cli._build` requires them, loads the validated subset once, validates that exactly one Wikipedia path was supplied, and calls `adapt_wikipedia_parquet(path, article_ids=subset.article_ids)`. Keep the build command type-correct and runnable at the end of Task 4; Task 5 adds checksum validation, inspection, and recorded policy metadata.
+
 - [ ] Validate the committed real subset against the real source lock in a non-network test.
 
 ```bash
-uv run pytest tests/test_release_inputs.py tests/test_corpus_adapters.py -q
+nix develop .#test --command pytest tests/test_release_inputs.py tests/test_corpus_adapters.py tests/test_builder_cli.py -q
+nix develop .#test --command mypy --ignore-missing-imports --show-error-context src
 ```
 
 - [ ] Commit.
 
 ```bash
-git add docs/wikipedia-ja-20231101-subset.json docs/corpus-sources.lock.json src/natsume_simple/corpus_pipeline.py tests/test_corpus_adapters.py tests/test_release_inputs.py
+git add docs/wikipedia-ja-20231101-subset.json docs/corpus-sources.lock.json src/natsume_simple/corpus_pipeline.py src/natsume_simple/builder_cli.py tests/test_corpus_adapters.py tests/test_builder_cli.py tests/test_release_inputs.py
 git commit -m "feat: freeze the production Wikipedia subset"
 ```
 
@@ -287,7 +342,7 @@ git commit -m "feat: freeze the production Wikipedia subset"
 
 - [ ] Add failing CLI tests for production input validation.
 
-The `build` command gains required release metadata when Wikipedia is present:
+The `build` command uses the release metadata options introduced in Task 4:
 
 ```text
 --source-lock docs/corpus-sources.lock.json
@@ -311,6 +366,8 @@ split_japanese_sentences(text_units, *, splitter) -> Iterable[str]
 
 It strips paragraphs, delegates to the supplied splitter, and retains only `is_japanese(sentence, min_length=5)`. Do not change `segment_documents`.
 
+Import `is_japanese` inside this helper. `data.py` imports Polars, Torch, and wtpsplit at module import time, so a module-level import would make light commands such as `natsume-corpus current` load the builder stack.
+
 - [ ] Add failing manifest tests for applied limits and policy identity.
 
 Extend `BuildMetadata` with:
@@ -331,7 +388,7 @@ and the existing sentence splitter model checksum.
 - [ ] Confirm the focused tests fail.
 
 ```bash
-uv run pytest tests/test_builder_cli.py tests/test_corpus_adapters.py tests/test_artifact_builder.py -q
+nix develop .#test --command pytest tests/test_builder_cli.py tests/test_corpus_adapters.py tests/test_artifact_builder.py -q
 ```
 
 - [ ] Implement the CLI-edge loading once, then pass `article_ids` into the adapter.
@@ -345,7 +402,7 @@ Configure `logging.basicConfig` once in the CLI. At INFO level, log accepted sou
 - [ ] Run focused tests and the default backend gate.
 
 ```bash
-uv run pytest tests/test_builder_cli.py tests/test_corpus_adapters.py tests/test_artifact_builder.py -q
+nix develop .#test --command pytest tests/test_builder_cli.py tests/test_corpus_adapters.py tests/test_artifact_builder.py -q
 nix build .#checks.x86_64-linux.source-quality --print-build-logs
 ```
 
@@ -385,7 +442,7 @@ Do not add these assertions to `validate_artifact`.
 - [ ] Confirm the tests fail.
 
 ```bash
-uv run pytest tests/test_release_check.py tests/test_builder_cli.py -k release -q
+nix develop .#test --command pytest tests/test_release_check.py tests/test_builder_cli.py -k release -q
 ```
 
 - [ ] Implement one public operation.
@@ -400,6 +457,8 @@ check_release_artifact(
 ```
 
 It calls ordinary `validate_artifact`, performs the release assertions with read-only DuckDB queries, returns a bounded summary, and raises `ReleaseCheckError(reason)` on the first failed invariant. Promote `_source_manifest_sha256` to the public, tested `source_manifest_sha256` helper in `artifact_builder.py` and reuse it here rather than duplicating canonicalization.
+
+Keep `release_check.py` on the lightweight JSON/DuckDB path: it may import `artifact_builder`, `artifact_validation`, and `release_inputs`, but not `corpus_pipeline`, Polars, spaCy, Torch, or wtpsplit.
 
 - [ ] Add the CLI command.
 
@@ -418,7 +477,7 @@ Print the summary as JSON and exit nonzero through the existing CLI error path.
 - [ ] Run focused tests.
 
 ```bash
-uv run pytest tests/test_release_check.py tests/test_builder_cli.py -q
+nix develop .#test --command pytest tests/test_release_check.py tests/test_builder_cli.py -q
 ```
 
 - [ ] Commit.
@@ -442,7 +501,7 @@ Assert a footer is visible and contains links or text for ANLP, Wikipedia/Wikime
 - [ ] Run the focused browser test and confirm failure.
 
 ```bash
-nix run .#playwright-check
+nix build .#checks.x86_64-linux.playwright --print-build-logs
 ```
 
 - [ ] Add one concise footer after `<main>`.
@@ -452,8 +511,8 @@ Keep the full provenance in `ATTRIBUTION.md`; the UI needs only names, license l
 - [ ] Run frontend gates.
 
 ```bash
-nix run .#frontend-check
-nix run .#playwright-check
+nix build .#checks.x86_64-linux.frontend --print-build-logs
+nix build .#checks.x86_64-linux.playwright --print-build-logs
 ```
 
 - [ ] Commit.
@@ -519,12 +578,12 @@ git commit -m "docs: publish the production corpus release workflow"
 
 - [ ] Re-run verified acquisition and input inspection from Task 8.
 
-Record the accepted JNLP/Wikipedia source counts and rejection reasons. Choose `--max-rejections` and `--max-rejection-fraction` above the observed adapter counts without making them unbounded; record the values and rationale.
+Record the accepted JNLP/Wikipedia source counts and rejection reasons. Choose `--max-rejections` and `--max-rejection-fraction` above the observed adapter counts without making them unbounded. For each accepted rejection class, record why it is legitimate (for example, a `*NA*` metadata row names no source file), then record the limit and headroom; do not justify a threshold only by saying it exceeds the observation.
 
 - [ ] Build the real artifact under resource measurement.
 
 ```bash
-/usr/bin/time -v nix run .#build-corpus -- build \
+nix develop .#release --command time -v natsume-corpus build \
   --artifacts-directory artifacts \
   --source-lock docs/corpus-sources.lock.json \
   --wikipedia-subset docs/wikipedia-ja-20231101-subset.json \
@@ -555,22 +614,35 @@ When `data/corpus.db` exists, compare all 971 Wikipedia titles and the 459 legac
 
 Use the same suggestion, noun-collocation, and verb-collocation SQL paths exercised by the API for `情報` and `行う`. Store `EXPLAIN` output in the release note without inventing a pass predicate.
 
-- [ ] Run the direct-application benchmark.
+- [ ] Run the direct-application benchmark with 10 concurrent clients and 500 total requests.
 
-Start the server against the candidate artifact, then exercise suggestions for `情報`, noun collocations for `情報`, verb collocations for `行う`, and examples for the first returned collocation, with both `rankBy` values and both corpora. Record exact URLs, host facts, DuckDB settings, request count, success rate, errors, and p95. Acceptance is 100% success, no 5xx, and p95 below one second.
+Start the server directly against the candidate artifact, then distribute 500 requests across 10 concurrent clients and round-robin suggestions for `情報`, noun collocations for `情報`, verb collocations for `行う`, and examples for the first returned collocation, with both `rankBy` values and both corpora. Record exact URLs, host facts, DuckDB settings, concurrency 10, request count 500, success rate, errors, and p95. Acceptance is 100% success, no 5xx, and p95 below one second.
 
 - [ ] Review the release note as Bor Hodošček, then record the former artifact ID if `deploy/current` exists.
 
-- [ ] Publish, restart/redeploy, and smoke the configured edge.
+- [ ] Publish, restart the repository-defined direct server, and smoke the reference edge.
 
 ```bash
 nix run .#build-corpus -- publish artifacts/<instance-id> deploy
 nix run .#build-corpus -- current deploy
+
+release_runtime=$(mktemp -d)
+mkdir -p "$release_runtime/logs"
+nix develop .#release --command natsume-serve \
+  --artifact-dir deploy/current --port 8000 \
+  >"$release_runtime/server.log" 2>&1 &
+server_pid=$!
+nix develop .#release --command nginx \
+  -p "$release_runtime" -c "$PWD/deploy/nginx.conf" -g 'daemon off;' \
+  >"$release_runtime/nginx.log" 2>&1 &
+edge_pid=$!
 ```
 
-Verify `/api/health/ready`, `/api/corpora`, one representative search in both directions, one examples expansion, and the attribution footer through the live edge endpoint. Record the served artifact ID and results.
+Wait for `http://127.0.0.1:8081/ready`, then verify `/api/corpora`, one representative search in both directions, one examples expansion, and the attribution footer through `http://127.0.0.1:8080`. Record the served artifact ID and results. Stop both recorded PIDs after the smoke.
 
-- [ ] If smoke fails, republish the recorded former artifact, restart/redeploy, and repeat readiness. Do not mutate either artifact.
+The repository defines the packaged direct server, OCI image, and reference nginx configuration, but no long-lived host supervisor. This procedure is the executable repository-scoped release target. If the public host has an external systemd/container supervisor, record and run its actual restart command in the release note; do not claim that this plan provisioned that external runtime.
+
+- [ ] If smoke fails, stop the test processes, republish the recorded former artifact, rerun the same direct-server/edge commands, and repeat readiness. Do not mutate either artifact.
 
 - [ ] Commit durable evidence only.
 
@@ -585,7 +657,7 @@ git commit -m "docs: record the first production corpus release"
 
 - Delete: `docs/superpowers/specs/2026-08-13-production-corpus-release-design.md`
 - Delete: `docs/superpowers/plans/2026-08-13-production-corpus-release.md`
-- Modify: the spec index or links that reference those files
+- Modify: any incoming links found by `rg`; none exist at plan-review time
 
 - [ ] Confirm every durable fact now has one surviving owner:
 
@@ -595,7 +667,7 @@ git commit -m "docs: record the first production corpus release"
 - measured release evidence: `docs/releases/<artifact-instance-id>.md`;
 - content terms/contact: `corpus-notices/` and the public footer.
 
-- [ ] Delete the fulfilled spec and this plan, then fix their incoming links.
+- [ ] Delete the fulfilled spec and this plan, then fix any incoming links found at execution time.
 
 - [ ] Run final verification before claiming completion.
 
@@ -608,7 +680,7 @@ nix build .#frontend .#server .#corpus-builder-cpu .#container
 - [ ] Commit.
 
 ```bash
-git add -A docs/superpowers README.md docs corpus-notices natsume-frontend src tests flake.nix
+git add -u docs/superpowers/specs/2026-08-13-production-corpus-release-design.md docs/superpowers/plans/2026-08-13-production-corpus-release.md
 git status --short
 git commit -m "docs: retire the completed release scaffolding"
 ```
