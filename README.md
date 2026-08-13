@@ -71,12 +71,26 @@ committed lock から network-independent に frontend を build します。
 なるまで production artifact に入りません。source provenance と再取得条件は
 `docs/corpus-sources.lock.json` と `docs/corpus-recoverability.md` にあります。
 
-JNLP archive をローカルで変換します。`nkf` と `pandoc` は builder closure から
-供給されます。
+Corpus source archives and generated databases are release assets, not Git content.
+`data/`, `artifacts/`, `*.db`, and `*.duckdb` are ignored. Git records the source lock,
+the frozen Wikipedia identity subset, notices, checksums, and release evidence needed to
+recreate and audit them.
+
+Acquire the two locked source files, then convert the JNLP archive. `nkf` and `pandoc`
+come from the builder closure.
 
 ```bash
+nix run .#build-corpus -- acquire-release-inputs \
+  --source-lock docs/corpus-sources.lock.json \
+  --output-directory data/release-inputs
 nix run .#build-corpus -- prepare-jnlp \
-  data/NLP_LATEX_CORPUS.zip data/prepared-jnlp
+  data/release-inputs/NLP_LATEX_CORPUS-2026-06-15.zip \
+  data/prepared-jnlp-2026
+nix run .#build-corpus -- inspect-inputs \
+  --source-lock docs/corpus-sources.lock.json \
+  --wikipedia-subset docs/wikipedia-ja-20231101-subset.json \
+  --jnlp-root data/prepared-jnlp-2026/NLP_LATEX_CORPUS \
+  --wikipedia-parquet data/release-inputs/train-00000-of-00015.parquet
 ```
 
 既にローカルにある JNLP directory、checksummed Wikipedia Parquet shards、
@@ -85,16 +99,27 @@ wtpsplit model、content notices から immutable artifact を build します�
 ```bash
 nix run .#build-corpus -- build \
   --artifacts-directory artifacts \
-  --jnlp-root data/prepared-jnlp/NLP_LATEX_CORPUS \
-  --wikipedia-parquet data/wikipedia/train-00000-of-00015.parquet \
+  --source-lock docs/corpus-sources.lock.json \
+  --wikipedia-subset docs/wikipedia-ja-20231101-subset.json \
+  --jnlp-root data/prepared-jnlp-2026/NLP_LATEX_CORPUS \
+  --wikipedia-parquet data/release-inputs/train-00000-of-00015.parquet \
   --splitter-model data/models/wtpsplit \
-  --content-license LICENSE-CONTENT.txt \
-  --attribution ATTRIBUTION.md
+  --content-license corpus-notices/LICENSE-CONTENT.txt \
+  --attribution corpus-notices/ATTRIBUTION.md
 ```
 
-`--wikipedia-parquet` は shard ごとに繰り返します。builder は input を取得せず、
-渡されたローカル source と model identity を記録します。完成した artifact を
-atomic pointer で選択します。
+Validate the immutable result before selecting it:
+
+```bash
+nix run .#build-corpus -- release-check artifacts/<instance-id> \
+  --source-lock docs/corpus-sources.lock.json \
+  --wikipedia-subset docs/wikipedia-ja-20231101-subset.json
+```
+
+The builder records the verified local sources and model identity. `publish` changes only
+the atomic pointer; a running process continues serving the artifact it validated at
+startup. Restart or redeploy after publishing. Rollback is publishing the former instance
+and restarting again.
 
 ```bash
 nix run .#build-corpus -- publish artifacts/<instance-id> deploy
@@ -112,7 +137,7 @@ nix build .#checks.x86_64-linux.server-smoke
 通常の gate は model-free です。
 
 ```bash
-nix fmt
+nix fmt flake.nix
 nix flake check --print-build-logs
 nix build .#frontend .#server .#corpus-builder-cpu
 nix build .#container                    # x86_64-linux
@@ -128,6 +153,11 @@ uv lock --upgrade
 nix flake update
 nix flake check
 ```
+
+The real corpus build, `release-check`, performance measurement, and live-service smoke
+are operator release evidence because they require large external inputs and NLP models;
+they are intentionally not default CI inputs. The network-independent builder smoke only
+checks the packaged command surface with tiny fixtures.
 
 CPU and CUDA Python extras are mutually exclusive. The published server and image are
 CPU-only and contain no Torch, spaCy, GiNZA, wtpsplit, Polars, Node, Jupyter, or CUDA
@@ -148,6 +178,9 @@ podman run --rm --read-only --user 65532:65532 \
   -v "$(readlink -f deploy/current):/var/lib/natsume/artifact:ro" \
   natsume-simple:<tag-shown-by-podman-load>
 ```
+
+The resolved bind mount pins the selected artifact for the container lifetime. After
+`publish`, recreate the container to serve the new resolved directory.
 
 Production must put the service behind a reverse proxy (or equivalent edge) with an
 initial limit of 2 API requests/second per source IP, burst 5, at most 4 concurrent API

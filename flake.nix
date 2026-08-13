@@ -105,6 +105,7 @@
           serverPython = cpuPythonSet.mkVirtualEnv "natsume-server-python" server-dependencies;
           builderPython = cpuPythonSet.mkVirtualEnv "natsume-builder-python" builder-dependencies;
           testPython = cpuPythonSet.mkVirtualEnv "natsume-test-python" test-dependencies;
+          smokeFixturePython = pkgs.python312.withPackages (pythonPackages: [ pythonPackages.xlwt ]);
 
           frontend = pkgs.buildNpmPackage {
             pname = "natsume-frontend";
@@ -296,6 +297,106 @@
                 PY
                 ${corpusBuilder}/bin/natsume-corpus prepare-jnlp jnlp.zip prepared
                 grep -q '教材です' prepared/NLP_LATEX_CORPUS/V01/lesson.txt
+                python - <<'PY'
+                import hashlib
+                import json
+                from pathlib import Path
+
+                import polars as pl
+                from natsume_simple.release_inputs import canonical_article_ids_sha256
+
+                root = Path("fixture-inputs")
+                jnlp = root / "jnlp"
+                (jnlp / "V01").mkdir(parents=True)
+                (jnlp / "V01" / "lesson.txt").write_text("教材です。", encoding="utf-8")
+
+                article_ids = [str(index) for index in range(971)]
+                parquet = root / "train-00000-of-00015.parquet"
+                pl.DataFrame(
+                    {
+                        "id": article_ids,
+                        "url": [f"https://example.invalid/wiki/{value}" for value in article_ids],
+                        "title": [f"記事 {value}" for value in article_ids],
+                        "text": ["日本語の教材です。"] * len(article_ids),
+                    }
+                ).write_parquet(parquet)
+                parquet_bytes = parquet.read_bytes()
+                lock = {
+                    "sources": [
+                        {
+                            "corpusId": "jnlp",
+                            "status": "ready",
+                            "candidate": {
+                                "observedRelease": "fixture",
+                                "url": "https://example.invalid/jnlp.zip",
+                                "size": 1,
+                                "sha256": hashlib.sha256(b"x").hexdigest(),
+                            },
+                        },
+                        {
+                            "corpusId": "wikipedia-ja-20231101",
+                            "status": "ready",
+                            "candidate": {
+                                "urlTemplate": "https://example.invalid/{name}",
+                                "verification": {
+                                    "verifiedShard": parquet.name,
+                                    "orderedIdentityListSha256": canonical_article_ids_sha256(article_ids),
+                                },
+                                "files": [
+                                    {
+                                        "name": parquet.name,
+                                        "size": len(parquet_bytes),
+                                        "sha256": hashlib.sha256(parquet_bytes).hexdigest(),
+                                    }
+                                ],
+                            },
+                        },
+                    ]
+                }
+                (root / "source-lock.json").write_text(json.dumps(lock), encoding="utf-8")
+                (root / "subset.json").write_text(
+                    json.dumps(
+                        {
+                            "sourceLockCorpusId": "wikipedia-ja-20231101",
+                            "articleIds": article_ids,
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+                PY
+                ${smokeFixturePython}/bin/python - <<'PY'
+                from pathlib import Path
+
+                import xlwt
+
+                workbook = xlwt.Workbook()
+                sheet = workbook.add_sheet("Sheet1")
+                headers = [
+                    "ファイル名",
+                    "Vol",
+                    "タイトル",
+                    "著者",
+                    "J-Stageにおける論文URL",
+                ]
+                values = [
+                    "lesson.tex",
+                    1,
+                    "教材",
+                    "著者",
+                    "https://example.invalid/jnlp",
+                ]
+                for column, (header, value) in enumerate(zip(headers, values, strict=True)):
+                    sheet.write(0, column, header)
+                    sheet.write(1, column, value)
+                workbook.save(str(Path("fixture-inputs/jnlp/file_DB.xls")))
+                PY
+                ${corpusBuilder}/bin/natsume-corpus inspect-inputs \
+                  --source-lock fixture-inputs/source-lock.json \
+                  --wikipedia-subset fixture-inputs/subset.json \
+                  --jnlp-root fixture-inputs/jnlp \
+                  --wikipedia-parquet fixture-inputs/train-00000-of-00015.parquet \
+                  >input-inspection.json
+                grep -q '"acceptedSources": 971' input-inspection.json
                 {
                   ${pkgs.nkf}/bin/nkf --version
                   ${pkgs.pandoc}/bin/pandoc --version

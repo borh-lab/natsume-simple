@@ -11,7 +11,9 @@ inventory, not legal advice.
 
 The machine-readable source records are in
 [`corpus-sources.lock.json`](./corpus-sources.lock.json). Entries marked
-`ready` are approved acquisition inputs for the next build.
+`ready` are approved acquisition inputs for the next build. The large source
+bytes and generated databases remain outside Git; the repository retains their
+checksums, frozen identities, notices, and release evidence.
 
 ## Legacy seed
 
@@ -166,5 +168,7 @@ TED is not a dependency of the planned release. Reintroducing it would require
 qualified license review or written permission, the 1.67 GB WIT³ extraction,
 and talk-level identity reconciliation.
 
-Spec 3 builder implementation and schema-v1 fixture work may proceed. Public
-publication still requires the specified content-license and attribution files.
+The builder verifies the lock and frozen Wikipedia subset before loading NLP
+models. The required content-license and attribution files now live in
+`corpus-notices/`; `natsume-corpus release-check` verifies them and the built
+artifact's source identities before an operator publishes it.
