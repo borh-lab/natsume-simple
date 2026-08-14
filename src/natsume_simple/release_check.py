@@ -88,17 +88,12 @@ def check_release_artifact(
         "sha256": sources.ted_archive.sha256,
         "size": sources.ted_archive.size,
     }
-    if (
-        not isinstance(source_files, list)
-        or [
-            source_file
-            for source_file in source_files
-            if isinstance(source_file, dict)
-            and source_file.get("corpusId")
-            == sources.ted_archive.source_lock_corpus_id
-        ]
-        != [expected_ted_file]
-    ):
+    if not isinstance(source_files, list) or [
+        source_file
+        for source_file in source_files
+        if isinstance(source_file, dict)
+        and source_file.get("corpusId") == sources.ted_archive.source_lock_corpus_id
+    ] != [expected_ted_file]:
         raise ReleaseCheckError("ted_source_file_mismatch")
     if identity_inputs.get("sourceContentHash") != "natsume-source-content-v1":
         raise ReleaseCheckError("source_content_hash_mismatch")
