@@ -66,16 +66,22 @@ an existing corpus color. The backend rejects artifacts outside the one-to-three
 contract at build and startup, while the local fallback keeps malformed fixtures or future
 contract drift distinguishable in the UI. Unit coverage pins this behavior with a fourth
 corpus and proves that it does not reuse any of the three valid slot colors.
+All out-of-range slots intentionally share the same neutral fallback; they are a visible
+contract-failure state, not an expanded identity palette.
 
 ## Header and Search Type
 
-At medium and wider viewports, the header is a three-column grid with equal flexible side columns:
+At the `xl` breakpoint (1280 CSS pixels) and wider, the header is a three-column grid with
+equal flexible side columns:
 
 1. brand aligned left;
 2. search/type controls aligned to the viewport center;
 3. theme toggle aligned right.
 
-Below the medium breakpoint, brand and theme occupy the first row and the controls occupy a centered, full-width second row.
+Below `xl`, brand and theme occupy the first row and the controls occupy a centered,
+full-width second row. The second-row layout is intentional at tablet and ordinary laptop
+widths: the complete direction control, search input, and submit action do not fit safely
+between two equal side tracks.
 
 The native search-direction select is replaced by one compact radio group with two choices:
 
@@ -86,7 +92,9 @@ The three words use the shared grammatical-role colors. The choices live in a
 `<fieldset>` whose visually hidden legend is `Search direction`. Each radio has a descriptive
 accessible name (`Noun-particle collocations` or `Verb-particle collocations`) rather than
 requiring assistive technology to interpret arrow glyphs. Native radio inputs retain keyboard
-and form semantics; the labels provide the segmented visual surface.
+and form semantics; the labels provide the segmented visual surface. Each transparent radio
+is a full-size absolute overlay inside its label, so the visible segment remains a real pointer
+and Playwright hit target. Focus is drawn on an unclipped child surface.
 
 Selected, hover, focus, and submit-button chrome within the search widget uses neutral
 gray/slate colors, not grammatical blue/red/green. Corpus-checkbox accents, the results-region

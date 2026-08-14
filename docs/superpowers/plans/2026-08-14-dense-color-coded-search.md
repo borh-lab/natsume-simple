@@ -14,6 +14,7 @@
 - Keep native form submission, `SearchController`, and public API contracts unchanged.
 - Keep grammatical roles at blue-600/400, red-600/400, and green-600/400.
 - Use corpus colors `#7c3aed`, `#ea580c`, and `#0891b2`; invalid later slots use neutral gray and never alias a valid slot.
+- All invalid later slots may share that neutral fallback because the backend's three-corpus cap remains authoritative.
 - Show corpus identity as text whenever more than one corpus is selected.
 - Use neutral search/data-display chrome; labelled loading and error messages retain established status colors.
 - Keep collapsed summaries at or below 34 measured CSS pixels, targeting at most 32.
@@ -146,7 +147,7 @@ git commit -m "refactor: centralize semantic interface colors"
 **Files:**
 - Modify: `natsume-frontend/src/lib/components/SearchControls.svelte:1-159`
 - Modify: `natsume-frontend/src/routes/+page.svelte:17-49`
-- Modify: `natsume-frontend/tests/test.ts:385-475,555-566`
+- Modify: `natsume-frontend/tests/test.ts:383-570`
 
 **Interfaces:**
 - Consumes: `ROLE_TEXT_CLASSES`.
@@ -163,8 +164,13 @@ test('centers an accessible search-direction control in the responsive header', 
 	await page.goto('/');
 	const controls = page.getByTestId('header-controls');
 	const group = page.getByRole('group', { name: 'Search direction' });
-	await expect(group.getByRole('radio', { name: 'Noun-particle collocations' })).toBeChecked();
-	await expect(group.getByRole('radio', { name: 'Verb-particle collocations' })).toBeVisible();
+	const nounRadio = group.getByRole('radio', { name: 'Noun-particle collocations' });
+	const verbRadio = group.getByRole('radio', { name: 'Verb-particle collocations' });
+	await expect(nounRadio).toBeChecked();
+	await expect(verbRadio).toBeVisible();
+	await verbRadio.check();
+	await expect(verbRadio).toBeChecked();
+	await nounRadio.check();
 	const desktopBox = await controls.boundingBox();
 	expect(desktopBox).not.toBeNull();
 	expect(Math.abs((desktopBox?.x ?? 0) + (desktopBox?.width ?? 0) / 2 - 640)).toBeLessThanOrEqual(4);
@@ -178,12 +184,23 @@ test('centers an accessible search-direction control in the responsive header', 
 		(element) => getComputedStyle(element).backgroundColor
 	);
 	expect(roleColors).not.toContain(selectedBackground);
-	await group.getByRole('radio', { name: 'Noun-particle collocations' }).focus();
+	await page.getByRole('heading', { name: 'Natsume Simple' }).focus();
+	await page.keyboard.press('Tab');
+	await expect(nounRadio).toBeFocused();
 	expect(await selectedSurface.evaluate((element) => getComputedStyle(element).outlineStyle)).not.toBe('none');
 	expect(roleColors).not.toContain(
 		await page.getByRole('button', { name: 'Go' }).evaluate(
 			(element) => getComputedStyle(element).backgroundColor
 		)
+	);
+
+	await page.setViewportSize({ width: 1024, height: 844 });
+	const laptopBrandBox = await page.getByTestId('brand').boundingBox();
+	const laptopControlsBox = await controls.boundingBox();
+	expect(laptopBrandBox).not.toBeNull();
+	expect(laptopControlsBox).not.toBeNull();
+	expect(laptopControlsBox?.y ?? 0).toBeGreaterThanOrEqual(
+		(laptopBrandBox?.y ?? 0) + (laptopBrandBox?.height ?? 0)
 	);
 
 	await page.setViewportSize({ width: 390, height: 844 });
@@ -206,17 +223,31 @@ Expected: FAIL because the current select is not a radio group and controls are 
 
 - [ ] **Step 3: Replace only the direction select**
 
-Import `ROLE_TEXT_CLASSES`; retain the existing script/effects. Replace the select with a `<fieldset>` and two labels. Each label contains a `class="peer sr-only"` native radio with `name="search-position"`, `bind:group={pos}`, and one of these values/names:
+Import `ROLE_TEXT_CLASSES`; retain the existing script/effects. Replace the select with a `<fieldset>` and two labels. Each label is `class="relative flex h-full"` and contains this hit-testable input shape, with the shown value/name pairs:
 
 ```svelte
-<input type="radio" value="noun" aria-label="Noun-particle collocations" />
-<input type="radio" value="verb" aria-label="Verb-particle collocations" />
+<input
+	class="peer absolute inset-0 h-full w-full cursor-pointer appearance-none opacity-0"
+	type="radio"
+	name="search-position"
+	value="noun"
+	aria-label="Noun-particle collocations"
+	bind:group={pos}
+/>
+<input
+	class="peer absolute inset-0 h-full w-full cursor-pointer appearance-none opacity-0"
+	type="radio"
+	name="search-position"
+	value="verb"
+	aria-label="Verb-particle collocations"
+	bind:group={pos}
+/>
 ```
 
 Use this complete visual content for the noun label; reverse only the arrows for verb:
 
 ```svelte
-<span class="flex h-full items-center gap-1 px-2 text-sm peer-checked:bg-gray-200 peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-0 peer-focus-visible:outline-gray-900 dark:peer-checked:bg-gray-700 dark:peer-focus-visible:outline-gray-100">
+<span class="flex h-full items-center gap-1 rounded-l px-2 text-sm peer-checked:bg-gray-200 peer-focus-visible:outline-2 peer-focus-visible:outline-offset-0 peer-focus-visible:outline-gray-900 dark:peer-checked:bg-gray-700 dark:peer-focus-visible:outline-gray-100">
 	<span class={ROLE_TEXT_CLASSES.noun} data-role="noun">Noun</span>
 	<span aria-hidden="true">→</span>
 	<span class={ROLE_TEXT_CLASSES.particle} data-role="particle">Particle</span>
@@ -225,7 +256,11 @@ Use this complete visual content for the noun label; reverse only the arrows for
 </span>
 ```
 
-The fieldset legend is `<legend class="sr-only">Search direction</legend>`. Give the fieldset `class="flex h-10 overflow-hidden rounded border border-gray-400 dark:border-gray-600"`; separate the second label with a neutral left border. Change submit chrome to:
+The fieldset legend is `<legend class="sr-only">Search direction</legend>`. Give the fieldset
+`class="flex h-10 rounded border border-gray-400 dark:border-gray-600"`; do not use
+`overflow-hidden`, because it clips the child focus outline. Separate the second label with a
+neutral left border and give its visual span `rounded-r` instead of `rounded-l`. Change submit
+chrome to:
 
 ```svelte
 class="h-10 rounded bg-gray-900 px-4 font-bold text-white hover:bg-gray-700 disabled:opacity-60 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-gray-300"
@@ -233,7 +268,17 @@ class="h-10 rounded bg-gray-900 px-4 font-bold text-white hover:bg-gray-700 disa
 
 - [ ] **Step 4: Center controls with a responsive header grid**
 
-Replace the header wrapper with `grid-cols-[1fr_1fr] md:grid-cols-[1fr_auto_1fr]`. Keep brand at row 1 left; put `header-controls` at `col-span-2 row-start-2` centered on mobile and `md:col-span-1 md:col-start-2 md:row-start-1 md:justify-self-center` on desktop. Move `ThemeSwitch` out of `header-controls` into `col-start-2 row-start-1 justify-self-end md:col-start-3`. Retain all existing `SearchControls` props verbatim.
+Use this complete header wrapper class:
+
+```svelte
+class="grid w-full grid-cols-[1fr_1fr] items-center gap-3 p-4 xl:grid-cols-[1fr_auto_1fr]"
+```
+
+Keep brand at row 1 left. Put `header-controls` at
+`col-span-2 row-start-2 flex w-full flex-wrap items-center justify-center gap-2 xl:col-span-1 xl:col-start-2 xl:row-start-1 xl:w-auto xl:justify-self-center`.
+Move `ThemeSwitch` out of `header-controls` into
+`col-start-2 row-start-1 justify-self-end xl:col-start-3`. Retain all existing
+`SearchControls` props verbatim.
 
 - [ ] **Step 5: Migrate existing direction tests mechanically**
 
@@ -361,7 +406,9 @@ Inside the existing example loop:
 </li>
 ```
 
-Change the list from `space-y-2` to `divide-y dark:divide-gray-700`. Do not change `load`, effects, state transitions, limits, or accumulation.
+Change the list from `space-y-2` to
+`divide-y divide-gray-200 dark:divide-gray-700`. Do not change `load`, effects, state
+transitions, limits, or accumulation.
 
 - [ ] **Step 5: Pin the single-corpus rule**
 
@@ -419,7 +466,9 @@ const roleColors = await page
 	.getByRole('group', { name: 'Search direction' })
 	.locator('[data-role]')
 	.evaluateAll((elements) => elements.map((element) => getComputedStyle(element).color));
-await firstSummary.focus();
+await page.getByRole('region', { name: 'Particle collocations' }).focus();
+await page.keyboard.press('Tab');
+await expect(firstSummary).toBeFocused();
 expect(await firstSummary.evaluate((element) => getComputedStyle(element).outlineStyle)).not.toBe('none');
 expect(await firstSummary.evaluate((element) => getComputedStyle(element).outlineOffset)).toBe('0px');
 expect(roleColors).not.toContain(
@@ -452,18 +501,22 @@ Expected: FAIL because summaries are rounded padded cards with offset outlines.
 
 - [ ] **Step 3: Implement the compact summary**
 
-Remove the outer `py-1`. Give `details` `border-b border-gray-200 dark:border-gray-700`. Replace summary chrome with:
+Keep the outer wrapper `<div>` because the established row-order assertion traverses between
+wrapper siblings; remove only its `py-1` class. Give `details`
+`border-b border-gray-200 dark:border-gray-700`. Replace summary chrome with:
 
 ```svelte
-class="grid min-h-0 w-full cursor-pointer grid-cols-[auto_minmax(5rem,2fr)_minmax(0,3fr)] items-center gap-1 px-1 py-1 text-sm leading-5 hover:bg-gray-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-gray-700 group-open:bg-gray-200 dark:hover:bg-gray-800 dark:focus-visible:outline-gray-200 dark:group-open:bg-gray-700"
+class="grid min-h-0 w-full cursor-pointer grid-cols-[auto_minmax(5rem,2fr)_minmax(0,3fr)] items-center gap-1 px-1 py-1 text-sm leading-5 hover:bg-gray-100 focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-gray-700 group-open:bg-gray-200 dark:hover:bg-gray-800 dark:focus-visible:outline-gray-200 dark:group-open:bg-gray-700"
 ```
 
-Reduce the SVG from `h-4` to `h-2.5`; preserve percentages, tooltips, raw frequencies, and aspect ratio.
+Reduce the SVG from `h-4` to `h-2.5`; preserve percentages, tooltips, raw frequencies, the
+`viewBox`, and `preserveAspectRatio="none"`.
 
 - [ ] **Step 4: Compact examples and neutral actions**
 
 Remove `mt-2`, rounded cards, and vertical gaps from `SentenceExamples`. Keep the root at
-`class="w-full text-sm"`, the example count at `mb-0.5 px-1 text-xs text-gray-500`, the list
+`class="w-full text-sm"` while preserving `aria-live="polite"` and
+`data-testid="sentence-examples"`; keep the example count at `mb-0.5 px-1 text-xs text-gray-500`, the list
 at `divide-y divide-gray-200 dark:divide-gray-700`, and rows at `border-l-2 py-1 pl-1`.
 Use these exact compact state surfaces:
 
