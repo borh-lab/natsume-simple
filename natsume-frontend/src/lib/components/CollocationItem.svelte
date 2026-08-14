@@ -35,19 +35,19 @@
 	let expanded = $state(false);
 </script>
 
-<div class="py-1">
+<div>
 	<details
-		class="group w-full min-w-0 [&>summary::-webkit-details-marker]:hidden [&>summary]:list-none"
+		class="group w-full min-w-0 border-b border-gray-200 dark:border-gray-700 [&>summary::-webkit-details-marker]:hidden [&>summary]:list-none"
 		ontoggle={(event) => (expanded = event.currentTarget.open)}
 	>
 		<summary
-			class="grid w-full cursor-pointer grid-cols-[auto_minmax(6rem,2fr)_minmax(0,3fr)] items-center gap-2 rounded border border-gray-200 bg-gray-50 p-2 font-medium hover:bg-blue-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 group-open:border-blue-300 group-open:bg-blue-100 dark:border-gray-700 dark:bg-gray-900 dark:hover:bg-blue-950 dark:group-open:border-blue-700 dark:group-open:bg-blue-950"
+			class="grid min-h-0 w-full cursor-pointer grid-cols-[auto_minmax(5rem,2fr)_minmax(0,3fr)] items-center gap-1 px-1 py-1 text-sm leading-5 hover:bg-gray-100 focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-gray-700 group-open:bg-gray-200 dark:hover:bg-gray-800 dark:focus-visible:outline-gray-200 dark:group-open:bg-gray-700"
 		>
 			<span aria-hidden="true" class="disclosure-chevron inline-block transition-transform">▶</span>
 			<svg
 				viewBox="0 0 100 16"
 				preserveAspectRatio="none"
-				class="h-4 w-full overflow-hidden rounded"
+				class="h-2.5 w-full overflow-hidden rounded"
 				role="img"
 				aria-label={`${item.meanFrequencyPerMillion.toLocaleString(undefined, { maximumFractionDigits: 1 })} mean frequency per million; ${totalPercentage.toLocaleString(undefined, { maximumFractionDigits: 1 })}% of the selected reference`}
 				data-testid="item-bar"

@@ -411,6 +411,34 @@ test('distinguishes expandable rows in light and dark mode', async ({ page }) =>
 			return next?.querySelector('span:last-child')?.textContent?.trim();
 		})
 	).toBe(secondLabel.trim());
+	const firstBox = await firstSummary.boundingBox();
+	const secondBox = await secondSummary.boundingBox();
+	expect(firstBox).not.toBeNull();
+	expect(secondBox).not.toBeNull();
+	expect(firstBox?.height ?? Infinity).toBeLessThanOrEqual(34);
+	expect(
+		Math.abs((secondBox?.y ?? 0) - ((firstBox?.y ?? 0) + (firstBox?.height ?? 0)))
+	).toBeLessThanOrEqual(1);
+	expect(await firstSummary.evaluate((element) => getComputedStyle(element).borderRadius)).toBe(
+		'0px'
+	);
+	const roleColors = await page
+		.getByRole('group', { name: 'Search direction' })
+		.locator('[data-role]')
+		.evaluateAll((elements) => elements.map((element) => getComputedStyle(element).color));
+	await page.getByRole('region', { name: 'Particle collocations' }).focus();
+	await page.keyboard.press('Tab');
+	await firstSummary.focus();
+	await expect(firstSummary).toBeFocused();
+	expect(await firstSummary.evaluate((element) => getComputedStyle(element).outlineStyle)).not.toBe(
+		'none'
+	);
+	expect(await firstSummary.evaluate((element) => getComputedStyle(element).outlineOffset)).toBe(
+		'0px'
+	);
+	expect(roleColors).not.toContain(
+		await firstSummary.evaluate((element) => getComputedStyle(element).outlineColor)
+	);
 
 	await firstSummary.click();
 	await expect(details.nth(0)).toHaveAttribute('open', '');
@@ -418,6 +446,7 @@ test('distinguishes expandable rows in light and dark mode', async ({ page }) =>
 		(element) => getComputedStyle(element).backgroundColor
 	);
 	expect(openBackground).not.toBe(collapsedBackground);
+	expect(roleColors).not.toContain(openBackground);
 	await expect
 		.poll(() => chevron.evaluate((element) => getComputedStyle(element).transform))
 		.not.toBe(collapsedTransform);
@@ -437,6 +466,12 @@ test('distinguishes expandable rows in light and dark mode', async ({ page }) =>
 	expect(
 		await secondSummary.evaluate((element) => getComputedStyle(element).outlineStyle)
 	).not.toBe('none');
+	expect(await secondSummary.evaluate((element) => getComputedStyle(element).outlineOffset)).toBe(
+		'0px'
+	);
+	expect(roleColors).not.toContain(
+		await secondSummary.evaluate((element) => getComputedStyle(element).outlineColor)
+	);
 });
 
 test('centers an accessible search-direction control in the responsive header', async ({

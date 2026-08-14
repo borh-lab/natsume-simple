@@ -30,7 +30,7 @@
 	<!-- The overflowing region must be keyboard-focusable so native horizontal scrolling is operable. -->
 	<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 	<div
-		class="flex min-w-full overflow-x-auto border-y focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 dark:border-gray-700"
+		class="flex min-w-full overflow-x-auto border-y focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-gray-700 dark:border-gray-700 dark:focus-visible:outline-gray-200"
 		role="region"
 		aria-label="Particle collocations"
 		tabindex="0"

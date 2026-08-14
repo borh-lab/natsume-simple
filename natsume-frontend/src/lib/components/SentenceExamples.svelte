@@ -74,14 +74,14 @@
 	$effect(() => () => request?.abort());
 </script>
 
-<div class="mt-2 w-full text-sm" aria-live="polite" data-testid="sentence-examples">
+<div class="w-full text-sm" aria-live="polite" data-testid="sentence-examples">
 	{#if status === 'loading' && examples.length === 0}
-		<p>Loading examples…</p>
+		<p class="px-1 py-1">Loading examples…</p>
 	{:else if status === 'empty'}
 		<p>No examples found.</p>
 	{:else}
 		{#if examples.length > 0}
-			<p class="mb-1 text-xs text-gray-500">{examples.length} examples shown</p>
+			<p class="mb-0.5 px-1 text-xs text-gray-500">{examples.length} examples shown</p>
 			<ul class="divide-y divide-gray-200 dark:divide-gray-700">
 				{#each examples as example, exampleIndex (exampleIndex)}
 					{@const corpusStyle = corpusStyleForSlot(colorSlots[example.corpusId])}
@@ -92,8 +92,9 @@
 						data-corpus-id={example.corpusId}
 					>
 						<strong class={corpusStyle.titleClass} data-testid="example-source"
-							>{#if selectedCorpusIds.length > 1}{corpusLabels[example.corpusId] ??
-									example.corpusId}{' · '}{/if}{example.sourceTitle}:</strong
+							>{selectedCorpusIds.length > 1
+								? `${corpusLabels[example.corpusId] ?? example.corpusId} · `
+								: ''}{example.sourceTitle}:</strong
 						>
 						{#each sentenceSegments( example.text, [{ ...example.nounSpan, type: 'noun' }, { ...example.particleSpan, type: 'particle' }, { ...example.verbSpan, type: 'verb' }] ) as segment, index (index)}
 							{#if segment.className}<span class={segment.className}>{segment.text}</span
@@ -105,16 +106,16 @@
 		{/if}
 		{#if status === 'loading'}
 			<div
-				class="mt-2 rounded border border-blue-200 bg-blue-50 p-2 text-blue-900 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-100"
+				class="mt-1 border border-gray-300 bg-gray-50 px-2 py-1 text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
 			>
 				Loading more examples…
 			</div>
 		{:else if status === 'request-error'}
 			<div
-				class="mt-2 rounded border border-red-200 bg-red-50 p-2 dark:border-red-800 dark:bg-red-950"
+				class="mt-1 border border-red-200 bg-red-50 px-2 py-1 dark:border-red-800 dark:bg-red-950"
 			>
 				{#if examples.length === 0}
-					<p class="mb-1 text-red-700 dark:text-red-300">Examples could not be loaded.</p>
+					<p class="mb-0.5 text-red-700 dark:text-red-300">Examples could not be loaded.</p>
 				{/if}
 				<button
 					type="button"
@@ -123,19 +124,19 @@
 				>
 			</div>
 		{:else if status === 'identity-error'}
-			<p class="mt-2 rounded bg-amber-50 p-2 text-amber-800 dark:bg-amber-950 dark:text-amber-200">
+			<p class="mt-1 bg-amber-50 px-2 py-1 text-amber-800 dark:bg-amber-950 dark:text-amber-200">
 				Data changed — update the search before loading more.
 			</p>
 		{:else if hasMore}
 			<button
 				type="button"
-				class="mt-2 w-full rounded border border-blue-200 bg-blue-50 p-2 text-blue-900 hover:bg-blue-100 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-100 dark:hover:bg-blue-900"
+				class="mt-1 w-full border border-gray-300 bg-gray-50 px-2 py-1 text-gray-900 hover:bg-gray-100 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:hover:bg-gray-700"
 				onclick={() => load(20)}
 			>
 				Load more examples
 			</button>
 		{:else if examples.length > 0}
-			<div class="mt-2 rounded bg-gray-100 p-2 text-gray-600 dark:bg-gray-800 dark:text-gray-300">
+			<div class="mt-1 bg-gray-100 px-2 py-1 text-gray-600 dark:bg-gray-800 dark:text-gray-300">
 				All examples shown
 			</div>
 		{/if}
