@@ -65,6 +65,18 @@ def write_source_lock(path: Path, article_ids: list[str]) -> Path:
                             ],
                         },
                     },
+                    {
+                        "corpusId": "ted-iwslt-2017-ja-en",
+                        "servingCorpusId": "ted",
+                        "plannedPublic": True,
+                        "status": "ready",
+                        "candidate": {
+                            "path": "data/2017-01-trnted/texts/ja/en/ja-en.zip",
+                            "url": "https://example.test/ja-en.zip",
+                            "size": 3,
+                            "sha256": hashlib.sha256(b"ted").hexdigest(),
+                        },
+                    },
                 ]
             }
         ),
@@ -102,6 +114,7 @@ def test_loads_only_the_locked_production_files(tmp_path: Path):
     assert sources.jnlp_archive.size == 4
     assert sources.wikipedia_shard.name == "train-00000-of-00015.parquet"
     assert sources.wikipedia_shard.url.endswith("train-00000-of-00015.parquet")
+    assert sources.ted_archive.name == "ja-en.zip"
     assert sources.wikipedia_identity_sha256 == canonical_article_ids_sha256(
         article_ids
     )
@@ -121,6 +134,11 @@ def test_repository_lock_selects_the_planned_release_files():
     assert (
         sources.wikipedia_shard.sha256
         == "4751c14478e712fd637bd83c2cf3537b0e299ea5115e9a78ddededf42f34c29d"
+    )
+    assert sources.ted_archive.size == 26_190_859
+    assert (
+        sources.ted_archive.sha256
+        == "a923cdaa5632e55a94e799d31468c58fd2eab290a34f8b950a562f6ff20046b6"
     )
 
 
@@ -327,12 +345,16 @@ def test_removes_a_download_that_fails_verification(tmp_path: Path):
     assert not list(tmp_path.glob(f"{locked.local_name}.part-*"))
 
 
-def test_acquires_both_release_inputs(tmp_path: Path):
+def test_acquires_all_release_inputs(tmp_path: Path):
     article_ids = [str(index) for index in range(971)]
     sources = load_release_sources(
         write_source_lock(tmp_path / "lock.json", article_ids)
     )
-    payloads = {sources.jnlp_archive.url: b"jnlp", sources.wikipedia_shard.url: b"wiki"}
+    payloads = {
+        sources.jnlp_archive.url: b"jnlp",
+        sources.wikipedia_shard.url: b"wiki",
+        sources.ted_archive.url: b"ted",
+    }
 
     acquired = acquire_release_inputs(
         sources,
@@ -343,4 +365,5 @@ def test_acquires_both_release_inputs(tmp_path: Path):
     assert acquired == (
         tmp_path / "inputs" / sources.jnlp_archive.local_name,
         tmp_path / "inputs" / sources.wikipedia_shard.local_name,
+        tmp_path / "inputs" / sources.ted_archive.local_name,
     )

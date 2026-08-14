@@ -30,6 +30,7 @@ class LockedFile:
 class ReleaseSources:
     jnlp_archive: LockedFile
     wikipedia_shard: LockedFile
+    ted_archive: LockedFile
     wikipedia_identity_sha256: str
 
 
@@ -40,7 +41,7 @@ class WikipediaSubset:
 
 
 def load_release_sources(source_lock: Path) -> ReleaseSources:
-    """Load the two locked files selected for the production release."""
+    """Load the locked files selected for the production release."""
     payload = _read_json(source_lock, "source_lock_invalid")
     try:
         entries = {
@@ -50,6 +51,10 @@ def load_release_sources(source_lock: Path) -> ReleaseSources:
         }
         jnlp = entries["jnlp"]["candidate"]
         wikipedia = entries["wikipedia-ja-20231101"]["candidate"]
+        ted_entry = entries["ted-iwslt-2017-ja-en"]
+        if ted_entry["servingCorpusId"] != "ted":
+            raise KeyError("servingCorpusId")
+        ted = ted_entry["candidate"]
     except (KeyError, TypeError) as error:
         raise ReleaseInputError("source_lock_entry_missing") from error
 
@@ -75,6 +80,14 @@ def load_release_sources(source_lock: Path) -> ReleaseSources:
                 url=str(wikipedia["urlTemplate"]).format(name=shard["name"]),
                 size=int(shard["size"]),
                 sha256=str(shard["sha256"]),
+            ),
+            ted_archive=LockedFile(
+                source_lock_corpus_id="ted-iwslt-2017-ja-en",
+                name="ja-en.zip",
+                local_name="ja-en.zip",
+                url=str(ted["url"]),
+                size=int(ted["size"]),
+                sha256=str(ted["sha256"]),
             ),
             wikipedia_identity_sha256=str(
                 wikipedia["verification"]["orderedIdentityListSha256"]
@@ -175,11 +188,12 @@ def acquire_release_inputs(
     output_directory: Path,
     *,
     opener: Callable[..., BufferedIOBase] = urllib.request.urlopen,
-) -> tuple[Path, Path]:
-    """Acquire the locked JNLP archive and Wikipedia shard."""
+) -> tuple[Path, Path, Path]:
+    """Acquire all locked production source files."""
     return (
         acquire_locked_file(sources.jnlp_archive, output_directory, opener=opener),
         acquire_locked_file(sources.wikipedia_shard, output_directory, opener=opener),
+        acquire_locked_file(sources.ted_archive, output_directory, opener=opener),
     )
 
 

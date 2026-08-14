@@ -1,14 +1,27 @@
 {
   "formatVersion": 1,
   "generatedAt": "2026-08-12",
-  "gateStatus": "passed",
+  "gateStatus": "owner-accepted-unresolved-permission",
   "plannedArtifact": {
-    "corpusIds": ["jnlp", "wiki"],
+    "corpusIds": ["jnlp", "ted", "wiki"],
     "licenseConclusion": {
-      "status": "ready",
-      "spdxExpression": "CC-BY-SA-4.0",
-      "scope": "corpus.duckdb and corpus-derived distributed content",
-      "reason": "The project conservatively applies Wikipedia's share-alike terms to the combined JNLP and Wikipedia content. Publication must include the required notices."
+      "singleLicenseAsserted": false,
+      "corpora": {
+        "jnlp": {
+          "status": "ready",
+          "spdxExpression": "CC-BY-4.0"
+        },
+        "wiki": {
+          "status": "ready",
+          "spdxExpression": "CC-BY-SA-4.0",
+          "reason": "Subject to applicable Wikimedia terms and GFDL notices."
+        },
+        "ted": {
+          "status": "no-grant-asserted",
+          "spdxExpression": null,
+          "reason": "Included by owner decision while public derived-output permission remains unresolved."
+        }
+      }
     }
   },
   "sources": [
@@ -157,9 +170,10 @@
     },
     {
       "corpusId": "ted-iwslt-2017-ja-en",
-      "plannedPublic": false,
-      "status": "excluded",
-      "reason": "The planned public release excludes TED. Reintroduction requires talk-level identity correction and resolved public derived-output permission.",
+      "servingCorpusId": "ted",
+      "plannedPublic": true,
+      "status": "ready",
+      "reason": "Included by owner decision while public derived-output permission remains unresolved.",
       "candidate": {
         "kind": "zip-archive",
         "repository": "IWSLT/iwslt2017",

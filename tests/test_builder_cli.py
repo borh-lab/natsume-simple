@@ -188,7 +188,15 @@ def test_build_records_release_sources_and_sentence_policy(monkeypatch, tmp_path
         len(b"fixture"),
         hashlib.sha256(b"fixture").hexdigest(),
     )
-    sources = ReleaseSources(jnlp, wiki, "c" * 64)
+    ted = LockedFile(
+        "ted-iwslt-2017-ja-en",
+        "ja-en.zip",
+        "ja-en.zip",
+        "ted",
+        3,
+        hashlib.sha256(b"ted").hexdigest(),
+    )
+    sources = ReleaseSources(jnlp, wiki, ted, "c" * 64)
     captured = {}
     torch_thread_counts: list[int] = []
 
