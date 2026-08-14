@@ -135,6 +135,20 @@ nix run .#build-corpus -- publish artifacts/<instance-id> deploy
 nix run .#build-corpus -- current deploy
 ```
 
+Record host-specific service latency with the fixed release request family after the
+server is running. Repeat `--corpus-id` for the selection being measured:
+
+```bash
+nix develop .#test --command python -m natsume_simple.benchmark_service \
+  --base-url http://127.0.0.1:8000 \
+  --corpus-id jnlp --corpus-id wiki --corpus-id ted \
+  --requests 500 --concurrency 10 \
+  --output /tmp/natsume-benchmark.json
+```
+
+This benchmark is diagnostic evidence tied to the named host and artifact. It is not a
+CI latency gate.
+
 小さな fixture artifact の build・validation・HTTP walkthrough は次で実行します。
 
 ```bash
