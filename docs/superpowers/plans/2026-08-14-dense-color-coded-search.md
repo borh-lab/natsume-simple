@@ -527,10 +527,11 @@ git commit -m "style: compact collocations into spreadsheet rows"
 
 **Files:**
 - Modify: `docs/superpowers/specs/2026-08-14-dense-color-coded-search-design.md:3`
+- Delete after all gates pass: `docs/superpowers/plans/2026-08-14-dense-color-coded-search.md`
 
 **Interfaces:**
 - Verifies: diagnostics, lint, unit tests, production build, Playwright flows, packaged frontend, and server delivery.
-- Produces: retained design record with `Status: Implemented`.
+- Produces: retained design record with `Status: Implemented`; retires this execution-only task list.
 
 - [ ] **Step 1: Run hermetic gates**
 
@@ -560,10 +561,11 @@ Change line 3 to:
 Status: Implemented
 ```
 
-- [ ] **Step 4: Commit documentation status**
+- [ ] **Step 4: Retire the completed task list and commit documentation status**
 
 ```bash
 git add docs/superpowers/specs/2026-08-14-dense-color-coded-search-design.md
+git rm docs/superpowers/plans/2026-08-14-dense-color-coded-search.md
 git commit -m "docs: record dense interface implementation"
 ```
 
