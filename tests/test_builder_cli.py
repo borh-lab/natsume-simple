@@ -1,8 +1,9 @@
 import hashlib
 import json
 import re
-from types import SimpleNamespace
+from collections import Counter
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -62,7 +63,7 @@ def test_build_requires_at_least_one_explicit_local_corpus(tmp_path: Path, capsy
     assert "at least one local corpus input is required" in capsys.readouterr().err
 
 
-def test_build_parser_accepts_locked_wikipedia_metadata(tmp_path: Path):
+def test_build_parser_accepts_locked_release_metadata(tmp_path: Path):
     args = builder_cli._parser().parse_args(
         [
             "build",
@@ -70,6 +71,8 @@ def test_build_parser_accepts_locked_wikipedia_metadata(tmp_path: Path):
             str(tmp_path / "artifacts"),
             "--wikipedia-parquet",
             str(tmp_path / "train-00000-of-00015.parquet"),
+            "--ted-iwslt-archive",
+            str(tmp_path / "ja-en.zip"),
             "--source-lock",
             str(tmp_path / "sources.json"),
             "--wikipedia-subset",
@@ -85,6 +88,34 @@ def test_build_parser_accepts_locked_wikipedia_metadata(tmp_path: Path):
 
     assert args.source_lock == tmp_path / "sources.json"
     assert args.wikipedia_subset == tmp_path / "subset.json"
+    assert args.ted_iwslt_archive == tmp_path / "ja-en.zip"
+
+
+def test_build_requires_source_lock_for_ted(tmp_path: Path, capsys):
+    model = tmp_path / "model"
+    model.mkdir()
+    license_file = tmp_path / "license.txt"
+    license_file.write_text("content license")
+    attribution = tmp_path / "attribution.md"
+    attribution.write_text("attribution")
+
+    with pytest.raises(SystemExit, match="2"):
+        builder_cli.main(
+            [
+                "build",
+                "--artifacts-directory",
+                str(tmp_path / "artifacts"),
+                "--ted-iwslt-archive",
+                str(tmp_path / "ja-en.zip"),
+                "--splitter-model",
+                str(model),
+                "--content-license",
+                str(license_file),
+                "--attribution",
+                str(attribution),
+            ]
+        )
+    assert "TED requires --source-lock" in capsys.readouterr().err
 
 
 def test_split_japanese_sentences_keeps_language_policy_outside_segmentation():
@@ -93,16 +124,25 @@ def test_split_japanese_sentences_keeps_language_policy_outside_segmentation():
             assert paragraphs == ["日本語の段落です。", "English paragraph."]
             return [["日本語の文章です。"], ["English sentence."]]
 
+    observations = Counter()
     assert list(
         builder_cli.split_japanese_sentences(
-            ("日本語の段落です。\nEnglish paragraph.",), splitter=Splitter()
+            ("日本語の段落です。\nEnglish paragraph.",),
+            splitter=Splitter(),
+            observations=observations,
         )
     ) == ["日本語の文章です。"]
+    assert observations == {"candidate": 2, "retained": 1, "dropped": 1}
 
 
 def test_inspect_inputs_prints_adapter_counts(monkeypatch, tmp_path: Path, capsys):
     summary = {
         "jnlp": {"acceptedSources": 5, "rejections": {"missing_source_path": 1}},
+        "ted": {
+            "acceptedSources": 1,
+            "textUnits": 2,
+            "rejections": {"empty_subtitle_text": 1},
+        },
         "wiki": {"acceptedSources": 971, "rejections": {}},
     }
     monkeypatch.setattr(builder_cli, "_inspect_inputs", lambda args: summary)
@@ -119,6 +159,8 @@ def test_inspect_inputs_prints_adapter_counts(monkeypatch, tmp_path: Path, capsy
                 str(tmp_path / "jnlp"),
                 "--wikipedia-parquet",
                 str(tmp_path / "train-00000-of-00015.parquet"),
+                "--ted-iwslt-archive",
+                str(tmp_path / "ja-en.zip"),
             ]
         )
         == 0
@@ -175,6 +217,8 @@ def test_build_records_release_sources_and_sentence_policy(monkeypatch, tmp_path
     (model / "weights").write_bytes(b"model")
     wikipedia = tmp_path / "train-00000-of-00015.parquet"
     wikipedia.write_bytes(b"fixture")
+    ted_archive = tmp_path / "ja-en.zip"
+    ted_archive.write_bytes(b"ted")
     license_file = tmp_path / "license.txt"
     license_file.write_text("license")
     attribution = tmp_path / "attribution.md"
@@ -229,6 +273,11 @@ def test_build_records_release_sources_and_sentence_policy(monkeypatch, tmp_path
     )
     monkeypatch.setattr(
         corpus_pipeline,
+        "adapt_ted_iwslt_archive",
+        lambda _path: AdaptationResult("ted", (), {}),
+    )
+    monkeypatch.setattr(
+        corpus_pipeline,
         "build_corpus_artifact",
         lambda output, **kwargs: captured.update(kwargs) or output,
     )
@@ -254,6 +303,7 @@ def test_build_records_release_sources_and_sentence_policy(monkeypatch, tmp_path
     args = SimpleNamespace(
         jnlp_root=None,
         wikipedia_parquet=[wikipedia],
+        ted_iwslt_archive=ted_archive,
         source_lock=tmp_path / "sources.json",
         wikipedia_subset=tmp_path / "subset.json",
         splitter_model=model,
@@ -272,13 +322,16 @@ def test_build_records_release_sources_and_sentence_policy(monkeypatch, tmp_path
     assert identity["executionProfile"]["torchThreads"] == 8
     assert identity["sentenceFilter"] == {"name": "is_japanese", "minLength": 5}
     assert identity["sourceContentHash"] == "natsume-source-content-v1"
+    assert [corpus.id for corpus in captured["corpora"]] == ["ted", "wiki"]
+    assert identity["sourceAdapters"] == ["ted", "wiki"]
+    assert identity["tedSelectionPolicy"] == "iwslt2017-ja-en-training-v1"
     assert identity["sentenceSplitter"]["modelSha256"] == builder_cli.path_sha256(model)
     assert identity["sourceFiles"] == [
         {
-            "corpusId": "jnlp",
-            "name": "NLP_LATEX_CORPUS.zip",
-            "sha256": "a" * 64,
-            "size": 1,
+            "corpusId": "ted-iwslt-2017-ja-en",
+            "name": "ja-en.zip",
+            "sha256": hashlib.sha256(b"ted").hexdigest(),
+            "size": 3,
         },
         {
             "corpusId": "wikipedia-ja-20231101",

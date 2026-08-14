@@ -67,16 +67,17 @@ committed lock から network-independent に frontend を build します。
 
 ## Corpus pipeline
 
-公開構成は JNLP と日本語版 Wikipedia です。TED content は permission が明確に
-なるまで production artifact に入りません。source provenance と再取得条件は
-`docs/corpus-sources.lock.json` と `docs/corpus-recoverability.md` にあります。
+公開構成は JNLP、日本語版 Wikipedia、IWSLT 2017 の TED Talks です。TED は
+permission が未解決のまま owner decision により含まれます。source provenance、
+mixed terms、再取得条件は `docs/corpus-sources.lock.json` と
+`docs/corpus-recoverability.md` にあります。WIT³ は release input ではありません。
 
 Corpus source archives and generated databases are release assets, not Git content.
 `data/`, `artifacts/`, `*.db`, and `*.duckdb` are ignored. Git records the source lock,
 the frozen Wikipedia identity subset, notices, checksums, and release evidence needed to
 recreate and audit them.
 
-Acquire the two locked source files, then convert the JNLP archive. `nkf` and `pandoc`
+Acquire the three locked source files, then convert the JNLP archive. `nkf` and `pandoc`
 come from the builder closure.
 
 ```bash
@@ -90,10 +91,11 @@ nix run .#build-corpus -- inspect-inputs \
   --source-lock docs/corpus-sources.lock.json \
   --wikipedia-subset docs/wikipedia-ja-20231101-subset.json \
   --jnlp-root data/prepared-jnlp-2026/NLP_LATEX_CORPUS \
-  --wikipedia-parquet data/release-inputs/train-00000-of-00015.parquet
+  --wikipedia-parquet data/release-inputs/train-00000-of-00015.parquet \
+  --ted-iwslt-archive data/release-inputs/ja-en.zip
 ```
 
-既にローカルにある JNLP directory、checksummed Wikipedia Parquet shards、
+既にローカルにある JNLP directory、checksummed Wikipedia Parquet shard と TED archive、
 wtpsplit model、content notices から immutable artifact を build します。
 
 ```bash
@@ -103,10 +105,17 @@ nix run .#build-corpus -- build \
   --wikipedia-subset docs/wikipedia-ja-20231101-subset.json \
   --jnlp-root data/prepared-jnlp-2026/NLP_LATEX_CORPUS \
   --wikipedia-parquet data/release-inputs/train-00000-of-00015.parquet \
+  --ted-iwslt-archive data/release-inputs/ja-en.zip \
   --splitter-model data/models/wtpsplit \
   --content-license corpus-notices/LICENSE-CONTENT.txt \
-  --attribution corpus-notices/ATTRIBUTION.md
+  --attribution corpus-notices/ATTRIBUTION.md \
+  --max-rejections 200 \
+  --max-rejection-fraction 0.15
 ```
+
+The measured JNLP `missing_source_path` entries are metadata rows marked `*NA*`;
+`missing_plain_text` records papers whose declared source could not be converted. Both
+remain bounded and visible rather than being silently discarded.
 
 Validate the immutable result before selecting it:
 

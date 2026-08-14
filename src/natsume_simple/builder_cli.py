@@ -7,15 +7,21 @@ import json
 import logging
 import os
 import secrets
+from collections import Counter
 from collections.abc import Iterable, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 
 from natsume_simple.artifact_registry import current_artifact, publish_artifact
 
+logger = logging.getLogger(__name__)
+
 
 def split_japanese_sentences(
-    text_units: tuple[str, ...], *, splitter: object
+    text_units: tuple[str, ...],
+    *,
+    splitter: object,
+    observations: Counter[str] | None = None,
 ) -> Iterable[str]:
     """Split paragraphs and retain the public Japanese-content policy."""
     from natsume_simple.data import is_japanese
@@ -26,12 +32,19 @@ def split_japanese_sentences(
         for paragraph in text.splitlines()
         if paragraph.strip()
     ]
-    return (
-        sentence.strip()
-        for group in splitter.split(paragraphs)  # type: ignore[attr-defined]
-        for sentence in group
-        if sentence.strip() and is_japanese(sentence.strip(), min_length=5)
-    )
+    for group in splitter.split(paragraphs):  # type: ignore[attr-defined]
+        for sentence in group:
+            candidate = sentence.strip()
+            if not candidate:
+                continue
+            if observations is not None:
+                observations["candidate"] += 1
+            if is_japanese(candidate, min_length=5):
+                if observations is not None:
+                    observations["retained"] += 1
+                yield candidate
+            elif observations is not None:
+                observations["dropped"] += 1
 
 
 def new_artifact_instance_id(
@@ -85,6 +98,7 @@ def _parser() -> argparse.ArgumentParser:
     inspect.add_argument("--wikipedia-subset", type=Path, required=True)
     inspect.add_argument("--jnlp-root", type=Path, required=True)
     inspect.add_argument("--wikipedia-parquet", type=Path, required=True)
+    inspect.add_argument("--ted-iwslt-archive", type=Path, required=True)
 
     build = commands.add_parser(
         "build", help="build one immutable artifact from already-local inputs"
@@ -92,6 +106,7 @@ def _parser() -> argparse.ArgumentParser:
     build.add_argument("--artifacts-directory", type=Path, required=True)
     build.add_argument("--jnlp-root", type=Path)
     build.add_argument("--wikipedia-parquet", type=Path, action="append", default=[])
+    build.add_argument("--ted-iwslt-archive", type=Path)
     build.add_argument("--source-lock", type=Path)
     build.add_argument("--wikipedia-subset", type=Path)
     build.add_argument("--splitter-model", type=Path, required=True)
@@ -120,12 +135,18 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def _build(args: argparse.Namespace) -> Path:
-    if args.jnlp_root is None and not args.wikipedia_parquet:
+    if (
+        args.jnlp_root is None
+        and not args.wikipedia_parquet
+        and args.ted_iwslt_archive is None
+    ):
         raise ValueError("at least one local corpus input is required")
     if args.wikipedia_parquet and (
         args.source_lock is None or args.wikipedia_subset is None
     ):
         raise ValueError("Wikipedia requires --source-lock and --wikipedia-subset")
+    if args.ted_iwslt_archive is not None and args.source_lock is None:
+        raise ValueError("TED requires --source-lock")
     if not args.splitter_model.exists():
         raise FileNotFoundError(args.splitter_model)
 
@@ -134,6 +155,7 @@ def _build(args: argparse.Namespace) -> Path:
         SOURCE_CONTENT_HASH,
         RejectionLimits,
         adapt_jnlp_directory,
+        adapt_ted_iwslt_archive,
         adapt_wikipedia_parquet,
         build_corpus_artifact,
     )
@@ -141,18 +163,29 @@ def _build(args: argparse.Namespace) -> Path:
     adaptations = []
     corpora = []
     release_sources = None
+    if args.wikipedia_parquet or args.ted_iwslt_archive is not None:
+        from natsume_simple.release_inputs import load_release_sources
+
+        assert args.source_lock is not None
+        release_sources = load_release_sources(args.source_lock)
     if args.jnlp_root is not None:
         adaptations.append(adapt_jnlp_directory(args.jnlp_root))
         corpora.append(CorpusRecord("jnlp", "自然言語処理"))
+    if args.ted_iwslt_archive is not None:
+        from natsume_simple.release_inputs import verify_file
+
+        assert release_sources is not None
+        verify_file(args.ted_iwslt_archive, release_sources.ted_archive)
+        adaptations.append(adapt_ted_iwslt_archive(args.ted_iwslt_archive))
+        corpora.append(CorpusRecord("ted", "TED Talks"))
     if args.wikipedia_parquet:
         from natsume_simple.release_inputs import (
-            load_release_sources,
             load_wikipedia_subset,
             validate_wikipedia_paths,
             verify_file,
         )
 
-        release_sources = load_release_sources(args.source_lock)
+        assert release_sources is not None
         subset = load_wikipedia_subset(args.wikipedia_subset, sources=release_sources)
         wikipedia_path = validate_wikipedia_paths(
             args.wikipedia_parquet, sources=release_sources
@@ -191,12 +224,15 @@ def _build(args: argparse.Namespace) -> Path:
     ginza_version = importlib.metadata.version("ja-ginza")
     wtpsplit_version = importlib.metadata.version("wtpsplit")
     extractor_id = f"ja-ginza-{ginza_version}:npv-v1"
-    return build_corpus_artifact(
+    sentence_filter_observations: Counter[str] = Counter()
+    output_path = build_corpus_artifact(
         output,
         corpora=tuple(corpora),
         adaptations=tuple(adaptations),
         split=lambda text_units: split_japanese_sentences(
-            text_units, splitter=splitter
+            text_units,
+            splitter=splitter,
+            observations=sentence_filter_observations,
         ),
         parse=nlp,
         metadata=BuildMetadata(
@@ -216,8 +252,21 @@ def _build(args: argparse.Namespace) -> Path:
                             "size": locked.size,
                         }
                         for locked in (
-                            release_sources.jnlp_archive,
-                            release_sources.wikipedia_shard,
+                            *(
+                                (release_sources.jnlp_archive,)
+                                if args.jnlp_root is not None
+                                else ()
+                            ),
+                            *(
+                                (release_sources.ted_archive,)
+                                if args.ted_iwslt_archive is not None
+                                else ()
+                            ),
+                            *(
+                                (release_sources.wikipedia_shard,)
+                                if args.wikipedia_parquet
+                                else ()
+                            ),
                         )
                     ]
                     if release_sources is not None
@@ -229,6 +278,21 @@ def _build(args: argparse.Namespace) -> Path:
                     "modelSha256": path_sha256(args.splitter_model),
                 },
                 "sentenceFilter": {"name": "is_japanese", "minLength": 5},
+                **(
+                    {"tedSelectionPolicy": "iwslt2017-ja-en-training-v1"}
+                    if args.ted_iwslt_archive is not None
+                    else {}
+                ),
+                "sourceObservations": {
+                    adaptation.corpus_id: {
+                        "acceptedSources": len(adaptation.documents),
+                        "textUnits": sum(
+                            len(document.text_units)
+                            for document in adaptation.documents
+                        ),
+                    }
+                    for adaptation in adaptations
+                },
                 "nlpModel": {
                     "name": "ja_ginza",
                     "version": ginza_version,
@@ -254,11 +318,19 @@ def _build(args: argparse.Namespace) -> Path:
         ),
         extractor_id=extractor_id,
     )
+    logger.info(
+        "sentence filter candidate=%d retained=%d dropped=%d",
+        sentence_filter_observations["candidate"],
+        sentence_filter_observations["retained"],
+        sentence_filter_observations["dropped"],
+    )
+    return output_path
 
 
 def _inspect_inputs(args: argparse.Namespace) -> dict[str, object]:
     from natsume_simple.corpus_pipeline import (
         adapt_jnlp_directory,
+        adapt_ted_iwslt_archive,
         adapt_wikipedia_parquet,
     )
     from natsume_simple.release_inputs import (
@@ -272,13 +344,18 @@ def _inspect_inputs(args: argparse.Namespace) -> dict[str, object]:
     subset = load_wikipedia_subset(args.wikipedia_subset, sources=sources)
     wikipedia_path = validate_wikipedia_paths([args.wikipedia_parquet], sources=sources)
     verify_file(wikipedia_path, sources.wikipedia_shard)
+    verify_file(args.ted_iwslt_archive, sources.ted_archive)
     adaptations = (
         adapt_jnlp_directory(args.jnlp_root),
+        adapt_ted_iwslt_archive(args.ted_iwslt_archive),
         adapt_wikipedia_parquet(wikipedia_path, article_ids=subset.article_ids),
     )
     return {
         adaptation.corpus_id: {
             "acceptedSources": len(adaptation.documents),
+            "textUnits": sum(
+                len(document.text_units) for document in adaptation.documents
+            ),
             "rejections": adaptation.rejections,
         }
         for adaptation in adaptations
