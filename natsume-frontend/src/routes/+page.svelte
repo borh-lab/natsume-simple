@@ -23,7 +23,10 @@
 			<img class="h-8 w-8" src="/favicon.png" alt="Natsume Simple" />
 			<h1 class="text-2xl font-bold" tabindex="-1">Natsume Simple</h1>
 		</div>
-		<div class="ml-auto flex flex-wrap items-center justify-end gap-2" data-testid="header-controls">
+		<div
+			class="ml-auto flex flex-wrap items-center justify-end gap-2"
+			data-testid="header-controls"
+		>
 			<SearchControls
 				bind:term={controller.term}
 				bind:pos={controller.pos}
