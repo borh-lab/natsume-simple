@@ -135,17 +135,17 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def _build(args: argparse.Namespace) -> Path:
+    source_lock = args.source_lock
+    wikipedia_subset = args.wikipedia_subset
     if (
         args.jnlp_root is None
         and not args.wikipedia_parquet
         and args.ted_iwslt_archive is None
     ):
         raise ValueError("at least one local corpus input is required")
-    if args.wikipedia_parquet and (
-        args.source_lock is None or args.wikipedia_subset is None
-    ):
+    if args.wikipedia_parquet and (source_lock is None or wikipedia_subset is None):
         raise ValueError("Wikipedia requires --source-lock and --wikipedia-subset")
-    if args.ted_iwslt_archive is not None and args.source_lock is None:
+    if args.ted_iwslt_archive is not None and source_lock is None:
         raise ValueError("TED requires --source-lock")
     if not args.splitter_model.exists():
         raise FileNotFoundError(args.splitter_model)
@@ -166,15 +166,21 @@ def _build(args: argparse.Namespace) -> Path:
     if args.wikipedia_parquet or args.ted_iwslt_archive is not None:
         from natsume_simple.release_inputs import load_release_sources
 
-        assert args.source_lock is not None
-        release_sources = load_release_sources(args.source_lock)
+        if source_lock is None:
+            if args.wikipedia_parquet:
+                raise ValueError(
+                    "Wikipedia requires --source-lock and --wikipedia-subset"
+                )
+            raise ValueError("TED requires --source-lock")
+        release_sources = load_release_sources(source_lock)
     if args.jnlp_root is not None:
         adaptations.append(adapt_jnlp_directory(args.jnlp_root))
         corpora.append(CorpusRecord("jnlp", "自然言語処理"))
     if args.ted_iwslt_archive is not None:
         from natsume_simple.release_inputs import verify_file
 
-        assert release_sources is not None
+        if release_sources is None:
+            raise ValueError("TED requires --source-lock")
         verify_file(args.ted_iwslt_archive, release_sources.ted_archive)
         adaptations.append(adapt_ted_iwslt_archive(args.ted_iwslt_archive))
         corpora.append(CorpusRecord("ted", "TED Talks"))
@@ -185,8 +191,9 @@ def _build(args: argparse.Namespace) -> Path:
             verify_file,
         )
 
-        assert release_sources is not None
-        subset = load_wikipedia_subset(args.wikipedia_subset, sources=release_sources)
+        if release_sources is None or wikipedia_subset is None:
+            raise ValueError("Wikipedia requires --source-lock and --wikipedia-subset")
+        subset = load_wikipedia_subset(wikipedia_subset, sources=release_sources)
         wikipedia_path = validate_wikipedia_paths(
             args.wikipedia_parquet, sources=release_sources
         )

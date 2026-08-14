@@ -52,11 +52,16 @@ def load_release_sources(source_lock: Path) -> ReleaseSources:
         jnlp = entries["jnlp"]["candidate"]
         wikipedia = entries["wikipedia-ja-20231101"]["candidate"]
         ted_entry = entries["ted-iwslt-2017-ja-en"]
-        if ted_entry["servingCorpusId"] != "ted":
-            raise KeyError("servingCorpusId")
         ted = ted_entry["candidate"]
     except (KeyError, TypeError) as error:
         raise ReleaseInputError("source_lock_entry_missing") from error
+
+    try:
+        ted_serving_corpus_id = ted_entry["servingCorpusId"]
+    except (KeyError, TypeError) as error:
+        raise ReleaseInputError("source_lock_serving_corpus_mismatch") from error
+    if ted_serving_corpus_id != "ted":
+        raise ReleaseInputError("source_lock_serving_corpus_mismatch")
 
     try:
         verified_shard = wikipedia["verification"]["verifiedShard"]

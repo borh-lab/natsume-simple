@@ -96,6 +96,23 @@ def test_ted_adapter_aborts_on_identity_errors(
         adapt_ted_iwslt_archive(archive)
 
 
+@pytest.mark.parametrize(
+    "training",
+    [
+        "<doc>\n<talkid>1</talkid>\n<doc>\n本文。\n</doc>",
+        "</doc>",
+        "本文。\n<doc>\n<talkid>1</talkid>\n</doc>",
+        "<doc>\n<talkid>1</talkid>\n本文。",
+        "<title>orphan</title>\n<doc>\n<talkid>1</talkid>\n本文。\n</doc>",
+    ],
+)
+def test_ted_adapter_rejects_malformed_archive_structure(tmp_path: Path, training: str):
+    archive = write_iwslt_archive(tmp_path / "ja-en.zip", training)
+
+    with pytest.raises(ValueError, match="^ted_archive_structure_invalid$"):
+        adapt_ted_iwslt_archive(archive)
+
+
 def test_ted_adapter_requires_exactly_one_named_member(tmp_path: Path):
     import zipfile
 

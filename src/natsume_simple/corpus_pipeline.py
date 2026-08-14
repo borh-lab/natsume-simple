@@ -260,7 +260,7 @@ def adapt_ted_iwslt_archive(archive_path: Path) -> AdaptationResult:
                 match = TED_METADATA.fullmatch(line)
                 if match:
                     if metadata is None:
-                        continue
+                        raise ValueError("ted_archive_structure_invalid")
                     key, raw_value = match.groups()
                     if key in {"talkid", "title", "speaker", "url"}:
                         value = html.unescape(raw_value.strip())

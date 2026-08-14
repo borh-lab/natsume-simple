@@ -256,6 +256,24 @@ def test_rejects_unknown_or_nonready_source_entries(tmp_path: Path):
         load_release_sources(source_lock)
 
 
+def test_rejects_mismatched_ted_serving_corpus(tmp_path: Path):
+    article_ids = [str(index) for index in range(971)]
+    source_lock = write_source_lock(tmp_path / "lock.json", article_ids)
+    payload = json.loads(source_lock.read_text(encoding="utf-8"))
+    ted = next(
+        source
+        for source in payload["sources"]
+        if source["corpusId"] == "ted-iwslt-2017-ja-en"
+    )
+    ted["servingCorpusId"] = "other"
+    source_lock.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(
+        ReleaseInputError, match="^source_lock_serving_corpus_mismatch$"
+    ):
+        load_release_sources(source_lock)
+
+
 def test_accepts_only_the_locked_wikipedia_shard_path(tmp_path: Path):
     article_ids = [str(index) for index in range(971)]
     sources = load_release_sources(
