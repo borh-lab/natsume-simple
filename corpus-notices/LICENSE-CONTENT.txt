@@ -4,12 +4,15 @@ The natsume-simple software source is licensed under the repository's MIT
 license. That license does not apply to the corpus database or to text derived
 from the included corpora.
 
-The combined corpus.duckdb artifact and corpus-derived content distributed by
-this project are provided under the Creative Commons Attribution-ShareAlike
-4.0 International license (CC BY-SA 4.0):
-https://creativecommons.org/licenses/by-sa/4.0/
+No single content license is asserted for the corpus.duckdb collection.
 
 JNLP source material is published by the Association for Natural Language
 Processing under CC BY 4.0. Japanese Wikipedia material is reused under the
-applicable Wikimedia terms and CC BY-SA 4.0/GFDL notices. See ATTRIBUTION.md
-for sources, transformations, and attribution details.
+applicable Wikimedia terms and CC BY-SA 4.0/GFDL notices.
+
+The IWSLT 2017 archive identifies TED copyright and CC BY-NC-ND 3.0. Current
+TED terms require separate permission for dataset uses. This project asserts
+no license grant for TED-derived content and includes it by owner decision
+while permission remains unresolved.
+
+See ATTRIBUTION.md for sources, transformations, and attribution details.

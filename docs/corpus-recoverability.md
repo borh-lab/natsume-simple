@@ -101,41 +101,44 @@ controlling Terms of Use and content-specific exceptions. A public service must
 retain article identity/URL and provide attribution, license, modification, and
 takedown information. Because the serving database contains extracted and
 segmented Wikipedia text, this project conservatively treats the published
-database and corpus-derived content as CC BY-SA 4.0 rather than MIT. The
-repository's software remains MIT. The upstream dataset metadata's older
-license labels are recorded as source metadata, not treated as the controlling
-legal conclusion.
+Wikipedia-derived content as CC BY-SA 4.0 rather than MIT. The repository's
+software remains MIT. The upstream dataset metadata's older license labels are
+recorded as source metadata, not treated as the controlling legal conclusion.
+The three-corpus collection has mixed terms and is not offered under one
+artifact-wide SPDX expression.
 
 ## TED / IWSLT
 
-**Disposition:** Excluded from the planned public release; synthetic local
-fixtures only.
+**Disposition:** IWSLT 2017 Japanese training data is included by owner decision
+while public derived-output permission remains unresolved. WIT³ remains excluded.
 
 TED accounts for 224,898 of 226,328 legacy source rows but only 233,222
 sentences: the loader created approximately one pseudo-source per subtitle
 segment. It also accounts for 443,875 of 924,763 legacy collocations. Carrying
 those rows into schema v1 would preserve neither the intended document-level
-source model nor efficient source joins. The planned public release therefore
-contains JNLP and Wikipedia. Its corpus selector and per-million mean operate
-over those two corpora; TED is not silently treated as a pending third public
-corpus.
+source model nor efficient source joins. The new adapter corrects the model:
+one talk is a `SourceDocument`, subtitle rows are ordered text units, and the
+stable upstream talk ID is `external_id`.
 
 The 2014–2016 WIT³ archive and 2017 Japanese-English training archive have
 immutable revisions, sizes, and SHA-256 values in the source lock. A local
 adapter can use `tarfile`, `zipfile`, and XML/text parsing without executing the
 upstream Python loaders. For IWSLT 2017, stripping whitespace and tag lines from
 `train.tags.ja-en.ja` produces 223,108 Japanese rows, matching upstream dataset
-metadata. The 1.67 GB WIT³ archive has not yet been locally downloaded and its
-representative extraction remains unverified.
+metadata. A format spike found 1,802 talk IDs shared by the two archives: only
+199 WIT³ IDs were absent from IWSLT 2017, while only 61 IWSLT 2017 IDs were
+absent from WIT³. WIT³ contains 548,678 caption-timed fragments rather than the
+223,108 sentence-aligned IWSLT training rows. Merging both would double count
+talks and freeze caption fragments as sentence boundaries, so production uses
+IWSLT 2017 only.
 
 Reacquisition cannot recreate the legacy source identities. The existing loader
 falls back to `hash(example["translation"]["en"])`; Python hash randomization
 makes those IDs process-specific. Reacquired sentence content can be compared,
-but identity preservation requires conversion from the backed-up legacy seed or
-a legacy-backed mapping. If TED is licensed and deliberately reintroduced, its
-adapter must model a talk as `SourceDocument`, subtitle segments as ordered text
-units/sentences, and the stable upstream talk ID as `external_id`. That is an
-explicit granularity and identity correction, not a legacy-preserving rebuild.
+but legacy identity preservation would require a mapping. The owner has chosen
+stable upstream talk identities instead; randomized legacy IDs are not a release
+requirement. This is an intentional identity correction, not a legacy-preserving
+rebuild.
 
 Publication permission is unresolved. The 2017 archive names TED copyright and
 CC BY-NC-ND 3.0; upstream WIT³ metadata conflicts between BY-NC and BY-NC-ND.
@@ -145,28 +148,20 @@ does not permit distribution of adapted material. TED's current
 also say that educational use does not include external research datasets and
 that dataset/analysis/ML uses require a separate written license. Whether an
 earlier grant controls these archived inputs needs qualified review or written
-TED permission. Until then no public or locally distributed artifact may include
-TED-derived data; tests use synthetic TED-shaped fixtures only.
-
-The unverified 1.67 GB WIT³ representative extraction and a legacy identity
-mapping are unfinished engineering, not owner inputs. They are removed from the
-critical path by the two-corpus product decision. Both become mandatory before
-any future decision to reintroduce TED.
+TED permission. The owner accepts this unresolved status for the planned release;
+the project asserts no TED license grant, preserves the evidence in the source
+lock and notices, and provides a correction/takedown contact. This is not legal
+clearance.
 
 ## Gate conclusion
 
-Gate 3A passes for the planned JNLP + Wikipedia public release. Both corpora have
-data-only acquisition paths, locally demonstrated adapters, recorded source and
-license evidence, and explicit product dispositions. Exact reproduction of an
-older source/tool combination is not required: source bytes, adapter policy, and
-tool versions are recorded per artifact so an intentional change creates a new
-build rather than invalidating the pipeline.
-
-### Conditional TED work
-
-TED is not a dependency of the planned release. Reintroducing it would require
-qualified license review or written permission, the 1.67 GB WIT³ extraction,
-and talk-level identity reconciliation.
+Gate 3A records a three-corpus JNLP + TED + Wikipedia release with immutable,
+data-only acquisition paths and explicit product dispositions. TED permission
+remains unresolved and is accepted by owner decision, so the gate status is
+`owner-accepted-unresolved-permission`, not legal clearance. Exact reproduction
+of an older source/tool combination is not required: source bytes, adapter
+policy, and tool versions are recorded per artifact so an intentional change
+creates a new build rather than invalidating the pipeline.
 
 The builder verifies the lock and frozen Wikipedia subset before loading NLP
 models. The required content-license and attribution files now live in

@@ -174,6 +174,9 @@ test('shows corpus attribution, license, and contact information', async ({ page
 	const footer = page.getByRole('contentinfo');
 	await expect(footer.getByText('Japanese Wikipedia')).toBeVisible();
 	await expect(footer.getByText('Journal of Natural Language Processing')).toBeVisible();
+	await expect(footer.getByText('TED Talks')).toBeVisible();
+	await expect(footer.getByText('no license grant is asserted', { exact: false })).toBeVisible();
+	await expect(footer.getByText('No single license applies', { exact: false })).toBeVisible();
 	await expect(footer.getByRole('link', { name: 'CC BY-SA 4.0' })).toHaveAttribute(
 		'href',
 		'https://creativecommons.org/licenses/by-sa/4.0/'

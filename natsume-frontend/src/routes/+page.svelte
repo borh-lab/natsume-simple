@@ -77,7 +77,9 @@
 			(<a class="underline" href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>) and
 			<a class="underline" href="https://ja.wikipedia.org/">Japanese Wikipedia</a>
 			(<a class="underline" href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a
-			>).
+			>), and <a class="underline" href="https://www.ted.com/">TED Talks</a>. For TED-derived
+			content, no license grant is asserted; inclusion is an owner decision while permission remains
+			unresolved. No single license applies to the corpus collection.
 		</p>
 		<p>
 			For attribution details, corrections, or takedown requests, see the corpus notices or
