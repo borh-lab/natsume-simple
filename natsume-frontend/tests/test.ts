@@ -1,5 +1,37 @@
 import { expect, test } from '@playwright/test';
 
+async function expectSpreadsheet(
+	page: import('@playwright/test').Page,
+	width: number,
+	expectOverflow: boolean
+) {
+	await page.setViewportSize({ width, height: 844 });
+	await page.goto('/');
+	await page.getByRole('combobox', { name: 'Search term' }).fill('情報');
+	await page.getByRole('button', { name: 'Go' }).click();
+	const region = page.getByRole('region', { name: 'Particle collocations' });
+	await expect(region).toBeVisible();
+	const dimensions = await region.evaluate((element) => ({
+		clientWidth: element.clientWidth,
+		scrollWidth: element.scrollWidth
+	}));
+	if (expectOverflow) {
+		expect(dimensions.scrollWidth).toBeGreaterThan(dimensions.clientWidth);
+	}
+	const columns = region.getByTestId('particle-column');
+	expect(await columns.count()).toBeGreaterThan(1);
+	for (const column of await columns.all()) {
+		expect(await column.evaluate((element) => getComputedStyle(element).width)).toBe('320px');
+	}
+	if (expectOverflow) {
+		await region.focus();
+		await page.keyboard.press('ArrowRight');
+		await expect.poll(() => region.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
+		await page.keyboard.press('End');
+		await expect.poll(() => region.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
+	}
+}
+
 test('searches, filters, reranks, and safely expands examples', async ({ page }) => {
 	await page.goto('/');
 	await expect(page.getByRole('button', { name: 'Go' })).toBeEnabled();
@@ -106,6 +138,11 @@ test('opens suggestions only while focus remains in the search widget', async ({
 	await expect(search).toHaveAttribute('aria-expanded', 'true');
 	await page.getByRole('heading', { name: 'Natsume Simple' }).focus();
 	await expect(search).toHaveAttribute('aria-expanded', 'false');
+});
+
+test('renders a keyboard-scrollable particle spreadsheet', async ({ page }) => {
+	await expectSpreadsheet(page, 375, true);
+	await expectSpreadsheet(page, 1280, false);
 });
 
 test('reuses the primary controls on a mobile viewport', async ({ page }) => {

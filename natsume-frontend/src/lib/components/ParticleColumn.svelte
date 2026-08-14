@@ -20,7 +20,10 @@
 	} = $props();
 </script>
 
-<section class="min-w-64 rounded border p-3 dark:border-gray-700">
+<section
+	class="w-80 shrink-0 border-r px-3 py-2 last:border-r-0 dark:border-gray-700"
+	data-testid="particle-column"
+>
 	<h2 class="text-xl font-bold">{group.particle}</h2>
 	<p class="text-xs text-gray-500">{group.returnedCount} of {group.totalMatchingCollocations}</p>
 	{#each group.items as item (JSON.stringify( [selectedCorpusIds, item.noun, item.particle, item.verb] ))}
