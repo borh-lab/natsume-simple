@@ -76,7 +76,7 @@
 			<p class="text-red-700 dark:text-red-300">Examples could not be loaded.</p>
 		{:else}
 			<ul class="space-y-2">
-				{#each examples as example}
+				{#each examples as example, exampleIndex (exampleIndex)}
 					<li class="rounded bg-gray-100 p-2 dark:bg-gray-800">
 						<strong>{example.sourceTitle}:</strong>
 						{#each sentenceSegments( example.text, [{ ...example.nounSpan, type: 'noun' }, { ...example.particleSpan, type: 'particle' }, { ...example.verbSpan, type: 'verb' }] ) as segment, index (index)}
