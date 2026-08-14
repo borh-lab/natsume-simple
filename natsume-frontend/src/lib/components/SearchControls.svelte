@@ -18,6 +18,7 @@
 	let suggestions = $state<Suggestion[]>([]);
 	let open = $state(false);
 	let active = $state(-1);
+	let focusedWithin = $state(false);
 
 	$effect(() => {
 		const query = term.trim();
@@ -30,7 +31,7 @@
 		const timer = setTimeout(async () => {
 			try {
 				suggestions = await findSuggestions(query, position);
-				open = suggestions.length > 0;
+				open = focusedWithin && suggestions.length > 0;
 				active = -1;
 			} catch {
 				suggestions = [];
@@ -44,6 +45,14 @@
 		term = suggestion.lemma;
 		open = false;
 		onsubmit();
+	}
+
+	function focusout(event: FocusEvent & { currentTarget: HTMLFormElement }) {
+		const next = event.relatedTarget;
+		if (!(next instanceof Node) || !event.currentTarget.contains(next)) {
+			focusedWithin = false;
+			open = false;
+		}
 	}
 
 	function keydown(event: KeyboardEvent) {
@@ -65,6 +74,8 @@
 
 <form
 	class="flex flex-wrap items-center gap-2"
+	onfocusin={() => (focusedWithin = true)}
+	onfocusout={focusout}
 	onsubmit={(event) => {
 		event.preventDefault();
 		open = false;
@@ -101,7 +112,7 @@
 			<ul
 				id="search-suggestions"
 				role="listbox"
-				class="absolute z-20 mt-1 min-w-full rounded border bg-white shadow dark:border-gray-600 dark:bg-gray-800"
+				class="absolute z-20 mt-1 max-h-64 min-w-full overflow-y-auto rounded border bg-white shadow dark:border-gray-600 dark:bg-gray-800"
 			>
 				{#each suggestions as suggestion, index (`${suggestion.pos}-${suggestion.lemma}`)}
 					<li

@@ -84,6 +84,30 @@ test('supports both query directions and theme control', async ({ page }) => {
 	expect(shortPage.bodyHeight).toBeGreaterThanOrEqual(shortPage.viewportHeight);
 });
 
+test('opens suggestions only while focus remains in the search widget', async ({ page }) => {
+	await page.goto('/');
+	const search = page.getByRole('combobox', { name: 'Search term' });
+	await expect(search).toHaveValue('時間');
+	await search.fill('情報');
+	await page.getByRole('heading', { name: 'Natsume Simple' }).focus();
+	await page.waitForTimeout(350);
+	await expect(search).toHaveAttribute('aria-expanded', 'false');
+
+	await search.focus();
+	await expect(search).toHaveAttribute('aria-expanded', 'true');
+	const suggestion = page.locator('[role="option"] button').first();
+	const label = await suggestion.textContent();
+	await suggestion.click();
+	await expect(search).toHaveValue(label?.trim() ?? '');
+	await expect(search).toHaveAttribute('aria-expanded', 'false');
+
+	await search.fill('情');
+	await page.waitForTimeout(350);
+	await expect(search).toHaveAttribute('aria-expanded', 'true');
+	await page.getByRole('heading', { name: 'Natsume Simple' }).focus();
+	await expect(search).toHaveAttribute('aria-expanded', 'false');
+});
+
 test('reuses the primary controls on a mobile viewport', async ({ page }) => {
 	await page.setViewportSize({ width: 390, height: 844 });
 	await page.goto('/');
