@@ -392,9 +392,7 @@ def test_collocations_page_one_particle_without_overlap(tmp_path: Path):
 
     first_group = first.json()["particleGroups"][0]
     second_group = second.json()["particleGroups"][0]
-    assert [group["particle"] for group in first.json()["particleGroups"]] == [
-        "を"
-    ]
+    assert [group["particle"] for group in first.json()["particleGroups"]] == ["を"]
     assert first_group["totalMatchingCollocations"] == 2
     assert second_group["totalMatchingCollocations"] == 2
     assert first_group["corpusDistribution"] == second_group["corpusDistribution"]

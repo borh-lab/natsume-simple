@@ -487,9 +487,9 @@ def create_app(artifact_dir: Path, *, frontend_dir: Path | None = None) -> FastA
 
         by_triple: dict[tuple[str, str, str], dict[str, int]] = {}
         for corpus_id, noun, row_particle, verb, raw_frequency in rows:
-            by_triple.setdefault((noun, row_particle, verb), {})[
-                corpus_id
-            ] = raw_frequency
+            by_triple.setdefault((noun, row_particle, verb), {})[corpus_id] = (
+                raw_frequency
+            )
 
         by_particle: dict[str, list[CollocationItemResponse]] = {}
         for (noun, item_particle, verb), raw_by_corpus in by_triple.items():
