@@ -77,7 +77,15 @@
 			</svg>
 			<span class="min-w-0 truncate">{pos === 'noun' ? item.verb : item.noun}</span>
 		</summary>
-		<SentenceExamples {client} {item} {selectedCorpusIds} {databaseBuildId} {expanded} />
+		<SentenceExamples
+			{client}
+			{item}
+			{corpora}
+			{colorSlots}
+			{selectedCorpusIds}
+			{databaseBuildId}
+			{expanded}
+		/>
 	</details>
 </div>
 

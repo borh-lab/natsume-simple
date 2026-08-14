@@ -62,6 +62,57 @@ test('searches, filters, rescales, and safely expands examples', async ({ page }
 	await expect(
 		disclosure.locator('li').filter({ hasText: '情報を集める。情報を集める。' })
 	).toHaveCount(2);
+	const alphaExample = disclosure
+		.locator('[data-testid="example-row"][data-corpus-id="alpha"]')
+		.first();
+	const betaExample = disclosure
+		.locator('[data-testid="example-row"][data-corpus-id="beta"]')
+		.first();
+	await expect(alphaExample.getByTestId('example-source')).toContainText('Alpha · Alpha one:');
+	await expect(betaExample.getByTestId('example-source')).toContainText('Beta · Beta one:');
+	await expect(alphaExample.getByTestId('example-source')).toHaveClass(/text-violet-700/);
+	await expect(betaExample.getByTestId('example-source')).toHaveClass(/text-orange-700/);
+	const alphaColors = await Promise.all([
+		alphaExample.evaluate((element) => getComputedStyle(element).borderLeftColor),
+		page
+			.locator('[data-testid="bar-segment"][data-corpus-id="alpha"]')
+			.first()
+			.evaluate((element) => getComputedStyle(element).fill),
+		page
+			.locator('[data-testid="particle-mass"] [data-corpus-id="alpha"]')
+			.first()
+			.evaluate((element) => getComputedStyle(element).backgroundColor),
+		page
+			.locator('[data-testid="corpus-swatch"][data-corpus-id="alpha"]')
+			.evaluate((element) => getComputedStyle(element).backgroundColor)
+	]);
+	expect(new Set(alphaColors)).toEqual(new Set([alphaColors[0]]));
+	expect(
+		await betaExample
+			.getByTestId('example-source')
+			.evaluate((element) => getComputedStyle(element).color)
+	).not.toBe(
+		await alphaExample
+			.getByTestId('example-source')
+			.evaluate((element) => getComputedStyle(element).color)
+	);
+	for (const [role, className] of [
+		['noun', '.text-blue-600'],
+		['particle', '.text-red-600'],
+		['verb', '.text-green-600']
+	] as const) {
+		const selectorColor = await page
+			.getByRole('group', { name: 'Search direction' })
+			.locator(`[data-role="${role}"]`)
+			.first()
+			.evaluate((element) => getComputedStyle(element).color);
+		const sentenceColor = await disclosure
+			.locator(className)
+			.first()
+			.evaluate((element) => getComputedStyle(element).color);
+		expect(selectorColor).toBe(sentenceColor);
+		expect(alphaColors).not.toContain(selectorColor);
+	}
 	await expect(page.getByText('Loading examples…')).toHaveCount(0);
 	await expect(page.locator('img[src="x"]')).toHaveCount(0);
 	const disclosureBox = await disclosure.boundingBox();
@@ -90,6 +141,14 @@ test('searches, filters, rescales, and safely expands examples', async ({ page }
 	await page.locator('#corpus-alpha').uncheck();
 	await expect(page.locator('#corpus-alpha')).not.toBeChecked();
 	await expect(page.locator('summary').filter({ hasText: '集める' })).toBeVisible();
+	const singleCorpusDisclosure = page.locator('details').filter({ hasText: '集める' }).first();
+	await singleCorpusDisclosure.locator('summary').click();
+	await expect(singleCorpusDisclosure.getByTestId('example-source').first()).toContainText(
+		'Beta one:'
+	);
+	await expect(singleCorpusDisclosure.getByTestId('example-source').first()).not.toContainText(
+		'Beta ·'
+	);
 });
 
 test('loads more examples without hiding the accepted page', async ({ page }) => {

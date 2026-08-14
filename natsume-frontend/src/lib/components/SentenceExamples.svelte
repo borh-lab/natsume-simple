@@ -1,22 +1,30 @@
 <script lang="ts">
 	import type { ApiClient } from '$lib/api/client';
-	import type { CollocationItem, Example } from '$lib/api/types';
+	import type { CollocationItem, Corpus, Example } from '$lib/api/types';
+	import { corpusStyleForSlot } from '$lib/presentation/colors';
 	import { responseMatchesResult } from '$lib/search/controller.svelte';
 	import { sentenceSegments } from '$lib/sentence';
 
 	let {
 		client,
 		item,
+		corpora,
+		colorSlots,
 		selectedCorpusIds,
 		databaseBuildId,
 		expanded
 	}: {
 		client: ApiClient;
 		item: CollocationItem;
+		corpora: Corpus[];
+		colorSlots: Record<string, number>;
 		selectedCorpusIds: string[];
 		databaseBuildId: string;
 		expanded: boolean;
 	} = $props();
+	const corpusLabels = $derived(
+		Object.fromEntries(corpora.map((corpus) => [corpus.id, corpus.label]))
+	);
 	let status = $state<
 		'idle' | 'loading' | 'success' | 'empty' | 'request-error' | 'identity-error'
 	>('idle');
@@ -74,10 +82,19 @@
 	{:else}
 		{#if examples.length > 0}
 			<p class="mb-1 text-xs text-gray-500">{examples.length} examples shown</p>
-			<ul class="space-y-2">
+			<ul class="divide-y divide-gray-200 dark:divide-gray-700">
 				{#each examples as example, exampleIndex (exampleIndex)}
-					<li class="rounded bg-gray-100 p-2 dark:bg-gray-800">
-						<strong>{example.sourceTitle}:</strong>
+					{@const corpusStyle = corpusStyleForSlot(colorSlots[example.corpusId])}
+					<li
+						class="border-l-2 py-1 pl-1"
+						style:border-left-color={corpusStyle.color}
+						data-testid="example-row"
+						data-corpus-id={example.corpusId}
+					>
+						<strong class={corpusStyle.titleClass} data-testid="example-source"
+							>{#if selectedCorpusIds.length > 1}{corpusLabels[example.corpusId] ??
+									example.corpusId}{' · '}{/if}{example.sourceTitle}:</strong
+						>
 						{#each sentenceSegments( example.text, [{ ...example.nounSpan, type: 'noun' }, { ...example.particleSpan, type: 'particle' }, { ...example.verbSpan, type: 'verb' }] ) as segment, index (index)}
 							{#if segment.className}<span class={segment.className}>{segment.text}</span
 								>{:else}{segment.text}{/if}
