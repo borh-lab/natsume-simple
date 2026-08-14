@@ -263,6 +263,7 @@ def test_build_records_release_sources_and_sentence_policy(monkeypatch, tmp_path
     assert torch_thread_counts == [8]
     assert identity["executionProfile"]["torchThreads"] == 8
     assert identity["sentenceFilter"] == {"name": "is_japanese", "minLength": 5}
+    assert identity["sourceContentHash"] == "natsume-source-content-v1"
     assert identity["sentenceSplitter"]["modelSha256"] == builder_cli.path_sha256(model)
     assert identity["sourceFiles"] == [
         {

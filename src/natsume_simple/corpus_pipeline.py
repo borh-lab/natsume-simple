@@ -22,6 +22,7 @@ from natsume_simple.artifact_builder import (
 from natsume_simple.pattern_extraction import npv_matcher
 
 logger = logging.getLogger(__name__)
+SOURCE_CONTENT_HASH = "natsume-source-content-v1"
 
 
 class PipelineRejected(ValueError):
@@ -126,7 +127,7 @@ def adapt_jnlp_directory(
                 publisher="自然言語処理",
                 url=_optional_text(row["J-Stageにおける論文URL"]),
                 text_units=(text,),
-                content_sha256=_text_sha256(text),
+                content_sha256=source_content_sha256((text,)),
             )
         )
 
@@ -180,7 +181,7 @@ def adapt_wikipedia_parquet(
                 publisher="Wikimedia Foundation",
                 url=_optional_text(row["url"]),
                 text_units=(text,),
-                content_sha256=_text_sha256(text),
+                content_sha256=source_content_sha256((text,)),
             )
         )
 
@@ -344,5 +345,11 @@ def _optional_text(value: object) -> str | None:
     return text or None
 
 
-def _text_sha256(text: str) -> str:
-    return hashlib.sha256(text.encode()).hexdigest()
+def source_content_sha256(text_units: tuple[str, ...]) -> str:
+    """Hash ordered source text units with unambiguous byte framing."""
+    digest = hashlib.sha256(SOURCE_CONTENT_HASH.encode("ascii") + b"\0")
+    for text_unit in text_units:
+        encoded = text_unit.encode("utf-8")
+        digest.update(len(encoded).to_bytes(8, "big", signed=False))
+        digest.update(encoded)
+    return digest.hexdigest()

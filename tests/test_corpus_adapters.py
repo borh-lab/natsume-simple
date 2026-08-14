@@ -17,8 +17,18 @@ from natsume_simple.corpus_pipeline import (
     extract_collocations,
     prepare_jnlp_archive,
     segment_documents,
+    source_content_sha256,
 )
 from tests.token_observations import EXTRACTION_OBSERVATIONS, observed_doc
+
+
+def test_source_content_hash_frames_ordered_utf8_units():
+    assert source_content_sha256(("一行目。", "二行目。")) == (
+        "2ed1b83c19688e8f8a24142f973ff992face1c71641953875b40cb54b3583a5f"
+    )
+    assert source_content_sha256(("一行目。二行目。",)) != source_content_sha256(
+        ("一行目。", "二行目。")
+    )
 
 
 def test_jnlp_archive_preparation_uses_declared_converters(tmp_path: Path, monkeypatch):
@@ -92,7 +102,7 @@ def test_jnlp_adapter_reads_metadata_and_counts_missing_plaintext(tmp_path: Path
     assert document.text_units == ("教材を読む。",)
     assert (
         document.content_sha256
-        == "695e4d689ecfc01c37ca9ca8ec1aa386a386cebcde04bfec5fdb9d3daa93747e"
+        == "f0510a814ea358642b12f3490a1504b8b7583198a6d03c749aaba0e54d070131"
     )
 
 
@@ -120,7 +130,7 @@ def test_wikipedia_adapter_reads_only_selected_articles_in_identity_order(
     assert result.documents[0].text_units == ("第一文。第二文。",)
     assert (
         result.documents[0].content_sha256
-        == "ff2f1c663b5c075a8459ea9e9a82eec69b8872d64bcd93a2f3f9f47784d0cb9e"
+        == "8d6f8d6e7fbfc4a27e54b52f0c1707214ca66d343eb62ce739617b5af6589e42"
     )
 
 

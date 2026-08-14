@@ -131,6 +131,7 @@ def _build(args: argparse.Namespace) -> Path:
 
     from natsume_simple.artifact_builder import BuildMetadata, CorpusRecord
     from natsume_simple.corpus_pipeline import (
+        SOURCE_CONTENT_HASH,
         RejectionLimits,
         adapt_jnlp_directory,
         adapt_wikipedia_parquet,
@@ -205,6 +206,7 @@ def _build(args: argparse.Namespace) -> Path:
                     "NATSUME_BUILDER_REVISION", f"natsume-simple-{package_version}"
                 ),
                 "sourceAdapters": [adaptation.corpus_id for adaptation in adaptations],
+                "sourceContentHash": SOURCE_CONTENT_HASH,
                 "sourceFiles": (
                     [
                         {
