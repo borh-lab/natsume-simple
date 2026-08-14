@@ -325,6 +325,58 @@ test('loads more collocations in only the selected particle column', async ({ pa
 	expect(await overview.evaluate((element) => element.scrollLeft)).toBe(scrollLeft);
 });
 
+test('distinguishes expandable rows in light and dark mode', async ({ page }) => {
+	await page.goto('/');
+	await expect(page.getByRole('button', { name: 'Go' })).toBeEnabled();
+	await page.getByRole('combobox', { name: 'Search term' }).fill('情報');
+	await page.getByRole('button', { name: 'Update results' }).click();
+	const column = page.getByTestId('particle-column').filter({
+		has: page.getByRole('heading', { name: 'を', exact: true })
+	});
+	const details = column.locator('details');
+	await expect.poll(() => details.count()).toBeGreaterThan(1);
+	const firstSummary = details.nth(0).locator('summary');
+	const secondSummary = details.nth(1).locator('summary');
+	const chevron = firstSummary.locator('[aria-hidden="true"]');
+	await expect(chevron).toBeVisible();
+	const collapsedTransform = await chevron.evaluate(
+		(element) => getComputedStyle(element).transform
+	);
+	const collapsedBackground = await firstSummary.evaluate(
+		(element) => getComputedStyle(element).backgroundColor
+	);
+	const secondLabel = await secondSummary.locator('span').last().innerText();
+	expect(
+		await details.nth(0).evaluate((element) => {
+			const next = element.parentElement?.nextElementSibling?.querySelector('summary');
+			return next?.querySelector('span:last-child')?.textContent?.trim();
+		})
+	).toBe(secondLabel.trim());
+
+	await firstSummary.click();
+	await expect(details.nth(0)).toHaveAttribute('open', '');
+	const openBackground = await firstSummary.evaluate(
+		(element) => getComputedStyle(element).backgroundColor
+	);
+	expect(openBackground).not.toBe(collapsedBackground);
+	await expect
+		.poll(() => chevron.evaluate((element) => getComputedStyle(element).transform))
+		.not.toBe(collapsedTransform);
+
+	await page.getByRole('button', { name: 'Toggle dark mode' }).click();
+	const darkOpenBackground = await firstSummary.evaluate(
+		(element) => getComputedStyle(element).backgroundColor
+	);
+	const darkCollapsedBackground = await secondSummary.evaluate(
+		(element) => getComputedStyle(element).backgroundColor
+	);
+	expect(darkOpenBackground).not.toBe(darkCollapsedBackground);
+	await secondSummary.focus();
+	expect(
+		await secondSummary.evaluate((element) => getComputedStyle(element).outlineStyle)
+	).not.toBe('none');
+});
+
 test('supports both query directions and theme control', async ({ page }) => {
 	await page.goto('/');
 	await expect(page.getByRole('button', { name: 'Go' })).toBeEnabled();

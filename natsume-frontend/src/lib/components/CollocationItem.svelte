@@ -35,10 +35,14 @@
 </script>
 
 <div class="py-1">
-	<details class="w-full min-w-0" ontoggle={(event) => (expanded = event.currentTarget.open)}>
+	<details
+		class="group w-full min-w-0 [&>summary::-webkit-details-marker]:hidden [&>summary]:list-none"
+		ontoggle={(event) => (expanded = event.currentTarget.open)}
+	>
 		<summary
-			class="grid cursor-pointer grid-cols-[minmax(6rem,2fr)_minmax(0,3fr)] items-center gap-2 font-medium"
+			class="grid w-full cursor-pointer grid-cols-[auto_minmax(6rem,2fr)_minmax(0,3fr)] items-center gap-2 rounded border border-gray-200 bg-gray-50 p-2 font-medium hover:bg-blue-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 group-open:border-blue-300 group-open:bg-blue-100 dark:border-gray-700 dark:bg-gray-900 dark:hover:bg-blue-950 dark:group-open:border-blue-700 dark:group-open:bg-blue-950"
 		>
+			<span aria-hidden="true" class="disclosure-chevron inline-block transition-transform">▶</span>
 			<svg
 				viewBox="0 0 100 16"
 				preserveAspectRatio="none"
@@ -74,3 +78,9 @@
 		<SentenceExamples {client} {item} {selectedCorpusIds} {databaseBuildId} {expanded} />
 	</details>
 </div>
+
+<style>
+	details[open] .disclosure-chevron {
+		transform: rotate(90deg);
+	}
+</style>
