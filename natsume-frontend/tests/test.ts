@@ -371,7 +371,10 @@ test('distinguishes expandable rows in light and dark mode', async ({ page }) =>
 		(element) => getComputedStyle(element).backgroundColor
 	);
 	expect(darkOpenBackground).not.toBe(darkCollapsedBackground);
-	await secondSummary.focus();
+	await firstSummary.click();
+	await firstSummary.focus();
+	await page.keyboard.press('Tab');
+	await expect(secondSummary).toBeFocused();
 	expect(
 		await secondSummary.evaluate((element) => getComputedStyle(element).outlineStyle)
 	).not.toBe('none');
