@@ -51,10 +51,8 @@ def test_request_family_is_fixed_and_repeats_corpus_ids() -> None:
 
     assert [endpoint.name for endpoint in endpoints] == [
         "suggestions-noun",
-        "collocations-noun-raw",
-        "collocations-noun-mean-per-million",
-        "collocations-verb-raw",
-        "collocations-verb-mean-per-million",
+        "collocations-noun",
+        "collocations-verb",
         "examples",
     ]
     queries = {
@@ -68,10 +66,9 @@ def test_request_family_is_fixed_and_repeats_corpus_ids() -> None:
     for name, query in queries.items():
         if name != "suggestions-noun":
             assert query["corpusId"] == ["jnlp", "wiki"]
-    assert queries["collocations-noun-raw"]["rankBy"] == ["raw"]
-    assert queries["collocations-noun-mean-per-million"]["rankBy"] == ["meanPerMillion"]
-    assert queries["collocations-verb-raw"]["pos"] == ["verb"]
-    assert queries["collocations-verb-raw"]["term"] == ["行う"]
+    assert "rankBy" not in queries["collocations-noun"]
+    assert queries["collocations-verb"]["pos"] == ["verb"]
+    assert queries["collocations-verb"]["term"] == ["行う"]
     assert queries["examples"]["limit"] == ["5"]
 
 

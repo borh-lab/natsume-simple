@@ -1,10 +1,4 @@
-import type {
-	CollocationsResponse,
-	CorporaResponse,
-	Corpus,
-	RankBy,
-	SearchPosition
-} from '$lib/api/types';
+import type { CollocationsResponse, CorporaResponse, Corpus, SearchPosition } from '$lib/api/types';
 
 export type SearchApi = {
 	getCorpora(signal?: AbortSignal): Promise<CorporaResponse>;
@@ -13,7 +7,6 @@ export type SearchApi = {
 			term: string;
 			pos: SearchPosition;
 			corpusIds: string[];
-			rankBy: RankBy;
 		},
 		signal?: AbortSignal
 	): Promise<CollocationsResponse>;
@@ -26,7 +19,6 @@ export class SearchController {
 	pos = $state<SearchPosition>('noun');
 	corpora = $state<Corpus[]>([]);
 	selectedCorpusIds = $state<string[]>([]);
-	rankBy = $state<RankBy>('meanPerMillion');
 	status = $state<SearchStatus>('idle');
 	result = $state<CollocationsResponse | null>(null);
 	errorMessage = $state<string | null>(null);
@@ -64,15 +56,13 @@ export class SearchController {
 				{
 					term: this.term.trim(),
 					pos: this.pos,
-					corpusIds: this.selectedCorpusIds,
-					rankBy: this.rankBy
+					corpusIds: this.selectedCorpusIds
 				},
 				request.signal
 			);
 			if (generation !== this.generation) return;
 			this.result = result;
 			this.selectedCorpusIds = result.selectedCorpusIds;
-			this.rankBy = result.rankBy;
 			this.resultIsStale = false;
 			this.status = result.particleGroups.some((group) => group.items.length > 0)
 				? 'success'
@@ -94,12 +84,6 @@ export class SearchController {
 				.map((corpus) => corpus.id)
 				.filter((id) => id === corpusId || this.selectedCorpusIds.includes(id));
 		}
-		await this.submit();
-	}
-
-	async selectRank(rankBy: RankBy): Promise<void> {
-		if (rankBy === this.rankBy) return;
-		this.rankBy = rankBy;
 		await this.submit();
 	}
 }

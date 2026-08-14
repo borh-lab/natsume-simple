@@ -42,10 +42,10 @@ def _url(base_url: str, path: str, parameters: list[tuple[str, str]]) -> str:
 def build_request_family(
     base_url: str, corpus_ids: tuple[str, ...]
 ) -> tuple[BenchmarkEndpoint, ...]:
-    """Build the six stable requests used to compare immutable artifacts."""
+    """Build the four stable requests used to compare immutable artifacts."""
     corpora = [("corpusId", corpus_id) for corpus_id in corpus_ids]
 
-    def collocations(pos: str, rank_by: str) -> str:
+    def collocations(pos: str) -> str:
         term = "情報" if pos == "noun" else "行う"
         return _url(
             base_url,
@@ -53,7 +53,6 @@ def build_request_family(
             [
                 ("term", term),
                 ("pos", pos),
-                ("rankBy", rank_by),
                 ("limitPerParticle", "100"),
                 *corpora,
             ],
@@ -68,16 +67,8 @@ def build_request_family(
                 [("q", "情報"), ("pos", "noun"), ("limit", "10")],
             ),
         ),
-        BenchmarkEndpoint("collocations-noun-raw", collocations("noun", "raw")),
-        BenchmarkEndpoint(
-            "collocations-noun-mean-per-million",
-            collocations("noun", "meanPerMillion"),
-        ),
-        BenchmarkEndpoint("collocations-verb-raw", collocations("verb", "raw")),
-        BenchmarkEndpoint(
-            "collocations-verb-mean-per-million",
-            collocations("verb", "meanPerMillion"),
-        ),
+        BenchmarkEndpoint("collocations-noun", collocations("noun")),
+        BenchmarkEndpoint("collocations-verb", collocations("verb")),
         BenchmarkEndpoint(
             "examples",
             _url(

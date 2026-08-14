@@ -94,7 +94,6 @@ class ParticleGroupResponse(BaseModel):
 class CollocationsResponse(BaseModel):
     particleGroups: list[ParticleGroupResponse]
     selectedCorpusIds: list[str]
-    rankBy: Literal["raw", "meanPerMillion"]
     databaseBuildId: str
 
 
@@ -284,7 +283,6 @@ def create_app(artifact_dir: Path, *, frontend_dir: Path | None = None) -> FastA
         )
         request.state.result_count = None
         request.state.corpus_ids = []
-        request.state.rank_by = None
         request.state.query_length_bucket = None
         status = 500
         try:
@@ -305,7 +303,6 @@ def create_app(artifact_dir: Path, *, frontend_dir: Path | None = None) -> FastA
                         "databaseBuildId": request.app.state.database_build_id,
                         "resultCount": request.state.result_count,
                         "corpusIds": request.state.corpus_ids,
-                        "rankBy": request.state.rank_by,
                         "queryLengthBucket": request.state.query_length_bucket,
                     },
                     ensure_ascii=False,
@@ -432,11 +429,9 @@ def create_app(artifact_dir: Path, *, frontend_dir: Path | None = None) -> FastA
         connection: DatabaseConnection,
         term: Annotated[str, Query(min_length=1, max_length=64)],
         pos: Literal["noun", "verb"],
-        rankBy: Literal["raw", "meanPerMillion"],
         corpusId: Annotated[list[str] | None, Query()] = None,
         limitPerParticle: Annotated[int, Query(ge=1, le=200)] = 100,
     ) -> CollocationsResponse:
-        request.state.rank_by = rankBy
         request.state.query_length_bucket = query_length_bucket(term)
 
         def load_rows():
@@ -507,26 +502,15 @@ def create_app(artifact_dir: Path, *, frontend_dir: Path | None = None) -> FastA
             items = by_particle.get(particle, [])
             if not items:
                 continue
-            if rankBy == "raw":
-                items.sort(
-                    key=lambda item: (
-                        -item.totalRawFrequency,
-                        -item.meanFrequencyPerMillion,
-                        item.noun,
-                        item.particle,
-                        item.verb,
-                    )
+            items.sort(
+                key=lambda item: (
+                    -item.meanFrequencyPerMillion,
+                    -item.totalRawFrequency,
+                    item.noun,
+                    item.particle,
+                    item.verb,
                 )
-            else:
-                items.sort(
-                    key=lambda item: (
-                        -item.meanFrequencyPerMillion,
-                        -item.totalRawFrequency,
-                        item.noun,
-                        item.particle,
-                        item.verb,
-                    )
-                )
+            )
             distribution = []
             for corpus_id in selected:
                 raw_frequency = sum(
@@ -562,7 +546,6 @@ def create_app(artifact_dir: Path, *, frontend_dir: Path | None = None) -> FastA
         return CollocationsResponse(
             particleGroups=particle_groups,
             selectedCorpusIds=selected,
-            rankBy=rankBy,
             databaseBuildId=request.app.state.database_build_id,
         )
 

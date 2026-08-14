@@ -13,18 +13,24 @@ async function expectSpreadsheet(page: import('@playwright/test').Page, width: n
 		clientWidth: element.clientWidth,
 		scrollWidth: element.scrollWidth
 	}));
-	expect(dimensions.scrollWidth).toBeGreaterThan(dimensions.clientWidth);
+	const shouldOverflow = width < 2560;
+	if (shouldOverflow) expect(dimensions.scrollWidth).toBeGreaterThan(dimensions.clientWidth);
+	else expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth + 1);
 	for (const column of await columns.all()) {
-		expect(await column.evaluate((element) => getComputedStyle(element).width)).toBe('320px');
+		const columnWidth = await column.evaluate((element) => element.getBoundingClientRect().width);
+		expect(columnWidth).toBeGreaterThanOrEqual(320);
+		if (!shouldOverflow) expect(columnWidth).toBeGreaterThan(320);
 	}
-	await region.focus();
-	await page.keyboard.press('ArrowRight');
-	await expect.poll(() => region.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
-	await page.keyboard.press('End');
-	await expect.poll(() => region.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
+	if (shouldOverflow) {
+		await region.focus();
+		await page.keyboard.press('ArrowRight');
+		await expect.poll(() => region.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
+		await page.keyboard.press('End');
+		await expect.poll(() => region.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
+	}
 }
 
-test('searches, filters, reranks, and safely expands examples', async ({ page }) => {
+test('searches, filters, rescales, and safely expands examples', async ({ page }) => {
 	const pageErrors: string[] = [];
 	page.on('pageerror', (error) => pageErrors.push(error.message));
 	await page.goto('/');
@@ -41,6 +47,11 @@ test('searches, filters, reranks, and safely expands examples', async ({ page })
 	]);
 	await expect(page.getByRole('heading', { name: 'を', exact: true })).toBeVisible();
 
+	const collocationRequests: string[] = [];
+	page.on('request', (request) => {
+		if (new URL(request.url()).pathname === '/api/collocations')
+			collocationRequests.push(request.url());
+	});
 	const collocation = page.locator('summary').filter({ hasText: '集める' });
 	await expect(collocation.locator('svg')).toBeVisible();
 	await expect(collocation.getByText('集める', { exact: true })).toBeVisible();
@@ -60,12 +71,24 @@ test('searches, filters, reranks, and safely expands examples', async ({ page })
 	expect(Math.abs((examplesBox?.width ?? 0) - (disclosureBox?.width ?? 0))).toBeLessThanOrEqual(2);
 	expect(pageErrors.filter((message) => message.includes('each_key_duplicate'))).toEqual([]);
 
+	const requestsBeforeScaleChange = collocationRequests.length;
+	const scale = page.getByRole('combobox', { name: 'Bar scale', exact: true });
+	await expect(scale).toHaveValue('particle');
+	await scale.selectOption('global');
+	await expect(scale).toHaveValue('global');
+	await expect(disclosure).toHaveAttribute('open', '');
+	expect(collocationRequests).toHaveLength(requestsBeforeScaleChange);
+	await expect(page.getByTestId('particle-mass').first()).toHaveAttribute(
+		'aria-label',
+		/% of selected frequency/
+	);
+	await expect(page.getByTestId('bar-segment').first().locator('title')).toContainText(
+		'occurrences'
+	);
+
 	await page.locator('#corpus-alpha').uncheck();
 	await expect(page.locator('#corpus-alpha')).not.toBeChecked();
 	await expect(page.locator('summary').filter({ hasText: '集める' })).toBeVisible();
-
-	await page.getByLabel('Rank').selectOption('raw');
-	await expect(page.getByLabel('Rank')).toHaveValue('raw');
 });
 
 test('supports both query directions and theme control', async ({ page }) => {
@@ -221,6 +244,7 @@ test('keeps autocomplete dismissed when a pending lookup completes', async ({ pa
 test('renders a keyboard-scrollable particle spreadsheet', async ({ page }) => {
 	await expectSpreadsheet(page, 375);
 	await expectSpreadsheet(page, 1280);
+	await expectSpreadsheet(page, 3200);
 });
 
 test('reuses the primary controls on a mobile viewport', async ({ page }) => {
@@ -229,7 +253,7 @@ test('reuses the primary controls on a mobile viewport', async ({ page }) => {
 
 	await expect(page.getByLabel('Search direction')).toBeVisible();
 	await expect(page.getByRole('combobox', { name: 'Search term' })).toBeVisible();
-	await expect(page.getByLabel('Rank')).toBeVisible();
+	await expect(page.getByLabel('Bar scale')).toBeVisible();
 	await expect(page.getByRole('button', { name: 'Toggle dark mode' })).toBeVisible();
 });
 
@@ -240,8 +264,13 @@ test('shows corpus attribution, license, and contact information', async ({ page
 	await expect(footer.getByText('Japanese Wikipedia')).toBeVisible();
 	await expect(footer.getByText('Journal of Natural Language Processing')).toBeVisible();
 	await expect(footer.getByText('TED Talks')).toBeVisible();
-	await expect(footer.getByText('no license grant is asserted', { exact: false })).toBeVisible();
-	await expect(footer.getByText('No single license applies', { exact: false })).toBeVisible();
+	await expect(footer.getByText('no license grant is asserted', { exact: false })).toHaveCount(0);
+	await expect(
+		footer.getByRole('link', { name: 'IWSLT 2017 Japanese–English dataset' })
+	).toHaveAttribute(
+		'href',
+		'https://huggingface.co/datasets/IWSLT/iwslt2017/tree/c18a4f81a47ae6fa079fe9d32db288ddde38451d/data/2017-01-trnted/texts/ja/en'
+	);
 	await expect(footer.getByRole('link', { name: 'CC BY-SA 4.0' })).toHaveAttribute(
 		'href',
 		'https://creativecommons.org/licenses/by-sa/4.0/'

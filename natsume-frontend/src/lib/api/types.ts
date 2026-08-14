@@ -1,5 +1,4 @@
 export type SearchPosition = 'noun' | 'verb';
-export type RankBy = 'raw' | 'meanPerMillion';
 
 export type Corpus = {
 	id: string;
@@ -50,7 +49,6 @@ export type ParticleGroup = {
 export type CollocationsResponse = {
 	particleGroups: ParticleGroup[];
 	selectedCorpusIds: string[];
-	rankBy: RankBy;
 	databaseBuildId: string;
 };
 

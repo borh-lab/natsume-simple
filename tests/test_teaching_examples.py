@@ -97,7 +97,7 @@ def test_aggregation_example(tmp_path: Path):
     with TestClient(create_app(artifact)) as client:
         response = client.get(
             "/api/collocations",
-            params={"term": "情報", "pos": "noun", "rankBy": "raw"},
+            params={"term": "情報", "pos": "noun"},
         )
 
     collocate = next(
@@ -119,11 +119,11 @@ def test_query_semantics_example(tmp_path: Path):
     with TestClient(create_app(artifact)) as client:
         noun = client.get(
             "/api/collocations",
-            params={"term": "情報", "pos": "noun", "rankBy": "raw"},
+            params={"term": "情報", "pos": "noun"},
         ).json()
         verb = client.get(
             "/api/collocations",
-            params={"term": "集める", "pos": "verb", "rankBy": "raw"},
+            params={"term": "集める", "pos": "verb"},
         ).json()
 
     assert {

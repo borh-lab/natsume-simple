@@ -1,21 +1,19 @@
 <script lang="ts">
-	import type { Corpus, RankBy } from '$lib/api/types';
+	import type { Corpus } from '$lib/api/types';
+	import { CORPUS_COLORS, corpusColorMap } from '$lib/presentation/search';
 
 	let {
 		corpora,
 		selectedCorpusIds,
-		rankBy,
 		disabled,
-		ontoggle,
-		onrank
+		ontoggle
 	}: {
 		corpora: Corpus[];
 		selectedCorpusIds: string[];
-		rankBy: RankBy;
 		disabled: boolean;
 		ontoggle: (corpusId: string) => void | Promise<void>;
-		onrank: (rankBy: RankBy) => void | Promise<void>;
 	} = $props();
+	const colorSlots = $derived(corpusColorMap(corpora));
 </script>
 
 <fieldset class="flex flex-wrap items-center gap-x-4 gap-y-2" {disabled}>
@@ -29,18 +27,12 @@
 				disabled={selectedCorpusIds.length === 1 && selectedCorpusIds.includes(corpus.id)}
 				onchange={() => ontoggle(corpus.id)}
 			/>
+			<span
+				class="h-2.5 w-2.5 rounded-sm"
+				style:background-color={CORPUS_COLORS[colorSlots[corpus.id] % CORPUS_COLORS.length]}
+				aria-hidden="true"
+			></span>
 			{corpus.label}
 		</label>
 	{/each}
-	<label class="inline-flex items-center gap-1">
-		Rank
-		<select
-			class="rounded border bg-white px-2 py-1 dark:border-gray-600 dark:bg-gray-800"
-			value={rankBy}
-			onchange={(event) => onrank((event.currentTarget as HTMLSelectElement).value as RankBy)}
-		>
-			<option value="meanPerMillion">Per million</option>
-			<option value="raw">Raw count</option>
-		</select>
-	</label>
 </fieldset>

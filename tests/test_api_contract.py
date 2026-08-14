@@ -230,7 +230,6 @@ def test_request_log_contains_diagnostics_without_the_query(caplog, tmp_path: Pa
                 "term": "情報",
                 "pos": "noun",
                 "corpusId": "beta",
-                "rankBy": "raw",
                 "limitPerParticle": 1,
             },
             headers={"X-Request-ID": "logged-request"},
@@ -248,7 +247,6 @@ def test_request_log_contains_diagnostics_without_the_query(caplog, tmp_path: Pa
         "databaseBuildId": "fixture-build-001",
         "resultCount": 2,
         "corpusIds": ["beta"],
-        "rankBy": "raw",
         "queryLengthBucket": "2–4",
     }
     assert record["durationMs"] >= 0
@@ -305,7 +303,7 @@ def test_exhausted_query_capacity_returns_retryable_error(caplog, tmp_path: Path
     assert "情報" not in caplog.text
 
 
-def test_collocations_select_and_rank_before_applying_the_limit(tmp_path: Path):
+def test_collocations_select_and_normalize_before_applying_the_limit(tmp_path: Path):
     with fixture_client(tmp_path) as client:
         response = client.get(
             "/api/collocations",
@@ -313,7 +311,6 @@ def test_collocations_select_and_rank_before_applying_the_limit(tmp_path: Path):
                 "term": "情報",
                 "pos": "noun",
                 "corpusId": "beta",
-                "rankBy": "raw",
                 "limitPerParticle": 1,
             },
         )
@@ -321,7 +318,7 @@ def test_collocations_select_and_rank_before_applying_the_limit(tmp_path: Path):
     assert response.status_code == 200
     body = response.json()
     assert body["selectedCorpusIds"] == ["beta"]
-    assert body["rankBy"] == "raw"
+    assert "rankBy" not in body
     assert body["databaseBuildId"] == "fixture-build-001"
     particle = next(
         group for group in body["particleGroups"] if group["particle"] == "を"
@@ -352,6 +349,22 @@ def test_collocations_select_and_rank_before_applying_the_limit(tmp_path: Path):
     ]
 
 
+def test_collocations_rank_by_mean_frequency_per_million(tmp_path: Path):
+    with fixture_client(tmp_path) as client:
+        response = client.get(
+            "/api/collocations",
+            params={"term": "情報", "pos": "noun", "limitPerParticle": 1},
+        )
+
+    particle = next(
+        group
+        for group in response.json()["particleGroups"]
+        if group["particle"] == "を"
+    )
+    assert particle["items"][0]["verb"] == "調べる"
+    assert particle["items"][0]["totalRawFrequency"] == 2
+
+
 def test_maximum_budgeted_responses_stay_below_one_mebibyte(tmp_path: Path):
     artifact_dir = build_maximum_response_artifact(tmp_path / "artifact")
     with TestClient(create_app(artifact_dir)) as client:
@@ -361,7 +374,6 @@ def test_maximum_budgeted_responses_stay_below_one_mebibyte(tmp_path: Path):
                 "term": "名" * 64,
                 "pos": "noun",
                 "corpusId": ["max-a", "max-b"],
-                "rankBy": "meanPerMillion",
                 "limitPerParticle": 200,
             },
         )
@@ -371,7 +383,6 @@ def test_maximum_budgeted_responses_stay_below_one_mebibyte(tmp_path: Path):
                 "term": "名" * 64,
                 "pos": "noun",
                 "corpusId": ["max-a", "max-b", "max-c"],
-                "rankBy": "meanPerMillion",
                 "limitPerParticle": 150,
             },
         )
@@ -410,7 +421,6 @@ def test_collocation_budget_rejects_three_corpora_above_150_items(tmp_path: Path
             params={
                 "term": "情報",
                 "pos": "noun",
-                "rankBy": "raw",
                 "corpusId": ["alpha", "beta"],
                 "limitPerParticle": 200,
             },
@@ -425,7 +435,6 @@ def test_collocation_budget_rejects_three_corpora_above_150_items(tmp_path: Path
             params={
                 "term": "名" * 64,
                 "pos": "noun",
-                "rankBy": "raw",
                 "limitPerParticle": 151,
             },
             headers={"X-Request-ID": "over-budget"},
@@ -448,7 +457,6 @@ def test_collocation_limit_rejects_values_above_200(tmp_path: Path):
             params={
                 "term": "情報",
                 "pos": "noun",
-                "rankBy": "raw",
                 "limitPerParticle": 201,
             },
         )
@@ -494,7 +502,7 @@ def test_corpus_selection_rejects_unknown_and_empty_ids(
     tmp_path: Path, route: str, corpus_id: str
 ):
     params = (
-        {"term": "情報", "pos": "noun", "rankBy": "meanPerMillion"}
+        {"term": "情報", "pos": "noun"}
         if route == "collocations"
         else {"noun": "情報", "particle": "を", "verb": "集める"}
     )

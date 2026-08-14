@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { ApiClient, ApiClientError } from './client';
 
 describe('ApiClient', () => {
-	it('sends canonical corpus selection and ranking parameters', async () => {
+	it('sends canonical corpus selection without a display-only ranking parameter', async () => {
 		const requests: string[] = [];
 		const fetcher = vi.fn(async (input: RequestInfo | URL) => {
 			requests.push(String(input));
@@ -10,7 +10,6 @@ describe('ApiClient', () => {
 				JSON.stringify({
 					particleGroups: [],
 					selectedCorpusIds: ['alpha', 'beta'],
-					rankBy: 'raw',
 					databaseBuildId: 'fixture'
 				}),
 				{ headers: { 'content-type': 'application/json' } }
@@ -21,15 +20,14 @@ describe('ApiClient', () => {
 		await client.getCollocations({
 			term: '情報',
 			pos: 'noun',
-			corpusIds: ['alpha', 'beta'],
-			rankBy: 'raw'
+			corpusIds: ['alpha', 'beta']
 		});
 
 		const url = new URL(requests[0]);
 		expect(url.pathname).toBe('/api/collocations');
 		expect(url.searchParams.get('term')).toBe('情報');
 		expect(url.searchParams.getAll('corpusId')).toEqual(['alpha', 'beta']);
-		expect(url.searchParams.get('rankBy')).toBe('raw');
+		expect(url.searchParams.has('rankBy')).toBe(false);
 	});
 
 	it('turns the public error envelope into a stable client error', async () => {

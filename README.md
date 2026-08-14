@@ -218,14 +218,14 @@ enters port 8080, while host-local probes use port 8081 (`/live` and `/ready`).
 - `GET /api/health/ready`
 - `GET /api/corpora`
 - `GET /api/suggestions?q=...&pos=noun`
-- `GET /api/collocations?term=...&pos=noun&rankBy=raw`
+- `GET /api/collocations?term=...&pos=noun`
 - `GET /api/examples?noun=...&particle=を&verb=...`
 
 例:
 
 ```bash
 curl http://127.0.0.1:8000/api/corpora
-curl 'http://127.0.0.1:8000/api/collocations?term=本&pos=noun&rankBy=meanPerMillion'
+curl 'http://127.0.0.1:8000/api/collocations?term=本&pos=noun'
 ```
 
 ## Code walkthrough

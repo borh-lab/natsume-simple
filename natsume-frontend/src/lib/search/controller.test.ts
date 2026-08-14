@@ -16,7 +16,6 @@ function response(databaseBuildId: string): CollocationsResponse {
 	return {
 		particleGroups: [],
 		selectedCorpusIds: ['alpha'],
-		rankBy: 'raw',
 		databaseBuildId
 	};
 }

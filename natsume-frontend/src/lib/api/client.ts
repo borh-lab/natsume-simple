@@ -3,7 +3,6 @@ import type {
 	CorporaResponse,
 	ExamplesResponse,
 	PublicErrorEnvelope,
-	RankBy,
 	SearchPosition,
 	SuggestionsResponse
 } from './types';
@@ -53,7 +52,6 @@ export class ApiClient {
 			term: string;
 			pos: SearchPosition;
 			corpusIds: string[];
-			rankBy: RankBy;
 			limitPerParticle?: number;
 		},
 		signal?: AbortSignal
@@ -61,7 +59,6 @@ export class ApiClient {
 		const params = new URLSearchParams({
 			term: args.term,
 			pos: args.pos,
-			rankBy: args.rankBy,
 			limitPerParticle: String(args.limitPerParticle ?? 150)
 		});
 		for (const corpusId of args.corpusIds) params.append('corpusId', corpusId);

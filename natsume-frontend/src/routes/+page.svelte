@@ -18,7 +18,7 @@
 <svelte:head><title>Natsume Simple</title></svelte:head>
 
 <header class="border-b bg-white dark:border-gray-700 dark:bg-gray-900">
-	<div class="mx-auto flex max-w-screen-2xl flex-wrap items-center gap-3 p-4">
+	<div class="flex w-full flex-wrap items-center gap-3 p-4">
 		<div class="flex items-center gap-3" data-testid="brand">
 			<img class="h-8 w-8" src="/favicon.png" alt="Natsume Simple" />
 			<h1 class="text-2xl font-bold" tabindex="-1">Natsume Simple</h1>
@@ -40,14 +40,12 @@
 	</div>
 </header>
 
-<main class="mx-auto max-w-screen-2xl space-y-4 p-4">
+<main class="w-full min-w-0 space-y-4 p-4">
 	<CorpusOptions
 		corpora={controller.corpora}
 		selectedCorpusIds={controller.selectedCorpusIds}
-		rankBy={controller.rankBy}
 		disabled={controller.status === 'loading'}
 		ontoggle={(corpusId) => controller.toggleCorpus(corpusId)}
-		onrank={(rankBy) => controller.selectRank(rankBy)}
 	/>
 	<SearchSummary result={controller.result} stale={controller.resultIsStale} />
 	{#if controller.status === 'error'}
@@ -68,7 +66,7 @@
 <footer
 	class="mt-8 border-t bg-gray-50 text-sm text-gray-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300"
 >
-	<div class="mx-auto max-w-screen-2xl space-y-2 p-4">
+	<div class="w-full space-y-2 p-4">
 		<p>
 			Corpus sentences are extracted and normalized from the
 			<a class="underline" href="https://www.anlp.jp/resource/journal_latex/"
@@ -77,9 +75,12 @@
 			(<a class="underline" href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>) and
 			<a class="underline" href="https://ja.wikipedia.org/">Japanese Wikipedia</a>
 			(<a class="underline" href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a
-			>), and <a class="underline" href="https://www.ted.com/">TED Talks</a>. For TED-derived
-			content, no license grant is asserted; inclusion is an owner decision while permission remains
-			unresolved. No single license applies to the corpus collection.
+			>), and TED Talks via the
+			<a
+				class="underline"
+				href="https://huggingface.co/datasets/IWSLT/iwslt2017/tree/c18a4f81a47ae6fa079fe9d32db288ddde38451d/data/2017-01-trnted/texts/ja/en"
+				>IWSLT 2017 Japanese–English dataset</a
+			>.
 		</p>
 		<p>
 			For attribution details, corrections, or takedown requests, see the corpus notices or
