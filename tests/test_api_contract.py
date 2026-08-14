@@ -588,9 +588,58 @@ def test_examples_return_selected_plain_text_and_typed_spans(tmp_path: Path):
                 "verbSpan": {"start": 31, "end": 34},
             }
         ],
+        "hasMore": False,
         "selectedCorpusIds": ["beta"],
         "databaseBuildId": "fixture-build-001",
     }
+
+
+def test_examples_pages_same_sentence_occurrences_in_total_order(tmp_path: Path):
+    with fixture_client(tmp_path) as client:
+        pages = [
+            client.get(
+                "/api/examples",
+                params={
+                    "noun": "情報",
+                    "particle": "を",
+                    "verb": "集める",
+                    "corpusId": "alpha",
+                    "limit": 1,
+                    "offset": offset,
+                },
+            ).json()
+            for offset in range(5)
+        ]
+
+    assert [page["examples"][0]["nounSpan"] for page in pages[:3]] == [
+        {"start": 0, "end": 2},
+        {"start": 7, "end": 9},
+        {"start": 0, "end": 2},
+    ]
+    assert [page["hasMore"] for page in pages] == [
+        True,
+        True,
+        False,
+        False,
+        False,
+    ]
+    assert pages[3]["examples"] == []
+    assert pages[4]["examples"] == []
+
+
+def test_example_offset_rejects_negative_values(tmp_path: Path):
+    with fixture_client(tmp_path) as client:
+        response = client.get(
+            "/api/examples",
+            params={
+                "noun": "情報",
+                "particle": "を",
+                "verb": "集める",
+                "offset": -1,
+            },
+        )
+
+    assert response.status_code == 422
 
 
 @pytest.mark.parametrize("corpus_id", ["unknown", ""])

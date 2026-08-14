@@ -118,6 +118,7 @@ class ExampleResponse(BaseModel):
 
 class ExamplesResponse(BaseModel):
     examples: list[ExampleResponse]
+    hasMore: bool
     selectedCorpusIds: list[str]
     databaseBuildId: str
 
@@ -581,6 +582,7 @@ def create_app(artifact_dir: Path, *, frontend_dir: Path | None = None) -> FastA
         verb: Annotated[str, Query(min_length=1, max_length=64)],
         corpusId: Annotated[list[str] | None, Query()] = None,
         limit: Annotated[int, Query(ge=1, le=20)] = 5,
+        offset: Annotated[int, Query(ge=0)] = 0,
     ) -> ExamplesResponse:
         def load_rows():
             all_corpora = [
@@ -600,10 +602,14 @@ def create_app(artifact_dir: Path, *, frontend_dir: Path | None = None) -> FastA
                 JOIN source src ON src.id = s.source_id
                 WHERE o.noun = ? AND o.particle = ? AND o.verb = ?
                   AND src.corpus_id IN ({placeholders})
-                ORDER BY src.corpus_id, src.id, s.id
-                LIMIT ?
+                ORDER BY src.corpus_id, src.id, s.id,
+                         o.n_begin, o.n_end,
+                         o.p_begin, o.p_end,
+                         o.v_begin, o.v_end,
+                         o.extractor_id
+                LIMIT ? OFFSET ?
                 """,
-                [noun, particle, verb, *selected, limit],
+                [noun, particle, verb, *selected, limit + 1, offset],
             ).fetchall()
             return selected, rows
 
@@ -613,6 +619,8 @@ def create_app(artifact_dir: Path, *, frontend_dir: Path | None = None) -> FastA
             load_rows,
             timeout=QUERY_TIMEOUT_SECONDS,
         )
+        has_more = len(rows) > limit
+        rows = rows[:limit]
         request.state.result_count = len(rows)
         request.state.corpus_ids = selected
         return ExamplesResponse(
@@ -629,6 +637,7 @@ def create_app(artifact_dir: Path, *, frontend_dir: Path | None = None) -> FastA
                 )
                 for row in rows
             ],
+            hasMore=has_more,
             selectedCorpusIds=selected,
             databaseBuildId=request.app.state.database_build_id,
         )
