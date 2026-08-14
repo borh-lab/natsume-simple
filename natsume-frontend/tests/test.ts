@@ -145,11 +145,50 @@ test('opens suggestions only while focus remains in the search widget', async ({
 	await suggestion.click();
 	await expect(search).toHaveValue(label?.trim() ?? '');
 	await expect(search).toHaveAttribute('aria-expanded', 'false');
+	await page.waitForTimeout(350);
+	await expect(search).toHaveAttribute('aria-expanded', 'false');
+
+	await search.fill('情');
+	await page.waitForTimeout(350);
+	await expect(search).toHaveAttribute('aria-expanded', 'true');
+	await search.fill('情報化');
+	await search.press('Escape');
+	await page.waitForTimeout(350);
+	await expect(search).toHaveAttribute('aria-expanded', 'false');
 
 	await search.fill('情');
 	await page.waitForTimeout(350);
 	await expect(search).toHaveAttribute('aria-expanded', 'true');
 	await page.getByRole('heading', { name: 'Natsume Simple' }).focus();
+	await expect(search).toHaveAttribute('aria-expanded', 'false');
+});
+
+test('keeps autocomplete dismissed when a pending lookup completes', async ({ page }) => {
+	let releaseLookup = () => {};
+	const lookupReleased = new Promise<void>((resolve) => (releaseLookup = resolve));
+	let markLookupStarted = () => {};
+	const lookupStarted = new Promise<void>((resolve) => (markLookupStarted = resolve));
+	await page.route('**/api/suggestions**', async (route) => {
+		const query = new URL(route.request().url()).searchParams.get('q');
+		if (query !== '情') {
+			await route.continue();
+			return;
+		}
+		markLookupStarted();
+		await lookupReleased;
+		await route.continue();
+	});
+
+	await page.goto('/');
+	const search = page.getByRole('combobox', { name: 'Search term' });
+	await search.fill('情');
+	await lookupStarted;
+	await search.press('Escape');
+	releaseLookup();
+	await page.waitForResponse((response) => {
+		const url = new URL(response.url());
+		return url.pathname === '/api/suggestions' && url.searchParams.get('q') === '情';
+	});
 	await expect(search).toHaveAttribute('aria-expanded', 'false');
 });
 

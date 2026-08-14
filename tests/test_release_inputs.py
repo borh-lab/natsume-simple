@@ -31,6 +31,26 @@ def write_source_lock(path: Path, article_ids: list[str]) -> Path:
     path.write_text(
         json.dumps(
             {
+                "plannedArtifact": {
+                    "corpusIds": ["jnlp", "ted", "wiki"],
+                    "licenseConclusion": {
+                        "singleLicenseAsserted": False,
+                        "corpora": {
+                            "jnlp": {
+                                "status": "ready",
+                                "spdxExpression": "CC-BY-4.0",
+                            },
+                            "wiki": {
+                                "status": "ready",
+                                "spdxExpression": "CC-BY-SA-4.0",
+                            },
+                            "ted": {
+                                "status": "no-grant-asserted",
+                                "spdxExpression": None,
+                            },
+                        },
+                    },
+                },
                 "sources": [
                     {
                         "corpusId": "jnlp",
@@ -77,7 +97,7 @@ def write_source_lock(path: Path, article_ids: list[str]) -> Path:
                             "sha256": hashlib.sha256(b"ted").hexdigest(),
                         },
                     },
-                ]
+                ],
             }
         ),
         encoding="utf-8",

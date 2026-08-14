@@ -19,10 +19,13 @@
 	let open = $state(false);
 	let active = $state(-1);
 	let focusedWithin = $state(false);
+	let dismissedQuery: string | null = null;
+	let requestGeneration = 0;
 
 	$effect(() => {
 		const query = term.trim();
 		const position = pos;
+		const generation = ++requestGeneration;
 		if (!query) {
 			suggestions = [];
 			open = false;
@@ -30,10 +33,13 @@
 		}
 		const timer = setTimeout(async () => {
 			try {
-				suggestions = await findSuggestions(query, position);
-				open = focusedWithin && suggestions.length > 0;
+				const found = await findSuggestions(query, position);
+				if (generation !== requestGeneration) return;
+				suggestions = found;
+				open = dismissedQuery !== query && focusedWithin && suggestions.length > 0;
 				active = -1;
 			} catch {
+				if (generation !== requestGeneration) return;
 				suggestions = [];
 				open = false;
 			}
@@ -41,9 +47,19 @@
 		return () => clearTimeout(timer);
 	});
 
+	function dismissAutocomplete() {
+		dismissedQuery = term.trim();
+		requestGeneration += 1;
+		open = false;
+		active = -1;
+	}
+
 	function choose(suggestion: Suggestion) {
 		term = suggestion.lemma;
+		dismissedQuery = suggestion.lemma.trim();
+		requestGeneration += 1;
 		open = false;
+		active = -1;
 		onsubmit();
 	}
 
@@ -56,6 +72,10 @@
 	}
 
 	function keydown(event: KeyboardEvent) {
+		if (event.key === 'Escape') {
+			dismissAutocomplete();
+			return;
+		}
 		if (!open || suggestions.length === 0) return;
 		if (event.key === 'ArrowDown') {
 			event.preventDefault();
@@ -66,8 +86,6 @@
 		} else if (event.key === 'Enter' && active >= 0) {
 			event.preventDefault();
 			choose(suggestions[active]);
-		} else if (event.key === 'Escape') {
-			open = false;
 		}
 	}
 </script>
@@ -78,7 +96,7 @@
 	onfocusout={focusout}
 	onsubmit={(event) => {
 		event.preventDefault();
-		open = false;
+		dismissAutocomplete();
 		onsubmit();
 	}}
 >
@@ -105,8 +123,9 @@
 			aria-controls="search-suggestions"
 			aria-activedescendant={active >= 0 ? `suggestion-${active}` : undefined}
 			bind:value={term}
+			oninput={() => (dismissedQuery = null)}
 			onkeydown={keydown}
-			onfocus={() => (open = suggestions.length > 0)}
+			onfocus={() => (open = dismissedQuery !== term.trim() && suggestions.length > 0)}
 		/>
 		{#if open}
 			<ul

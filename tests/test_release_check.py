@@ -126,8 +126,15 @@ def build_release_fixture(
                 ],
             },
             built_at=datetime(2026, 8, 13, tzinfo=UTC),
-            content_license="CC BY-SA 4.0",
-            attribution="Fixture attribution",
+            content_license=(
+                "No single content license is asserted. This project asserts no "
+                "license grant for TED-derived content while permission remains "
+                "unresolved."
+            ),
+            attribution=(
+                "TED Talks / IWSLT 2017: no license grant is asserted. Contact us "
+                "for corrections or takedown requests."
+            ),
             rejection_counts={
                 "jnlp": {"missing_source_path": 1},
                 "ted": {},
@@ -181,6 +188,29 @@ def test_release_check_requires_nonempty_notices(tmp_path: Path):
 
     with pytest.raises(ReleaseCheckError, match="notice_missing"):
         check(artifact, release_evidence(tmp_path))
+
+
+def test_release_check_requires_mixed_terms_and_unresolved_ted_notice(
+    tmp_path: Path,
+):
+    artifact = build_release_fixture(tmp_path / "release")
+    (artifact / "LICENSE-CONTENT.txt").write_text(
+        "The combined corpus is provided under CC BY-SA 4.0."
+    )
+
+    with pytest.raises(ReleaseCheckError, match="notice_policy_mismatch"):
+        check(artifact, release_evidence(tmp_path))
+
+
+def test_release_check_requires_structured_mixed_license_policy(tmp_path: Path):
+    artifact = build_release_fixture(tmp_path / "release")
+    source_lock, subset = release_evidence(tmp_path)
+    payload = json.loads(source_lock.read_text())
+    payload["plannedArtifact"]["licenseConclusion"]["singleLicenseAsserted"] = True
+    source_lock.write_text(json.dumps(payload))
+
+    with pytest.raises(ReleaseCheckError, match="license_policy_mismatch"):
+        check(artifact, (source_lock, subset))
 
 
 def test_release_check_requires_exact_corpus_ids(tmp_path: Path):

@@ -1,5 +1,6 @@
 """Structural policy checks for the first production corpus release."""
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +21,20 @@ class ReleaseCheckError(ValueError):
     """One bounded production-release invariant failed."""
 
 
+_REQUIRED_NOTICE_TEXT = {
+    "LICENSE-CONTENT.txt": (
+        "No single content license is asserted",
+        "no license grant for TED-derived content",
+        "permission remains unresolved",
+    ),
+    "ATTRIBUTION.md": (
+        "TED Talks / IWSLT 2017",
+        "no license grant is asserted",
+        "takedown requests",
+    ),
+}
+
+
 def check_release_artifact(
     artifact_dir: Path,
     *,
@@ -32,13 +47,17 @@ def check_release_artifact(
     except ArtifactValidationError as error:
         raise ReleaseCheckError(f"artifact_invalid:{error.reason}") from error
 
-    for notice_name in ("LICENSE-CONTENT.txt", "ATTRIBUTION.md"):
+    for notice_name, required_text in _REQUIRED_NOTICE_TEXT.items():
         try:
-            if not (artifact_dir / notice_name).read_text(encoding="utf-8").strip():
+            notice = (artifact_dir / notice_name).read_text(encoding="utf-8").strip()
+            if not notice:
                 raise ReleaseCheckError("notice_missing")
         except OSError as error:
             raise ReleaseCheckError("notice_missing") from error
+        if any(text not in notice for text in required_text):
+            raise ReleaseCheckError("notice_policy_mismatch")
 
+    _check_license_policy(source_lock)
     sources = load_release_sources(source_lock)
     subset = load_wikipedia_subset(wikipedia_subset, sources=sources)
     with duckdb.connect(str(database_path), read_only=True) as connection:
@@ -109,6 +128,28 @@ def check_release_artifact(
         "sourceCount": len(database_sources),
         "wikipediaSourceCount": len(wikipedia_ids),
     }
+
+
+def _check_license_policy(source_lock: Path) -> None:
+    try:
+        payload = json.loads(source_lock.read_text(encoding="utf-8"))
+        planned = payload["plannedArtifact"]
+        conclusion = planned["licenseConclusion"]
+        corpora = conclusion["corpora"]
+        valid = (
+            planned["corpusIds"] == ["jnlp", "ted", "wiki"]
+            and conclusion["singleLicenseAsserted"] is False
+            and corpora["jnlp"]["status"] == "ready"
+            and corpora["jnlp"]["spdxExpression"] == "CC-BY-4.0"
+            and corpora["wiki"]["status"] == "ready"
+            and corpora["wiki"]["spdxExpression"] == "CC-BY-SA-4.0"
+            and corpora["ted"]["status"] == "no-grant-asserted"
+            and corpora["ted"]["spdxExpression"] is None
+        )
+    except (OSError, json.JSONDecodeError, KeyError, TypeError):
+        valid = False
+    if not valid:
+        raise ReleaseCheckError("license_policy_mismatch")
 
 
 def _check_rejection_limits(manifest: dict[str, Any]) -> None:
