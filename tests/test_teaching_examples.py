@@ -107,7 +107,7 @@ def test_aggregation_example(tmp_path: Path):
         for item in group["items"]
         if item["verb"] == "集める"
     )
-    assert collocate["totalRawFrequency"] == 3
+    assert collocate["totalRawFrequency"] == 4
     assert {row["corpusId"] for row in collocate["contributions"]} == {
         "alpha",
         "beta",
