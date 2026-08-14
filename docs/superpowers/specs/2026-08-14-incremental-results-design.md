@@ -1,8 +1,8 @@
 # Incremental Collocation and Example Results
 
-Status: Approved architecture and retained decision record
+Status: Implemented architecture and retained decision record
 
-This is a design for planned behavior. Commit `5f7f0b9` changed this document only; the current API and frontend do not yet implement particle targeting, offsets, or `hasMore`.
+The implementation adds particle-targeted collocation pages and totally ordered example pages to the existing endpoints. This document remains the decision and measurement record for the immutability premise, repeated-page query cost, and physical-design revisit triggers.
 
 ## Purpose
 

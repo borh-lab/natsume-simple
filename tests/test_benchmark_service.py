@@ -21,7 +21,12 @@ from natsume_simple.benchmark_service import (
 class _Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         status = 503 if self.path.startswith("/failure") else 200
-        body = self.path.encode()
+        if self.path.startswith("/empty-collocations"):
+            body = json.dumps({"particleGroups": [{"returnedCount": 0}]}).encode()
+        elif self.path.startswith("/empty-examples"):
+            body = json.dumps({"examples": []}).encode()
+        else:
+            body = self.path.encode()
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
@@ -54,6 +59,8 @@ def test_request_family_is_fixed_and_repeats_corpus_ids() -> None:
         "collocations-noun",
         "collocations-verb",
         "examples",
+        "collocations-page-verb",
+        "examples-page",
     ]
     queries = {
         endpoint.name: parse_qs(urlparse(endpoint.url).query) for endpoint in endpoints
@@ -70,6 +77,37 @@ def test_request_family_is_fixed_and_repeats_corpus_ids() -> None:
     assert queries["collocations-verb"]["pos"] == ["verb"]
     assert queries["collocations-verb"]["term"] == ["行う"]
     assert queries["examples"]["limit"] == ["5"]
+    assert queries["collocations-page-verb"] == {
+        "term": ["する"],
+        "pos": ["verb"],
+        "particle": ["を"],
+        "offsetPerParticle": ["4500"],
+        "limitPerParticle": ["200"],
+        "corpusId": ["jnlp", "wiki"],
+    }
+    assert queries["examples-page"] == {
+        "noun": ["必要"],
+        "particle": ["が"],
+        "verb": ["ある"],
+        "offset": ["4000"],
+        "limit": ["20"],
+        "corpusId": ["jnlp", "wiki"],
+    }
+
+
+@pytest.mark.parametrize(
+    ("name", "path"),
+    [
+        ("collocations-page-verb", "/empty-collocations"),
+        ("examples-page", "/empty-examples"),
+    ],
+)
+def test_benchmark_rejects_empty_later_page(name: str, path: str) -> None:
+    with _http_server() as base_url:
+        endpoints = (BenchmarkEndpoint(name, f"{base_url}{path}"),)
+
+        with pytest.raises(BenchmarkError, match=f"benchmark_empty_result:{name}"):
+            run_benchmark(endpoints, request_count=1, concurrency=1, timeout=2.0)
 
 
 def test_percentile_uses_linear_interpolation() -> None:

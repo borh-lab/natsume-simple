@@ -219,7 +219,16 @@ enters port 8080, while host-local probes use port 8081 (`/live` and `/ready`).
 - `GET /api/corpora`
 - `GET /api/suggestions?q=...&pos=noun`
 - `GET /api/collocations?term=...&pos=noun`
-- `GET /api/examples?noun=...&particle=を&verb=...`
+- `GET /api/collocations?term=...&pos=noun&particle=を&offsetPerParticle=150&limitPerParticle=150`
+- `GET /api/examples?noun=...&particle=を&verb=...&offset=5&limit=20`
+
+Collocation offsets require `particle`; `totalMatchingCollocations` remains the full
+selection-specific count while `returnedCount` describes that page. The per-particle
+page size is at most 200 and must keep `limitPerParticle × selected corpus count` at or
+below 450. Example responses include `hasMore`.
+
+Pages are stable only within one immutable `databaseBuildId`. Clients must not combine
+pages from different database builds or corpus selections.
 
 例:
 

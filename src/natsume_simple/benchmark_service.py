@@ -14,6 +14,11 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import urlopen
 
+from natsume_simple.api import (
+    COLLOCATION_ITEM_CORPUS_BUDGET,
+    MAX_COLLOCATIONS_PER_PARTICLE,
+)
+
 
 class BenchmarkError(RuntimeError):
     """The service did not complete the benchmark contract."""
@@ -42,8 +47,14 @@ def _url(base_url: str, path: str, parameters: list[tuple[str, str]]) -> str:
 def build_request_family(
     base_url: str, corpus_ids: tuple[str, ...]
 ) -> tuple[BenchmarkEndpoint, ...]:
-    """Build the four stable requests used to compare immutable artifacts."""
+    """Build the stable requests used to compare immutable artifacts."""
+    if not corpus_ids:
+        raise ValueError("at least one corpus ID is required")
     corpora = [("corpusId", corpus_id) for corpus_id in corpus_ids]
+    page_size = min(
+        MAX_COLLOCATIONS_PER_PARTICLE,
+        COLLOCATION_ITEM_CORPUS_BUDGET // len(corpus_ids),
+    )
 
     def collocations(pos: str) -> str:
         term = "情報" if pos == "noun" else "行う"
@@ -83,7 +94,49 @@ def build_request_family(
                 ],
             ),
         ),
+        BenchmarkEndpoint(
+            "collocations-page-verb",
+            _url(
+                base_url,
+                "/api/collocations",
+                [
+                    ("term", "する"),
+                    ("pos", "verb"),
+                    ("particle", "を"),
+                    ("offsetPerParticle", "4500"),
+                    ("limitPerParticle", str(page_size)),
+                    *corpora,
+                ],
+            ),
+        ),
+        BenchmarkEndpoint(
+            "examples-page",
+            _url(
+                base_url,
+                "/api/examples",
+                [
+                    ("noun", "必要"),
+                    ("particle", "が"),
+                    ("verb", "ある"),
+                    ("offset", "4000"),
+                    ("limit", "20"),
+                    *corpora,
+                ],
+            ),
+        ),
     )
+
+
+def _later_page_result_count(endpoint: str, body: bytes) -> int | None:
+    if endpoint not in {"collocations-page-verb", "examples-page"}:
+        return None
+    try:
+        payload = json.loads(body)
+        if endpoint == "examples-page":
+            return len(payload["examples"])
+        return sum(group["returnedCount"] for group in payload["particleGroups"])
+    except (json.JSONDecodeError, KeyError, TypeError) as error:
+        raise BenchmarkError(f"benchmark_response_invalid:{endpoint}") from error
 
 
 def _fetch(endpoint: BenchmarkEndpoint, timeout: float) -> _Observation:
@@ -98,6 +151,8 @@ def _fetch(endpoint: BenchmarkEndpoint, timeout: float) -> _Observation:
     except (OSError, URLError) as error:
         raise BenchmarkError(f"benchmark_request_failed:{endpoint.name}") from error
     elapsed_ms = (time.perf_counter() - started) * 1_000
+    if _later_page_result_count(endpoint.name, body) == 0:
+        raise BenchmarkError(f"benchmark_empty_result:{endpoint.name}")
     return _Observation(endpoint.name, elapsed_ms, status, len(body))
 
 
