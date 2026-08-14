@@ -1,6 +1,6 @@
 # Incremental Collocation and Example Results
 
-Status: Revised after review; awaiting implementation approval
+Status: Approved architecture and retained decision record
 
 This is a design for planned behavior. Commit `5f7f0b9` changed this document only; the current API and frontend do not yet implement particle targeting, offsets, or `hasMore`.
 
@@ -69,7 +69,7 @@ Particle targeting bounds transfer size but does not make the serving calculatio
 
 On the three-corpus `20260814T003410Z-c8a55484c9c15371c88417240b288754` artifact, the largest group is verb `する` with particle `を`: 6,946 per-corpus rows combine into 5,461 unique collocations. Exhausting it requires 37 requests at the three-corpus page size. On the current host, the targeted DuckDB row query measured 189.7 ms cold and 10.7–15.1 ms warm; those figures exclude Python aggregation and response serialization.
 
-This repeated full-group work is accepted to keep one ranking implementation and one response shape. The implementation must add targeted later-page requests to the existing service benchmark. Revisit SQL-side pagination or a materialized serving relation if the curated page request reaches the existing one-second p95 gate or times out; do not add an index or cache solely from the asymptotic concern.
+This repeated full-group work is accepted to keep one ranking implementation and one response shape. The implementation must add targeted later-page requests to the existing service benchmark and fail the benchmark when either curated page returns zero rows, so a changed artifact cannot turn a stale offset into a misleading fast measurement. Revisit SQL-side pagination or a materialized serving relation if the curated page request reaches the existing one-second p95 gate or times out; do not add an index or cache solely from the asymptotic concern.
 
 ## Example API
 

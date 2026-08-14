@@ -31,8 +31,9 @@
 - `ParticleOverview.svelte` and `ParticleColumn.svelte`: key/reset one visible result and own per-particle accumulation.
 - `CollocationItem.svelte` and `SentenceExamples.svelte`: own disclosure presentation and per-collocation accumulation.
 - `SearchSummary.svelte`: reports total matches, not only the loaded prefix.
-- `src/natsume_simple/benchmark_service.py`: keeps later-page requests in the release performance family.
-- `README.md`: documents the durable API contract after implementation.
+- `src/natsume_simple/benchmark_service.py`: keeps later-page requests in the release performance family and rejects empty later-page measurements.
+- `README.md`: documents the public API contract after implementation.
+- `docs/superpowers/specs/2026-08-14-incremental-results-design.md`: remains as the durable decision and measurement record; only this task plan is retired.
 
 ### Task 1: Collocation Offset Contract
 
@@ -85,7 +86,7 @@ def test_collocations_page_one_particle_without_overlap(tmp_path: Path):
     assert second_group["items"][0]["verb"] == "集める"
 ```
 
-Add a second test for `offsetPerParticle=2`: the `を` group remains present with the full total/distribution, `returnedCount == 0`, and `items == []`. Add parameter tests proving an unknown particle is `422` and a positive offset without a particle returns the common `400 invalid_parameter` envelope.
+Add a second test for `offsetPerParticle=2`: the `を` group remains present with the full total/distribution, `returnedCount == 0`, and `items == []`. Add parameter tests proving an unknown particle is `422` and a positive offset without a particle returns the common `400 invalid_parameter` envelope. Keep the existing capacity cases as a cross-layer contract: one and two corpora accept 200, three corpora accept 150, and three corpora reject 151.
 
 - [ ] **Step 2: Run the focused tests and verify RED**
 
@@ -100,9 +101,11 @@ Expected: failures because the endpoint ignores or rejects the new parameters.
 
 - [ ] **Step 3: Implement particle filtering and offset slicing**
 
-In `api.py`, define the service-owned particle vocabulary once:
+In `api.py`, name both service-owned capacity values and define the particle vocabulary once:
 
 ```python
+MAX_COLLOCATIONS_PER_PARTICLE = 200
+COLLOCATION_ITEM_CORPUS_BUDGET = 450
 Particle = Literal["が", "を", "に", "で", "から", "より", "と", "へ"]
 PARTICLES: tuple[Particle, ...] = ("が", "を", "に", "で", "から", "より", "と", "へ")
 ```
@@ -112,6 +115,9 @@ Extend the handler signature:
 ```python
 particle: Annotated[Particle | None, Query()] = None,
 offsetPerParticle: Annotated[int, Query(ge=0)] = 0,
+limitPerParticle: Annotated[
+    int, Query(ge=1, le=MAX_COLLOCATIONS_PER_PARTICLE)
+] = 100,
 ```
 
 Before querying, raise:
@@ -134,6 +140,8 @@ returned_items = items[
 ```
 
 Do not skip a targeted group merely because its page slice is empty; skip it only when the full `items` list is empty.
+
+Keep `request.state.result_count` equal to the sum of the page-level `returnedCount` values. A targeted request therefore logs only rows serialized in that page, matching the example endpoint's logging rule.
 
 - [ ] **Step 4: Run the focused and complete API contract tests**
 
@@ -287,10 +295,9 @@ In `controller.test.ts`, add:
 expect(collocationPageSize(1)).toBe(200);
 expect(collocationPageSize(2)).toBe(200);
 expect(collocationPageSize(3)).toBe(150);
-expect(() => collocationPageSize(0)).toThrow();
 ```
 
-Assert `submit()` sends 150 for three selected corpora and 200 after selecting two. Add identity predicate tests for matching build/corpus order, changed build, changed membership, and changed canonical order.
+The controller cannot submit an empty selection: `submit()` returns early and `toggleCorpus()` refuses to deselect the last corpus, so do not add an unreachable zero-corpus branch to this helper. Assert `submit()` sends 150 for three selected corpora and 200 after selecting two. Add identity predicate tests for matching build/corpus order, changed build, changed membership, and changed canonical order.
 
 - [ ] **Step 2: Run unit tests and verify RED**
 
@@ -318,9 +325,14 @@ Extend `ApiClient.getCollocations` arguments with `particle?: Particle` and `off
 Export:
 
 ```typescript
+export const MAX_COLLOCATIONS_PER_PARTICLE = 200;
+export const COLLOCATION_ITEM_CORPUS_BUDGET = 450;
+
 export function collocationPageSize(corpusCount: number): number {
-	if (corpusCount < 1) throw new RangeError('corpusCount must be positive');
-	return Math.min(200, Math.floor(450 / corpusCount));
+	return Math.min(
+		MAX_COLLOCATIONS_PER_PARTICLE,
+		Math.floor(COLLOCATION_ITEM_CORPUS_BUDGET / corpusCount)
+	);
 }
 
 export function responseMatchesResult(
@@ -332,7 +344,7 @@ export function responseMatchesResult(
 }
 ```
 
-Extend `SearchApi.getCollocations`' structural argument type for the optional paging fields. In `submit()`, pass `limitPerParticle: collocationPageSize(input.corpusIds.length)`. Do not add page accumulation to the controller.
+Extend `SearchApi.getCollocations`' structural argument type for the optional paging fields. In `submit()`, pass `limitPerParticle: collocationPageSize(input.corpusIds.length)`. The TypeScript unit expectations and Task 1's API capacity tests deliberately pin the same public 200/450 contract on both sides of the language boundary. Do not add page accumulation to the controller.
 
 - [ ] **Step 5: Run frontend unit tests and type checking**
 
@@ -365,16 +377,26 @@ git commit -m "feat: add incremental result protocol"
 
 - [ ] **Step 1: Write a failing browser test for one-column accumulation**
 
-Add a Playwright route that delegates the initial collocation request with `route.fetch()`, changes one returned group's `totalMatchingCollocations` to `items.length + 1`, and returns a synthetic targeted second page only when `particle=を` and `offsetPerParticle` equals the initial item count. The synthetic item must have a lower score than the initial last item.
+Add a Playwright route that delegates the initial collocation request with `route.fetch()`, changes one returned group's `totalMatchingCollocations` to `items.length + 1`, records the sum of every group's resulting `totalMatchingCollocations`, and returns a synthetic targeted second page only when `particle=を` and `offsetPerParticle` equals the initial item count. The synthetic item must have a lower score than the initial last item.
 
 Assert:
 
 ```typescript
+await expect(
+	page.getByText(`${expectedTotal} matching results for “情報” · Noun–particle search`, {
+		exact: true
+	})
+).toBeVisible();
 await expect(woColumn.getByText(/Showing \d+ of \d+/)).toBeVisible();
 const otherCount = await gaColumn.locator('summary').count();
 await woColumn.getByRole('button', { name: /Load 1 more/ }).click();
 await expect(woColumn.getByText('追加する', { exact: true })).toBeVisible();
 expect(await gaColumn.locator('summary').count()).toBe(otherCount);
+await expect(
+	page.getByText(`${expectedTotal} matching results for “情報” · Noun–particle search`, {
+		exact: true
+	})
+).toBeVisible();
 await expect(page.getByRole('combobox', { name: 'Bar scale' })).toHaveValue('particle');
 ```
 
@@ -421,7 +443,7 @@ Render `Showing {items.length} of {group.totalMatchingCollocations}` and a colum
 
 - [ ] **Step 5: Report total matches in the summary**
 
-Change `SearchSummary`'s count reduction from `returnedCount` to `totalMatchingCollocations` and label it `matching results for …`. This value remains stable while individual columns append.
+Change `SearchSummary`'s count reduction from `returnedCount` to `totalMatchingCollocations` and label it `matching results for …`. The exact assertions from Step 1 fail under both the old reduction and old label, then prove that this value remains stable while one column appends.
 
 - [ ] **Step 6: Run frontend and browser gates**
 
@@ -444,7 +466,7 @@ git add natsume-frontend/src/routes/+page.svelte \
 git commit -m "feat: load more collocations per particle"
 ```
 
-### Task 5: Example Accumulation and Expandable-Row Surfaces
+### Task 5: Example Accumulation
 
 **Files:**
 - Modify: `natsume-frontend/src/lib/components/ParticleColumn.svelte`
@@ -454,13 +476,13 @@ git commit -m "feat: load more collocations per particle"
 
 **Interfaces:**
 - Consumes: `ExamplesResponse.hasMore` and `responseMatchesResult` from Task 3.
-- Produces: initial page of five, later pages of 20, preserved loaded examples on retry, and visually explicit collapsed/open/exhausted states.
+- Produces: initial page of five, later pages of 20, preserved loaded examples on retry, and distinct more/empty/exhausted states.
 
-- [ ] **Step 1: Write failing browser tests for example paging and row states**
+- [ ] **Step 1: Write failing browser tests for example paging**
 
 Route example requests for `情報を集める`. Let the initial real response through but override `hasMore: true`; on `offset` equal to its length, return one distinct synthetic example with `hasMore: false` and the same build/corpus identity.
 
-Assert the initial disclosure shows `4 examples shown`, an accent `Load more examples` footer, then after activation shows the new sentence and `All examples shown`. Assert the next collocation summary immediately follows the expanded `<details>` in the same column. Compare computed summary backgrounds to prove collapsed and open summaries differ, toggle dark mode, and repeat the distinction. Focus the next summary and assert its focus indicator is not `none`.
+Assert the initial disclosure shows `4 examples shown` and an accent `Load more examples` footer, then after activation shows the new sentence and `All examples shown` on a neutral footer.
 
 Add an identity-mismatch route returning a different `databaseBuildId`; assert the synthetic sentence is not appended and `Data changed — update the search before loading more.` appears. Add a request-failure route and assert existing examples remain with a `Try again` action.
 
@@ -470,7 +492,7 @@ Add an identity-mismatch route returning a different `databaseBuildId`; assert t
 nix build --no-link -L .#checks.x86_64-linux.playwright
 ```
 
-Expected: missing example footer and row-surface assertions fail.
+Expected: the example load-more control cannot be found.
 
 - [ ] **Step 3: Pass build identity through the existing component chain**
 
@@ -478,51 +500,38 @@ From `ParticleColumn`, pass `databaseBuildId` through `CollocationItem` to `Sent
 
 - [ ] **Step 4: Implement incremental examples**
 
-Refactor `SentenceExamples.load(limit)` to use `offset: examples.length`. Initial expansion calls `load(5)` once; the footer calls `load(20)`. Store `hasMore` from every accepted response. Validate build/corpus identity before appending.
+Refactor `SentenceExamples.load(limit)` to return immediately when `status === 'loading'` and otherwise use `offset: examples.length`. Initial expansion calls `load(5)` once; the footer calls `load(20)`. Store `hasMore` from every accepted response. Validate build/corpus identity before appending. The loading branch must replace the load-more button, so both the function guard and the rendered state enforce one in-flight request per disclosure.
 
-Render loaded examples before transient footer state so loading or retry never hides them. Use these terminal states:
+Render loaded examples before transient footer state so loading or retry never hides them. Keep the existing empty branch and example `<ul>` unchanged. Immediately after that list in the non-empty branch, render these terminal states:
 
 ```svelte
-{#if examples.length === 0 && status === 'empty'}
-	<p>No examples found.</p>
+{#if status === 'loading'}
+	<div
+		class="mt-2 rounded border border-blue-200 bg-blue-50 p-2 text-blue-900 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-100"
+	>
+		Loading more examples…
+	</div>
+{:else if status === 'request-error'}
+	<button onclick={() => load(20)}>Try again</button>
+{:else if status === 'identity-error'}
+	<p>Data changed — update the search before loading more.</p>
+{:else if hasMore}
+	<button
+		class="mt-2 w-full rounded border border-blue-200 bg-blue-50 p-2 text-blue-900 hover:bg-blue-100 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-100 dark:hover:bg-blue-900"
+		onclick={() => load(20)}
+	>
+		Load more examples
+	</button>
 {:else}
-	<p>{examples.length} examples shown</p>
-	<!-- existing list -->
-	{#if status === 'loading'}
-		<div
-			class="mt-2 rounded border border-blue-200 bg-blue-50 p-2 text-blue-900 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-100"
-		>
-			Loading more examples…
-		</div>
-	{:else if status === 'request-error'}
-		<button onclick={() => load(20)}>Try again</button>
-	{:else if status === 'identity-error'}
-		<p>Data changed — update the search before loading more.</p>
-	{:else if hasMore}
-		<button onclick={() => load(20)}>Load more examples</button>
-	{:else}
-		<div class="mt-2 rounded bg-gray-100 p-2 text-gray-600 dark:bg-gray-800 dark:text-gray-300">
-			All examples shown
-		</div>
-	{/if}
+	<div class="mt-2 rounded bg-gray-100 p-2 text-gray-600 dark:bg-gray-800 dark:text-gray-300">
+		All examples shown
+	</div>
 {/if}
 ```
 
 An empty accepted later page sets `hasMore=false` and becomes exhausted. Abort an active request on unmount.
 
-- [ ] **Step 5: Make each summary a full-width explicit surface**
-
-Give `<details>` a `group` class. Hide the native marker, add an `aria-hidden` chevron that rotates under `group-open`, and style the entire `<summary>` with:
-
-- neutral light/dark background and border;
-- accent hover background;
-- visible `focus-visible` outline;
-- stronger `group-open` light/dark accent background;
-- full width with the existing bar and lemma label retained.
-
-Keep examples directly under their summary and the next `<details>` directly after the expanded one; do not add indentation, absolute positioning, sticky behavior, or a nested vertical scroller.
-
-- [ ] **Step 6: Run all frontend gates**
+- [ ] **Step 5: Run all frontend gates**
 
 ```bash
 nix build --no-link -L \
@@ -532,7 +541,7 @@ nix build --no-link -L \
 
 Expected: lint, Svelte diagnostics,  unit tests, build, and browser tests pass.
 
-- [ ] **Step 7: Commit example loading and row visuals**
+- [ ] **Step 6: Commit example loading**
 
 ```bash
 git add natsume-frontend/src/lib/components/ParticleColumn.svelte \
@@ -542,19 +551,81 @@ git add natsume-frontend/src/lib/components/ParticleColumn.svelte \
 git commit -m "feat: load more examples inline"
 ```
 
-### Task 6: Benchmark, Documentation, and Scaffolding Retirement
+### Task 6: Expandable-Row Surfaces
+
+**Files:**
+- Modify: `natsume-frontend/src/lib/components/CollocationItem.svelte`
+- Test: `natsume-frontend/tests/test.ts`
+
+**Interfaces:**
+- Preserves: example paging and disclosure ownership from Task 5.
+- Produces: visually explicit collapsed/open/focus states and an immediately adjacent next row.
+
+- [ ] **Step 1: Write failing browser tests for row surfaces**
+
+Expand a collocation with multiple examples. Assert the next collocation's `<summary>` is the next summary after the expanded `<details>` in the same column. Compare computed summary backgrounds to prove collapsed and open summaries differ, toggle dark mode, and repeat the distinction. Focus the next summary and assert its computed `outlineStyle` is not `none`. Assert the summary contains an `aria-hidden="true"` chevron whose transform changes when the disclosure opens.
+
+- [ ] **Step 2: Run Playwright and verify RED**
+
+```bash
+nix build --no-link -L .#checks.x86_64-linux.playwright
+```
+
+Expected: background, focus-outline, and custom-chevron assertions fail.
+
+- [ ] **Step 3: Make each summary a full-width explicit surface**
+
+Give `<details>` a `group` class. Hide the native marker with `[&>summary]:list-none` and `[&>summary::-webkit-details-marker]:hidden`. Add this chevron as the first summary child:
+
+```svelte
+<span
+	aria-hidden="true"
+	class="inline-block transition-transform group-open:rotate-90"
+>
+	▶
+</span>
+```
+
+Change the summary grid to include the chevron and use a complete surface class:
+
+```svelte
+class="grid w-full cursor-pointer grid-cols-[auto_minmax(6rem,2fr)_minmax(0,3fr)] items-center gap-2 rounded border border-gray-200 bg-gray-50 p-2 font-medium hover:bg-blue-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 group-open:border-blue-300 group-open:bg-blue-100 dark:border-gray-700 dark:bg-gray-900 dark:hover:bg-blue-950 dark:group-open:border-blue-700 dark:group-open:bg-blue-950"
+```
+
+Keep examples directly under their summary and the next `<details>` directly after the expanded one; do not add indentation, absolute positioning, sticky behavior, or a nested vertical scroller.
+
+- [ ] **Step 4: Run frontend and browser gates**
+
+```bash
+nix build --no-link -L \
+  .#checks.x86_64-linux.frontend \
+  .#checks.x86_64-linux.playwright
+```
+
+Expected: all frontend and browser checks pass.
+
+- [ ] **Step 5: Commit the row restyle separately**
+
+```bash
+git add natsume-frontend/src/lib/components/CollocationItem.svelte \
+  natsume-frontend/tests/test.ts
+git commit -m "style: clarify expandable collocation rows"
+```
+
+### Task 7: Benchmark, Documentation, and Scaffolding Retirement
 
 **Files:**
 - Modify: `src/natsume_simple/benchmark_service.py:35-90`
 - Test: `tests/test_benchmark_service.py:45-80`
 - Modify: `README.md:215-232`
-- Delete after all gates pass: `docs/superpowers/specs/2026-08-14-incremental-results-design.md`
 - Delete after all gates pass: `docs/superpowers/plans/2026-08-14-incremental-results.md`
 
 **Interfaces:**
 - Produces: fixed benchmark requests for a later collocation page and a late example page.
+- Produces: a hard failure when either curated later-page request returns zero rows.
 - Produces: durable README parameter/response documentation.
-- Retires: temporary design and implementation scaffolding after tests/docs own the behavior.
+- Preserves: the design document as the durable measurement, premise, tradeoff, and revisit-trigger record.
+- Retires: only the completed implementation checklist after tests and documentation own the behavior.
 
 - [ ] **Step 1: Write failing benchmark-family assertions**
 
@@ -567,24 +638,51 @@ Extend `test_request_family_is_fixed_and_repeats_corpus_ids` to expect two new e
 
 Assert the first uses `term=する`, `pos=verb`, `particle=を`, `offsetPerParticle=4500`, and the selection-derived limit supplied by the benchmark family. Assert the second uses `noun=必要`, `particle=が`, `verb=ある`, `offset=4000`, and `limit=20`.
 
+Extend the test HTTP handler with `/empty-collocations` returning `{"particleGroups": [{"returnedCount": 0}]}` and `/empty-examples` returning `{"examples": []}`. Add a parametrized test that runs one request named `collocations-page-verb` or `examples-page` against those paths and expects `BenchmarkError("benchmark_empty_result:<name>")`. This prevents a changed artifact from turning the late offsets into fast empty-page measurements.
+
 - [ ] **Step 2: Run the benchmark unit test and verify RED**
 
 ```bash
 nix develop .#test --command pytest tests/test_benchmark_service.py \
-  -k request_family -q
+  -k 'request_family or empty_later_page' -q
 ```
 
-Expected: the endpoint-name and query assertions fail.
+Expected: the endpoint-name/query assertions fail and empty later pages are not rejected.
 
 - [ ] **Step 3: Add the two fixed later-page requests**
 
-In `build_request_family`, compute:
+Import the backend capacity constants from `natsume_simple.api` and compute:
 
 ```python
-page_size = min(200, 450 // len(corpus_ids))
+from natsume_simple.api import (
+    COLLOCATION_ITEM_CORPUS_BUDGET,
+    MAX_COLLOCATIONS_PER_PARTICLE,
+)
+
+page_size = min(
+    MAX_COLLOCATIONS_PER_PARTICLE,
+    COLLOCATION_ITEM_CORPUS_BUDGET // len(corpus_ids),
+)
 ```
 
-Reject an empty corpus tuple. Add the two named endpoints with the parameters above and repeated corpus IDs. Keep the existing warmup, concurrency, success, p50, p95, max, and body-size reporting unchanged.
+Reject an empty corpus tuple. Add the two named endpoints with the parameters above and repeated corpus IDs.
+
+After reading the response body but outside the elapsed-time measurement, validate only the two late-page names:
+
+```python
+def _later_page_result_count(endpoint: str, body: bytes) -> int | None:
+    if endpoint not in {"collocations-page-verb", "examples-page"}:
+        return None
+    try:
+        payload = json.loads(body)
+        if endpoint == "examples-page":
+            return len(payload["examples"])
+        return sum(group["returnedCount"] for group in payload["particleGroups"])
+    except (json.JSONDecodeError, KeyError, TypeError) as error:
+        raise BenchmarkError(f"benchmark_response_invalid:{endpoint}") from error
+```
+
+In `_fetch`, raise `BenchmarkError(f"benchmark_empty_result:{endpoint.name}")` when this function returns zero. Keep the existing warmup, concurrency, success, p50, p95, max, and body-size reporting unchanged.
 
 - [ ] **Step 4: Run benchmark and backend suites**
 
@@ -632,12 +730,11 @@ Expected: every derivation succeeds and neither test port has a listener.
 
 - [ ] **Step 7: Retire scaffolding and commit the completed feature**
 
-Only after Step 6 succeeds, remove the design and this completed plan with `apply_patch`, then commit explicit paths:
+Only after Step 6 succeeds, remove this completed plan with `apply_patch`. Retain `docs/superpowers/specs/2026-08-14-incremental-results-design.md`; it owns the measured repeated-page costs, total-order proof, immutability premise/disconfirmer, accepted no-total tradeoff, and one-second revisit triggers. Then commit explicit paths:
 
 ```bash
 git add README.md src/natsume_simple/benchmark_service.py tests/test_benchmark_service.py
-git add -u docs/superpowers/specs/2026-08-14-incremental-results-design.md \
-  docs/superpowers/plans/2026-08-14-incremental-results.md
+git add -u docs/superpowers/plans/2026-08-14-incremental-results.md
 git commit -m "docs: publish incremental result contract"
 ```
 
