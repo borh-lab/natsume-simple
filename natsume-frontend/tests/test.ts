@@ -92,6 +92,117 @@ test('searches, filters, rescales, and safely expands examples', async ({ page }
 	await expect(page.locator('summary').filter({ hasText: '集める' })).toBeVisible();
 });
 
+test('loads more collocations in only the selected particle column', async ({ page }) => {
+	let expectedTotal = 0;
+	let initialWoCount = 0;
+	let initialResponse: {
+		particleGroups: Array<{
+			particle: string;
+			totalMatchingCollocations: number;
+			returnedCount: number;
+			items: unknown[];
+			corpusDistribution: unknown[];
+		}>;
+		selectedCorpusIds: string[];
+		databaseBuildId: string;
+	} | null = null;
+
+	await page.route('**/api/collocations**', async (route) => {
+		const url = new URL(route.request().url());
+		if (url.searchParams.get('term') !== '情報') {
+			await route.continue();
+			return;
+		}
+		if (url.searchParams.get('particle') === 'を') {
+			if (!initialResponse) throw new Error('targeted page preceded initial response');
+			expect(url.searchParams.get('offsetPerParticle')).toBe(String(initialWoCount));
+			const initialGroup = initialResponse.particleGroups.find((group) => group.particle === 'を');
+			if (!initialGroup) throw new Error('fixture response omitted を');
+			await route.fulfill({
+				json: {
+					particleGroups: [
+						{
+							...initialGroup,
+							returnedCount: 1,
+							items: [
+								{
+									noun: '情報',
+									particle: 'を',
+									verb: '追加する',
+									totalRawFrequency: 1,
+									meanFrequencyPerMillion: 1,
+									contributions: [
+										{ corpusId: initialResponse.selectedCorpusIds[0], rawFrequency: 1 }
+									]
+								}
+							]
+						}
+					],
+					selectedCorpusIds: initialResponse.selectedCorpusIds,
+					databaseBuildId: initialResponse.databaseBuildId
+				}
+			});
+			return;
+		}
+
+		const response = await route.fetch();
+		const body = await response.json();
+		initialResponse = body;
+		const wo = body.particleGroups.find((group: { particle: string }) => group.particle === 'を');
+		if (!wo) throw new Error('fixture response omitted を');
+		initialWoCount = wo.items.length;
+		wo.totalMatchingCollocations = initialWoCount + 1;
+		expectedTotal = body.particleGroups.reduce(
+			(sum: number, group: { totalMatchingCollocations: number }) =>
+				sum + group.totalMatchingCollocations,
+			0
+		);
+		await route.fulfill({ response, json: body });
+	});
+
+	await page.goto('/');
+	await expect(page.getByRole('button', { name: 'Go' })).toBeEnabled();
+	const search = page.getByRole('combobox', { name: 'Search term' });
+	await search.fill('情報');
+	await Promise.all([
+		page.waitForResponse((response) => {
+			const url = new URL(response.url());
+			return url.pathname === '/api/collocations' && url.searchParams.get('term') === '情報';
+		}),
+		page.getByRole('button', { name: 'Update results' }).click()
+	]);
+	const woColumn = page.getByTestId('particle-column').filter({
+		has: page.getByRole('heading', { name: 'を', exact: true })
+	});
+	const gaColumn = page.getByTestId('particle-column').filter({
+		has: page.getByRole('heading', { name: 'が', exact: true })
+	});
+	await expect(
+		page.getByText(`${expectedTotal} matching results for “情報” · Noun–particle search`, {
+			exact: true
+		})
+	).toBeVisible();
+	await expect(
+		woColumn.getByText(`Showing ${initialWoCount} of ${initialWoCount + 1}`)
+	).toBeVisible();
+	const otherCount = await gaColumn.locator('summary').count();
+	const overview = page.getByRole('region', { name: 'Particle collocations' });
+	await overview.evaluate((element) => (element.scrollLeft = 100));
+	const scrollLeft = await overview.evaluate((element) => element.scrollLeft);
+
+	await woColumn.getByRole('button', { name: 'Load 1 more' }).click();
+
+	await expect(woColumn.getByText('追加する', { exact: true })).toBeVisible();
+	expect(await gaColumn.locator('summary').count()).toBe(otherCount);
+	await expect(
+		page.getByText(`${expectedTotal} matching results for “情報” · Noun–particle search`, {
+			exact: true
+		})
+	).toBeVisible();
+	await expect(page.getByRole('combobox', { name: 'Bar scale' })).toHaveValue('particle');
+	expect(await overview.evaluate((element) => element.scrollLeft)).toBe(scrollLeft);
+});
+
 test('supports both query directions and theme control', async ({ page }) => {
 	await page.goto('/');
 	await expect(page.getByRole('button', { name: 'Go' })).toBeEnabled();

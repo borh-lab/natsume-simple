@@ -59,12 +59,9 @@
 		<p>No collocations found.</p>
 	{/if}
 	{#if controller.result}
-		<ParticleOverview
-			{client}
-			result={controller.result.response}
-			corpora={controller.corpora}
-			pos={controller.result.input.pos}
-		/>
+		{#key controller.result}
+			<ParticleOverview {client} result={controller.result} corpora={controller.corpora} />
+		{/key}
 	{/if}
 </main>
 

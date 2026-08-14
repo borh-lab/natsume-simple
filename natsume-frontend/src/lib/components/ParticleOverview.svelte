@@ -1,17 +1,17 @@
 <script lang="ts">
 	import type { ApiClient } from '$lib/api/client';
-	import type { CollocationsResponse, Corpus, SearchPosition } from '$lib/api/types';
+	import type { Corpus } from '$lib/api/types';
 	import type { BarScale } from '$lib/presentation/search';
+	import type { VisibleSearchResult } from '$lib/search/controller.svelte';
 	import ParticleColumn from './ParticleColumn.svelte';
 
 	let {
 		client,
 		result,
-		corpora,
-		pos
-	}: { client: ApiClient; result: CollocationsResponse; corpora: Corpus[]; pos: SearchPosition } =
-		$props();
+		corpora
+	}: { client: ApiClient; result: VisibleSearchResult; corpora: Corpus[] } = $props();
 	let barScale = $state<BarScale>('particle');
+	const response = $derived(result.response);
 </script>
 
 <div class="space-y-2">
@@ -36,15 +36,17 @@
 		tabindex="0"
 		data-testid="particle-overview"
 	>
-		{#each result.particleGroups as group (group.particle)}
+		{#each response.particleGroups as group (group.particle)}
 			<ParticleColumn
 				{client}
 				{group}
-				groups={result.particleGroups}
+				groups={response.particleGroups}
 				{corpora}
-				selectedCorpusIds={result.selectedCorpusIds}
+				selectedCorpusIds={response.selectedCorpusIds}
+				databaseBuildId={response.databaseBuildId}
+				searchInput={result.input}
 				{barScale}
-				{pos}
+				pos={result.input.pos}
 			/>
 		{/each}
 	</div>
