@@ -27,7 +27,10 @@ from natsume_simple.artifact_validation import (
 
 QUERY_CAPACITY = 16
 QUERY_TIMEOUT_SECONDS = 2.0
+MAX_COLLOCATIONS_PER_PARTICLE = 200
 COLLOCATION_ITEM_CORPUS_BUDGET = 450
+Particle = Literal["が", "を", "に", "で", "から", "より", "と", "へ"]
+PARTICLES: tuple[Particle, ...] = ("が", "を", "に", "で", "から", "より", "と", "へ")
 request_logger = logging.getLogger("natsume_simple.api.requests")
 startup_logger = logging.getLogger("natsume_simple.api.startup")
 
@@ -430,9 +433,19 @@ def create_app(artifact_dir: Path, *, frontend_dir: Path | None = None) -> FastA
         term: Annotated[str, Query(min_length=1, max_length=64)],
         pos: Literal["noun", "verb"],
         corpusId: Annotated[list[str] | None, Query()] = None,
-        limitPerParticle: Annotated[int, Query(ge=1, le=200)] = 100,
+        particle: Annotated[Particle | None, Query()] = None,
+        offsetPerParticle: Annotated[int, Query(ge=0)] = 0,
+        limitPerParticle: Annotated[
+            int, Query(ge=1, le=MAX_COLLOCATIONS_PER_PARTICLE)
+        ] = 100,
     ) -> CollocationsResponse:
         request.state.query_length_bucket = query_length_bucket(term)
+        if offsetPerParticle and particle is None:
+            raise PublicApiError(
+                400,
+                "invalid_parameter",
+                "offsetPerParticle requires particle",
+            )
 
         def load_rows():
             corpus_rows = connection.execute(
@@ -449,13 +462,18 @@ def create_app(artifact_dir: Path, *, frontend_dir: Path | None = None) -> FastA
 
             term_column = "noun" if pos == "noun" else "verb"
             placeholders = ", ".join("?" for _ in selected)
+            particle_clause = " AND particle = ?" if particle is not None else ""
+            parameters = [term, *selected]
+            if particle is not None:
+                parameters.append(particle)
             rows = connection.execute(
                 f"""
                 SELECT corpus_id, noun, particle, verb, raw_frequency
                 FROM collocation_frequency
                 WHERE {term_column} = ? AND corpus_id IN ({placeholders})
+                  {particle_clause}
                 """,
-                [term, *selected],
+                parameters,
             ).fetchall()
             return corpus_counts, selected, rows
 
@@ -467,11 +485,13 @@ def create_app(artifact_dir: Path, *, frontend_dir: Path | None = None) -> FastA
         )
 
         by_triple: dict[tuple[str, str, str], dict[str, int]] = {}
-        for corpus_id, noun, particle, verb, raw_frequency in rows:
-            by_triple.setdefault((noun, particle, verb), {})[corpus_id] = raw_frequency
+        for corpus_id, noun, row_particle, verb, raw_frequency in rows:
+            by_triple.setdefault((noun, row_particle, verb), {})[
+                corpus_id
+            ] = raw_frequency
 
         by_particle: dict[str, list[CollocationItemResponse]] = {}
-        for (noun, particle, verb), raw_by_corpus in by_triple.items():
+        for (noun, item_particle, verb), raw_by_corpus in by_triple.items():
             rates_by_corpus = {
                 corpus_id: raw_by_corpus[corpus_id]
                 / corpus_counts[corpus_id]
@@ -489,17 +509,18 @@ def create_app(artifact_dir: Path, *, frontend_dir: Path | None = None) -> FastA
             ]
             item = CollocationItemResponse(
                 noun=noun,
-                particle=particle,
+                particle=item_particle,
                 verb=verb,
                 totalRawFrequency=sum(raw_by_corpus.values()),
                 meanFrequencyPerMillion=(sum(rates_by_corpus.values()) / len(selected)),
                 contributions=contributions,
             )
-            by_particle.setdefault(particle, []).append(item)
+            by_particle.setdefault(item_particle, []).append(item)
 
         particle_groups = []
-        for particle in ["が", "を", "に", "で", "から", "より", "と", "へ"]:
-            items = by_particle.get(particle, [])
+        target_particles = PARTICLES if particle is None else (particle,)
+        for current_particle in target_particles:
+            items = by_particle.get(current_particle, [])
             if not items:
                 continue
             items.sort(
@@ -528,10 +549,12 @@ def create_app(artifact_dir: Path, *, frontend_dir: Path | None = None) -> FastA
                         ),
                     )
                 )
-            returned_items = items[:limitPerParticle]
+            returned_items = items[
+                offsetPerParticle : offsetPerParticle + limitPerParticle
+            ]
             particle_groups.append(
                 ParticleGroupResponse(
-                    particle=particle,
+                    particle=current_particle,
                     totalMatchingCollocations=len(items),
                     returnedCount=len(returned_items),
                     items=returned_items,

@@ -365,6 +365,103 @@ def test_collocations_rank_by_mean_frequency_per_million(tmp_path: Path):
     assert particle["items"][0]["totalRawFrequency"] == 2
 
 
+def test_collocations_page_one_particle_without_overlap(tmp_path: Path):
+    with fixture_client(tmp_path) as client:
+        first = client.get(
+            "/api/collocations",
+            params={
+                "term": "情報",
+                "pos": "noun",
+                "corpusId": "beta",
+                "particle": "を",
+                "limitPerParticle": 1,
+                "offsetPerParticle": 0,
+            },
+        )
+        second = client.get(
+            "/api/collocations",
+            params={
+                "term": "情報",
+                "pos": "noun",
+                "corpusId": "beta",
+                "particle": "を",
+                "limitPerParticle": 1,
+                "offsetPerParticle": 1,
+            },
+        )
+
+    first_group = first.json()["particleGroups"][0]
+    second_group = second.json()["particleGroups"][0]
+    assert [group["particle"] for group in first.json()["particleGroups"]] == [
+        "を"
+    ]
+    assert first_group["totalMatchingCollocations"] == 2
+    assert second_group["totalMatchingCollocations"] == 2
+    assert first_group["corpusDistribution"] == second_group["corpusDistribution"]
+    assert first_group["items"][0]["verb"] == "調べる"
+    assert second_group["items"][0]["verb"] == "集める"
+
+
+def test_collocations_past_end_retains_target_group_metadata(tmp_path: Path):
+    with fixture_client(tmp_path) as client:
+        response = client.get(
+            "/api/collocations",
+            params={
+                "term": "情報",
+                "pos": "noun",
+                "corpusId": "beta",
+                "particle": "を",
+                "limitPerParticle": 1,
+                "offsetPerParticle": 2,
+            },
+        )
+
+    group = response.json()["particleGroups"][0]
+    assert group["particle"] == "を"
+    assert group["totalMatchingCollocations"] == 2
+    assert group["returnedCount"] == 0
+    assert group["items"] == []
+    assert group["corpusDistribution"] == [
+        {
+            "corpusId": "beta",
+            "rawFrequency": 3,
+            "frequencyPerMillion": 750_000,
+        }
+    ]
+
+
+def test_collocation_offset_requires_particle(tmp_path: Path):
+    with fixture_client(tmp_path) as client:
+        response = client.get(
+            "/api/collocations",
+            params={
+                "term": "情報",
+                "pos": "noun",
+                "offsetPerParticle": 1,
+            },
+            headers={"X-Request-ID": "missing-particle"},
+        )
+
+    assert response.status_code == 400
+    assert response.json() == {
+        "error": {
+            "code": "invalid_parameter",
+            "message": "offsetPerParticle requires particle",
+            "requestId": "missing-particle",
+        }
+    }
+
+
+def test_collocation_particle_rejects_unknown_value(tmp_path: Path):
+    with fixture_client(tmp_path) as client:
+        response = client.get(
+            "/api/collocations",
+            params={"term": "情報", "pos": "noun", "particle": "unknown"},
+        )
+
+    assert response.status_code == 422
+
+
 def test_maximum_budgeted_responses_stay_below_one_mebibyte(tmp_path: Path):
     artifact_dir = build_maximum_response_artifact(tmp_path / "artifact")
     with TestClient(create_app(artifact_dir)) as client:
