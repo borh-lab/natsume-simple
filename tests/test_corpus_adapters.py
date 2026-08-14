@@ -11,6 +11,7 @@ from natsume_simple.corpus_pipeline import (
     PipelineRejected,
     RejectionLimits,
     adapt_jnlp_directory,
+    adapt_ted_iwslt_archive,
     adapt_wikipedia_parquet,
     build_corpus_artifact,
     enforce_rejection_limits,
@@ -26,6 +27,91 @@ def test_source_content_hash_frames_ordered_utf8_units():
     assert source_content_sha256(("一行目。", "二行目。")) == (
         "2ed1b83c19688e8f8a24142f973ff992face1c71641953875b40cb54b3583a5f"
     )
+
+
+def write_iwslt_archive(path: Path, japanese_training: str) -> Path:
+    import zipfile
+
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr("ja-en/train.tags.ja-en.ja", japanese_training)
+    return path
+
+
+def test_ted_adapter_groups_rows_by_talk_and_counts_empty_talks(tmp_path: Path):
+    archive = write_iwslt_archive(
+        tmp_path / "ja-en.zip",
+        """<doc docid="1" genre="lectures">
+<url>https://www.ted.com/talks/example</url>
+<speaker>話者</speaker>
+<talkid>42</talkid>
+<title>例の講演</title>
+一行目。
+二行目。
+</doc>
+<doc docid="2" genre="lectures">
+<talkid>43</talkid>
+<title>空の講演</title>
+</doc>
+""",
+    )
+
+    result = adapt_ted_iwslt_archive(archive)
+
+    assert result.corpus_id == "ted"
+    assert result.rejections == {"empty_subtitle_text": 1}
+    assert len(result.documents) == 1
+    talk = result.documents[0]
+    assert talk.external_id == "42"
+    assert talk.title == "例の講演"
+    assert talk.year is None
+    assert talk.author == "話者"
+    assert talk.publisher == "TED Conference LLC"
+    assert talk.url == "https://www.ted.com/talks/example"
+    assert talk.text_units == ("一行目。", "二行目。")
+    assert talk.content_sha256 == source_content_sha256(talk.text_units)
+
+
+@pytest.mark.parametrize(
+    ("training", "reason"),
+    [
+        ("<doc>\n<title>missing</title>\n本文。\n</doc>", "ted_identity_missing"),
+        (
+            "<doc>\n<talkid>1</talkid>\n本文。\n</doc>\n"
+            "<doc>\n<talkid>1</talkid>\n別文。\n</doc>",
+            "ted_identity_duplicate",
+        ),
+        (
+            "<doc>\n<talkid>1</talkid>\n<title>A</title>\n"
+            "<title>B</title>\n本文。\n</doc>",
+            "ted_metadata_conflict",
+        ),
+    ],
+)
+def test_ted_adapter_aborts_on_identity_errors(
+    tmp_path: Path, training: str, reason: str
+):
+    archive = write_iwslt_archive(tmp_path / "ja-en.zip", training)
+
+    with pytest.raises(ValueError, match=f"^{reason}$"):
+        adapt_ted_iwslt_archive(archive)
+
+
+def test_ted_adapter_requires_exactly_one_named_member(tmp_path: Path):
+    import zipfile
+
+    missing = tmp_path / "missing.zip"
+    with zipfile.ZipFile(missing, "w") as archive:
+        archive.writestr("other.txt", "text")
+    with pytest.raises(ValueError, match="^ted_archive_member_invalid$"):
+        adapt_ted_iwslt_archive(missing)
+
+    duplicate = tmp_path / "duplicate.zip"
+    with zipfile.ZipFile(duplicate, "w") as archive:
+        archive.writestr("ja-en/train.tags.ja-en.ja", "<doc></doc>")
+        with pytest.warns(UserWarning, match="Duplicate name"):
+            archive.writestr("ja-en/train.tags.ja-en.ja", "<doc></doc>")
+    with pytest.raises(ValueError, match="^ted_archive_member_invalid$"):
+        adapt_ted_iwslt_archive(duplicate)
     assert source_content_sha256(("一行目。二行目。",)) != source_content_sha256(
         ("一行目。", "二行目。")
     )

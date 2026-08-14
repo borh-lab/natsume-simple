@@ -1,5 +1,8 @@
 import hashlib
+import html
+import io
 import logging
+import re
 import subprocess
 import zipfile
 from collections import Counter
@@ -23,6 +26,9 @@ from natsume_simple.pattern_extraction import npv_matcher
 
 logger = logging.getLogger(__name__)
 SOURCE_CONTENT_HASH = "natsume-source-content-v1"
+TED_TRAINING_MEMBER = "ja-en/train.tags.ja-en.ja"
+TED_METADATA = re.compile(r"^<([a-z]+)>(.*)</\1>$")
+TED_DOCUMENT_START = re.compile(r"^<doc(?:\s[^>]*)?>$")
 
 
 class PipelineRejected(ValueError):
@@ -187,6 +193,92 @@ def adapt_wikipedia_parquet(
 
     return AdaptationResult(
         "wiki",
+        tuple(sorted(documents, key=lambda document: document.external_id)),
+        dict(sorted(rejections.items())),
+    )
+
+
+def adapt_ted_iwslt_archive(archive_path: Path) -> AdaptationResult:
+    """Adapt the locked IWSLT Japanese training member into TED talks."""
+    documents: list[SourceDocument] = []
+    rejections: Counter[str] = Counter()
+    seen_talk_ids: set[str] = set()
+    metadata: dict[str, str] | None = None
+    text_units: list[str] = []
+
+    with zipfile.ZipFile(archive_path) as archive:
+        members = [
+            member
+            for member in archive.infolist()
+            if member.filename == TED_TRAINING_MEMBER
+        ]
+        if len(members) != 1:
+            raise ValueError("ted_archive_member_invalid")
+
+        with archive.open(members[0]) as raw_stream:
+            stream = io.TextIOWrapper(raw_stream, encoding="utf-8")
+            for raw_line in stream:
+                line = raw_line.strip()
+                if not line:
+                    continue
+                if TED_DOCUMENT_START.fullmatch(line):
+                    if metadata is not None:
+                        raise ValueError("ted_archive_structure_invalid")
+                    metadata = {}
+                    text_units = []
+                    continue
+                if line == "</doc>":
+                    if metadata is None:
+                        raise ValueError("ted_archive_structure_invalid")
+                    talk_id = metadata.get("talkid")
+                    if not talk_id:
+                        raise ValueError("ted_identity_missing")
+                    if talk_id in seen_talk_ids:
+                        raise ValueError("ted_identity_duplicate")
+                    seen_talk_ids.add(talk_id)
+                    units = tuple(text_units)
+                    if not units:
+                        rejections["empty_subtitle_text"] += 1
+                    else:
+                        documents.append(
+                            SourceDocument(
+                                corpus_id="ted",
+                                external_id=talk_id,
+                                title=metadata.get("title", f"TED Talk {talk_id}"),
+                                year=None,
+                                author=_optional_text(metadata.get("speaker")),
+                                publisher="TED Conference LLC",
+                                url=_optional_text(metadata.get("url")),
+                                text_units=units,
+                                content_sha256=source_content_sha256(units),
+                            )
+                        )
+                    metadata = None
+                    text_units = []
+                    continue
+
+                match = TED_METADATA.fullmatch(line)
+                if match:
+                    if metadata is None:
+                        continue
+                    key, raw_value = match.groups()
+                    if key in {"talkid", "title", "speaker", "url"}:
+                        value = html.unescape(raw_value.strip())
+                        previous = metadata.get(key)
+                        if previous is not None and previous != value:
+                            raise ValueError("ted_metadata_conflict")
+                        metadata[key] = value
+                    continue
+                if line.startswith("<") and line.endswith(">"):
+                    continue
+                if metadata is None:
+                    raise ValueError("ted_archive_structure_invalid")
+                text_units.append(html.unescape(line))
+
+    if metadata is not None:
+        raise ValueError("ted_archive_structure_invalid")
+    return AdaptationResult(
+        "ted",
         tuple(sorted(documents, key=lambda document: document.external_id)),
         dict(sorted(rejections.items())),
     )
