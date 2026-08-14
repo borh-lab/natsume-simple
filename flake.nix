@@ -303,6 +303,7 @@
                 import hashlib
                 import json
                 from pathlib import Path
+                from zipfile import ZipFile
 
                 import polars as pl
                 from natsume_simple.release_inputs import canonical_article_ids_sha256
@@ -323,6 +324,13 @@
                     }
                 ).write_parquet(parquet)
                 parquet_bytes = parquet.read_bytes()
+                ted_archive = root / "ja-en.zip"
+                with ZipFile(ted_archive, "w") as archive:
+                    archive.writestr(
+                        "ja-en/train.tags.ja-en.ja",
+                        "<doc>\n<talkid>1</talkid>\n<title>教材</title>\n教材を読む。\n</doc>\n",
+                    )
+                ted_bytes = ted_archive.read_bytes()
                 lock = {
                     "sources": [
                         {
@@ -351,6 +359,16 @@
                                         "sha256": hashlib.sha256(parquet_bytes).hexdigest(),
                                     }
                                 ],
+                            },
+                        },
+                        {
+                            "corpusId": "ted-iwslt-2017-ja-en",
+                            "servingCorpusId": "ted",
+                            "status": "ready",
+                            "candidate": {
+                                "url": "https://example.invalid/ja-en.zip",
+                                "size": len(ted_bytes),
+                                "sha256": hashlib.sha256(ted_bytes).hexdigest(),
                             },
                         },
                     ]
@@ -397,8 +415,20 @@
                   --wikipedia-subset fixture-inputs/subset.json \
                   --jnlp-root fixture-inputs/jnlp \
                   --wikipedia-parquet fixture-inputs/train-00000-of-00015.parquet \
+                  --ted-iwslt-archive fixture-inputs/ja-en.zip \
                   >input-inspection.json
-                grep -q '"acceptedSources": 971' input-inspection.json
+                python - <<'PY'
+                import json
+
+                with open("input-inspection.json", encoding="utf-8") as source:
+                    inspection = json.load(source)
+                assert inspection["wiki"]["acceptedSources"] == 971
+                assert inspection["ted"] == {
+                    "acceptedSources": 1,
+                    "rejections": {},
+                    "textUnits": 1,
+                }
+                PY
                 {
                   ${pkgs.nkf}/bin/nkf --version
                   ${pkgs.pandoc}/bin/pandoc --version
@@ -556,6 +586,8 @@
                 corpusBuilder
                 server
                 pkgs.curl
+                pkgs.duckdb
+                pkgs.jq
                 pkgs.nginx
                 pkgs.time
               ];
