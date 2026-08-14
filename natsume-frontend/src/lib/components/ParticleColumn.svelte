@@ -125,7 +125,16 @@
 		Showing {items.length} of {group.totalMatchingCollocations}
 	</p>
 	{#each items as item (item)}
-		<CollocationItem {client} {item} {corpora} {selectedCorpusIds} {reference} {colorSlots} {pos} />
+		<CollocationItem
+			{client}
+			{item}
+			{corpora}
+			{selectedCorpusIds}
+			{databaseBuildId}
+			{reference}
+			{colorSlots}
+			{pos}
+		/>
 	{/each}
 	{#if remaining > 0}
 		<div class="mt-2 border-t pt-2 dark:border-gray-700">

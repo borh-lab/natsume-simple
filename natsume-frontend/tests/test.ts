@@ -92,6 +92,128 @@ test('searches, filters, rescales, and safely expands examples', async ({ page }
 	await expect(page.locator('summary').filter({ hasText: '集める' })).toBeVisible();
 });
 
+test('loads more examples without hiding the accepted page', async ({ page }) => {
+	let initialCount = 0;
+	let identity = { selectedCorpusIds: [] as string[], databaseBuildId: '' };
+	await page.route('**/api/examples**', async (route) => {
+		const url = new URL(route.request().url());
+		if (url.searchParams.get('offset') !== '0') {
+			expect(url.searchParams.get('offset')).toBe(String(initialCount));
+			expect(url.searchParams.get('limit')).toBe('20');
+			await route.fulfill({
+				json: {
+					examples: [
+						{
+							corpusId: 'alpha',
+							sourceId: 99,
+							sourceTitle: 'Additional source',
+							sentenceId: 99,
+							text: '追加の情報を集める。',
+							nounSpan: { start: 3, end: 5 },
+							particleSpan: { start: 5, end: 6 },
+							verbSpan: { start: 6, end: 9 }
+						}
+					],
+					hasMore: false,
+					selectedCorpusIds: identity.selectedCorpusIds,
+					databaseBuildId: identity.databaseBuildId
+				}
+			});
+			return;
+		}
+		const response = await route.fetch();
+		const body = await response.json();
+		initialCount = body.examples.length;
+		identity = {
+			selectedCorpusIds: body.selectedCorpusIds,
+			databaseBuildId: body.databaseBuildId
+		};
+		body.hasMore = true;
+		await route.fulfill({ response, json: body });
+	});
+
+	await page.goto('/');
+	await expect(page.getByRole('button', { name: 'Go' })).toBeEnabled();
+	await page.getByRole('combobox', { name: 'Search term' }).fill('情報');
+	await page.getByRole('button', { name: 'Update results' }).click();
+	const disclosure = page.locator('details').filter({ hasText: '集める' }).first();
+	await disclosure.locator('summary').click();
+	await expect(disclosure.getByRole('button', { name: 'Load more examples' })).toBeVisible();
+	await expect(disclosure.getByText(`${initialCount} examples shown`)).toBeVisible();
+	await disclosure.getByRole('button', { name: 'Load more examples' }).click();
+	await expect(disclosure.getByText('追加の情報を集める。')).toBeVisible();
+	await expect(disclosure.getByText('All examples shown')).toBeVisible();
+});
+
+test('rejects a later example page from a different artifact', async ({ page }) => {
+	let initialCount = 0;
+	let selectedCorpusIds: string[] = [];
+	await page.route('**/api/examples**', async (route) => {
+		const url = new URL(route.request().url());
+		if (url.searchParams.get('offset') !== '0') {
+			await route.fulfill({
+				json: {
+					examples: [],
+					hasMore: false,
+					selectedCorpusIds,
+					databaseBuildId: 'different-build'
+				}
+			});
+			return;
+		}
+		const response = await route.fetch();
+		const body = await response.json();
+		initialCount = body.examples.length;
+		selectedCorpusIds = body.selectedCorpusIds;
+		body.hasMore = true;
+		await route.fulfill({ response, json: body });
+	});
+
+	await page.goto('/');
+	await expect(page.getByRole('button', { name: 'Go' })).toBeEnabled();
+	await page.getByRole('combobox', { name: 'Search term' }).fill('情報');
+	await page.getByRole('button', { name: 'Update results' }).click();
+	const disclosure = page.locator('details').filter({ hasText: '集める' }).first();
+	await disclosure.locator('summary').click();
+	await disclosure.getByRole('button', { name: 'Load more examples' }).click();
+	await expect(
+		disclosure.getByText('Data changed — update the search before loading more.')
+	).toBeVisible();
+	expect(await disclosure.locator('li').count()).toBe(initialCount);
+});
+
+test('keeps accepted examples visible when a later page fails', async ({ page }) => {
+	let initialCount = 0;
+	await page.route('**/api/examples**', async (route) => {
+		const url = new URL(route.request().url());
+		if (url.searchParams.get('offset') !== '0') {
+			await route.fulfill({
+				status: 500,
+				contentType: 'application/json',
+				body: JSON.stringify({
+					error: { code: 'query_failed', message: 'failed', requestId: 'test-request' }
+				})
+			});
+			return;
+		}
+		const response = await route.fetch();
+		const body = await response.json();
+		initialCount = body.examples.length;
+		body.hasMore = true;
+		await route.fulfill({ response, json: body });
+	});
+
+	await page.goto('/');
+	await expect(page.getByRole('button', { name: 'Go' })).toBeEnabled();
+	await page.getByRole('combobox', { name: 'Search term' }).fill('情報');
+	await page.getByRole('button', { name: 'Update results' }).click();
+	const disclosure = page.locator('details').filter({ hasText: '集める' }).first();
+	await disclosure.locator('summary').click();
+	await disclosure.getByRole('button', { name: 'Load more examples' }).click();
+	await expect(disclosure.getByRole('button', { name: 'Try again' })).toBeVisible();
+	expect(await disclosure.locator('li').count()).toBe(initialCount);
+});
+
 test('loads more collocations in only the selected particle column', async ({ page }) => {
 	let expectedTotal = 0;
 	let initialWoCount = 0;

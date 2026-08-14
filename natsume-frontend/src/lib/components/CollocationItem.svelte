@@ -9,6 +9,7 @@
 		item,
 		corpora,
 		selectedCorpusIds,
+		databaseBuildId,
 		reference,
 		colorSlots,
 		pos
@@ -17,6 +18,7 @@
 		item: CollocationItem;
 		corpora: Corpus[];
 		selectedCorpusIds: string[];
+		databaseBuildId: string;
 		reference: number;
 		colorSlots: Record<string, number>;
 		pos: SearchPosition;
@@ -69,6 +71,6 @@
 			</svg>
 			<span class="min-w-0 truncate">{pos === 'noun' ? item.verb : item.noun}</span>
 		</summary>
-		<SentenceExamples {client} {item} {selectedCorpusIds} {expanded} />
+		<SentenceExamples {client} {item} {selectedCorpusIds} {databaseBuildId} {expanded} />
 	</details>
 </div>
