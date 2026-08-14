@@ -36,15 +36,15 @@ Offset pagination is sufficient because the underlying artifact is immutable and
 `GET /api/collocations` gains two optional parameters:
 
 - `particle`: one of `が`, `を`, `に`, `で`, `から`, `より`, `と`, or `へ`.
-- `offsetPerParticle`: an integer greater than or equal to zero, defaulting to zero.
+- `offset`: an integer greater than or equal to zero, defaulting to zero.
 
-`offsetPerParticle > 0` requires `particle`; otherwise the endpoint returns the common `400 invalid_parameter` envelope. Omitting `particle` retains the current initial-search behavior and returns every non-empty particle group. Supplying `particle` filters the database query by particle before aggregation. It returns exactly that group when the particle has matches before pagination, including when the requested page itself is empty; it returns no groups only when the particle has no matches.
+`offset > 0` requires `particle`; otherwise the endpoint returns the common `400 invalid_parameter` envelope. Omitting `particle` retains the current initial-search behavior and returns every non-empty particle group. Supplying `particle` filters the database query by particle before aggregation. It returns exactly that group when the particle has matches before pagination, including when the requested page itself is empty; it returns no groups only when the particle has no matches.
 
 Each group retains the existing fields:
 
 - `totalMatchingCollocations` is the full selection-specific count for that particle.
 - `returnedCount` is the number of items in this page.
-- `items` is the deterministic slice `[offsetPerParticle:offsetPerParticle + limitPerParticle]`.
+- `items` is the deterministic slice `[offset:offset + limitPerParticle]`.
 - `corpusDistribution` is calculated over every matching item, not only the page.
 
 Ordering remains:
@@ -61,7 +61,7 @@ The existing `limitPerParticle` validation and item/corpus budget apply to every
 
 `GET /api/examples` gains `offset`, an integer greater than or equal to zero that defaults to zero. `limit` retains its existing bounds and default.
 
-`ExamplesResponse` gains `totalMatchingExamples`, the total number of selected occurrences for the noun/particle/verb identity before `offset` and `limit` are applied. The response returns the requested deterministic page in `examples`.
+`ExamplesResponse` gains `hasMore`. The endpoint queries `limit + 1` deterministic occurrences, returns at most `limit` in `examples`, and sets `hasMore` when the extra occurrence exists. This proves whether another page exists without adding a full-count query or a total that no present interaction needs.
 
 The complete example order is:
 
@@ -73,7 +73,7 @@ The complete example order is:
 6. verb start and end;
 7. extractor ID.
 
-The final tie-breaker is not exposed, but it is stored and participates in the occurrence uniqueness constraint. The API obtains the total and page from the same immutable artifact view.
+The final tie-breaker is not exposed, but it is stored and participates in the occurrence uniqueness constraint.
 
 ## Frontend data flow
 
@@ -85,13 +85,13 @@ The particle overview is keyed by the visible-result object. A successful full s
 
 ### Per-particle loading
 
-Each `ParticleColumn` owns only its incremental presentation state:
+Each `ParticleColumn` owns only its incremental interaction state:
 
 - the appended item list;
 - `idle | loading | error` page status;
 - the current page request and abort controller.
 
-The request uses the visible result's submitted term, direction, and canonical corpus IDs; the target particle; `offsetPerParticle = items.length`; and `limitPerParticle = 150`.
+The request uses the visible result's submitted term, direction, and canonical corpus IDs; the target particle; `offset = items.length`; and `limitPerParticle = 150`.
 
 Only one request per column may run at once. A successful response is appended only when:
 
@@ -107,11 +107,13 @@ Appending lower-ranked rows cannot change either bar reference: the within-parti
 
 ### Per-collocation examples
 
-`SentenceExamples` keeps its existing local ownership and initially requests five examples at offset zero. It records `totalMatchingExamples` and appends subsequent pages of five using `offset = examples.length`.
+`SentenceExamples` keeps its existing local ownership and initially requests five examples at offset zero. It records `hasMore` and appends subsequent pages of five using `offset = examples.length`.
 
 Loaded examples remain visible during an additional request or a retryable error. Responses with a different `databaseBuildId` or corpus selection are not appended. The request is aborted when the row unmounts.
 
-The disclosure displays `Showing N of M examples`. While `N < M`, a full-width footer offers `Load min(5, M - N) more examples`. When `N = M`, the footer changes to `All M examples shown`.
+The disclosure displays `N examples shown`. While `hasMore` is true, a full-width footer offers `Load more examples`. When at least one example has loaded and `hasMore` is false, the footer changes to `All examples shown`. A zero-result initial request instead keeps the existing `No examples found` state.
+
+Both incremental owners use one shared pure identity predicate for `databaseBuildId` and canonical corpus IDs. Request lifecycle and accumulated rows remain local because the two consumers have different page sizes, response shapes, and visual states. A generic pagination store or loader interface would hide those differences without serving a second implementation.
 
 ## Visual and interaction design
 
@@ -130,10 +132,11 @@ The particle-level load-more footer is visually separate from collocation summar
 ## Error handling
 
 - Invalid particle, offset, or limit values use the existing validation/error envelopes.
-- An offset without a target particle is rejected before querying.
+- A collocation offset without a target particle is rejected before querying.
 - Page request errors are local; existing rows and other columns remain usable.
 - Artifact or corpus-identity mismatch never produces a mixed list.
-- An empty valid page is treated as exhausted only when the known total has already been reached; otherwise it is reported as an inconsistent response.
+- An empty collocation page is treated as exhausted only when the column's known total has already been reached; otherwise it is reported as an inconsistent response.
+- Example exhaustion follows the server's `hasMore` value; an empty page with `hasMore = true` is inconsistent.
 
 ## Tests
 
@@ -144,13 +147,13 @@ Backend contract tests cover:
 - full-set totals and corpus distribution on later pages;
 - rejection of an offset without a particle;
 - unchanged response-size enforcement;
-- example totals, successive pages, and complete tie ordering;
+- example `hasMore` semantics, successive pages, and complete tie ordering;
 - parameter bounds and common error envelopes.
 
 Frontend unit tests cover:
 
 - client serialization of particle and offset parameters;
-- total-matching summary math;
+- total-matching collocation summary math;
 - append/exhaustion decisions as pure presentation calculations where useful.
 
 Browser tests cover:
@@ -173,6 +176,19 @@ Browser tests cover:
 - Persisting pagination across a new full search or page reload.
 
 Virtualization is reconsidered only if a measured browser trace shows unacceptable rendering or interaction latency after several pages have been appended to one column.
+
+## Architecture review
+
+Architecture triage classifies this change primarily as **Protocol Design** with a contained **Trust/State Review**:
+
+- The wire contract states target, ordering, bounds, error semantics, and page identity.
+- Mutable page state has one owner per user interaction and is discarded with its visible result.
+- Build and corpus identity are values checked before mutation, not ambient state assumed by the component.
+- Offset pagination is justified by artifact immutability; a mutable serving database would disconfirm that premise and trigger a cursor redesign.
+
+The review rejects deepening pagination into a shared module. Collocation pages and example pages share only a small identity predicate; their accumulation, exhaustion, and rendering rules are different. Keeping those places local makes their transitions visible and avoids a one-implementation paging abstraction.
+
+It also rejects a total example count. The present consumer needs to know only whether another page exists and when to change the footer state. `hasMore` supplies exactly that fact with one bounded query.
 
 ## Acceptance criteria
 
