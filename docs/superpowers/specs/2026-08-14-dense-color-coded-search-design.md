@@ -11,10 +11,20 @@ The search interface should read like a dense spreadsheet rather than a stack of
 - Preserve existing ranking, bar-scale modes, corpus contributions, raw-frequency tooltips, pagination, example loading, highlighting spans, keyboard operation, and dark mode.
 - Keep the native form submission and search-controller contracts unchanged.
 - Do not add a theme system, runtime palette configuration, component library, or new dependency.
-- Corpus identity must not rely on color alone for assistive technology.
+- Corpus identity must not rely on color alone for any user.
 - The three-corpus artifact limit remains the source of the corpus palette size.
 
 ## Color Ownership
+
+`src/lib/presentation/colors.ts` is the single owner of the two semantic palettes. This is
+an earned shared seam rather than a general theme registry: grammatical-role colors have
+two present consumers (sentence highlights and the search-type control), and corpus colors
+have three (frequency bars, example borders, and example source labels).
+
+Keeping these values in `sentence.ts` would make a text-segmentation module own UI styling;
+keeping them in `presentation/search.ts` would make sentence highlighting depend on
+collocation bar math. The focused color module avoids both dependency inversions. It exports
+only the fixed role map and the fixed corpus-slot records used by this interface.
 
 Grammatical roles keep the existing semantic palette:
 
@@ -24,17 +34,23 @@ Grammatical roles keep the existing semantic palette:
 | Particle | red-600 | red-400 |
 | Verb | green-600 | green-400 |
 
-The sentence-highlighting module exports these role classes as the single owner. The search-type control consumes the same classes; it does not duplicate equivalent color literals.
+`sentence.ts` and `SearchControls.svelte` consume the same exported role map; neither
+duplicates equivalent color literals.
 
 Corpus slots use a disjoint palette:
 
-| Slot | Bar/border | Light title | Dark title |
-| --- | --- | --- | --- |
-| 0 | violet-600 | violet-700 | violet-300 |
-| 1 | orange-600 | orange-700 | orange-300 |
-| 2 | cyan-600 | cyan-700 | cyan-300 |
+| Slot | SVG bar | Border | Light title | Dark title |
+| --- | --- | --- | --- | --- |
+| 0 | `#7c3aed` | violet-600 | violet-700 | violet-300 |
+| 1 | `#ea580c` | orange-600 | orange-700 | orange-300 |
+| 2 | `#0891b2` | cyan-600 | cyan-700 | cyan-300 |
 
-The existing corpus-order-to-slot mapping remains authoritative. Bars, example borders, and source titles all consume the same slot. Each visible source title also receives an accessible name of `<corpus label>: <source title>`, so corpus identity is not conveyed only by color.
+The existing corpus-order-to-slot mapping remains authoritative. Bars, example borders,
+and source labels all consume the same slot. An example starts with the compact visible text
+`<corpus label> · <source title>:`. The label and title share the corpus title color, and
+the row carries the matching left border. The explicit corpus label means identity is not
+conveyed by color alone and is also present in the accessible text without a separate ARIA
+override or badge component.
 
 ## Header and Search Type
 
@@ -51,7 +67,10 @@ The native search-direction select is replaced by one compact radio group with t
 - `Noun → Particle → Verb` for noun search;
 - `Noun ← Particle ← Verb` for verb search.
 
-The three words use the shared grammatical-role colors. Native radio inputs retain keyboard and form semantics; the labels provide the segmented visual surface. The selected choice has a clear light/dark background and focus-visible outline.
+The three words use the shared grammatical-role colors. Native radio inputs retain keyboard
+and form semantics; the labels provide the segmented visual surface. The selected choice has
+a clear light/dark background and focus-visible outline. The role colors explain grammatical
+structure, while the separate violet/orange/cyan palette means corpus contribution only.
 
 ## Dense Result Rows
 
@@ -70,15 +89,34 @@ Opening a row must not indent its examples or move the next result outside the s
 
 ## Component Changes
 
-- `sentence.ts` owns and exports grammatical-role highlight classes.
-- `presentation/search.ts` owns corpus bar colors plus slot-indexed title and border classes.
+- `presentation/colors.ts` owns the fixed grammatical-role map and corpus-slot records.
+- `sentence.ts` consumes the role map while retaining sole ownership of span validation and
+  segmentation.
+- `presentation/search.ts` retains bar calculations and consumes corpus-slot SVG colors.
 - `SearchControls.svelte` renders the radio-based type selector using the shared role classes.
 - `+page.svelte` owns the responsive centered-header grid.
-- `ParticleColumn.svelte` passes the existing corpus slot/label information through the collocation component chain.
+- `ParticleColumn.svelte` passes the existing corpora and slot map through the collocation
+  component chain; no context or second corpus-identity map is introduced.
 - `CollocationItem.svelte` renders the compact summary surface.
-- `SentenceExamples.svelte` renders corpus-colored titles/borders and compact example rows.
+- `SentenceExamples.svelte` resolves each example's own `corpusId` against those values and
+  renders the visible corpus label, colored title/border, and compact example row.
 
-No new store, context, public API field, palette registry, or generic styling component is introduced.
+No new store, context, public API field, runtime palette registry, or generic styling component is introduced.
+
+### Architecture disposition
+
+- **Type:** Decomplect, followed by a small implementation refactor. Styling values move
+  out of sentence segmentation and bar mathematics; neither behavior gains a new protocol.
+- **Evidence:** grammatical-role classes currently live privately in `sentence.ts`, corpus
+  SVG colors live in `presentation/search.ts`, and the requested selector and example rows
+  create second and third consumers. This would be disconfirmed if either requested consumer
+  were removed, in which case the corresponding constants should remain local.
+- **Hazards:** the module contains immutable values only. It owns no state, time, identity,
+  trust boundary, configuration, or runtime selection. Existing role colors and corpus slot
+  ordering remain behavior-preservation constraints.
+- **Characterization:** unit coverage pins the role map, the three corpus slots, and palette
+  disjointness; browser coverage proves the maps reach the selector, highlights, bars, and
+  example labels rather than merely testing exported constants.
 
 ## Test Contract
 
@@ -93,7 +131,7 @@ Browser coverage must fail if any of these observable properties regress:
 - a collapsed result summary exceeds 34 pixels in the fixture viewport;
 - adjacent summaries regain vertical gaps or rounded card treatment;
 - open/collapsed and focus-visible states stop being distinguishable in light or dark mode;
-- source-title accessible names omit the corpus label.
+- visible and accessible source text omits the corpus label.
 
 Existing frontend unit, Svelte diagnostic, build, Playwright, and server-smoke gates remain required.
 
