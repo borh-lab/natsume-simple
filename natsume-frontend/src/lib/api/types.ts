@@ -1,4 +1,5 @@
 export type SearchPosition = 'noun' | 'verb';
+export type Particle = 'が' | 'を' | 'に' | 'で' | 'から' | 'より' | 'と' | 'へ';
 
 export type Corpus = {
 	id: string;
@@ -31,7 +32,7 @@ export type CorpusDistribution = CorpusContribution & {
 
 export type CollocationItem = {
 	noun: string;
-	particle: string;
+	particle: Particle;
 	verb: string;
 	totalRawFrequency: number;
 	meanFrequencyPerMillion: number;
@@ -39,7 +40,7 @@ export type CollocationItem = {
 };
 
 export type ParticleGroup = {
-	particle: string;
+	particle: Particle;
 	totalMatchingCollocations: number;
 	returnedCount: number;
 	items: CollocationItem[];
@@ -67,6 +68,7 @@ export type Example = {
 
 export type ExamplesResponse = {
 	examples: Example[];
+	hasMore: boolean;
 	selectedCorpusIds: string[];
 	databaseBuildId: string;
 };

@@ -2,6 +2,7 @@ import type {
 	CollocationsResponse,
 	CorporaResponse,
 	ExamplesResponse,
+	Particle,
 	PublicErrorEnvelope,
 	SearchPosition,
 	SuggestionsResponse
@@ -52,6 +53,8 @@ export class ApiClient {
 			term: string;
 			pos: SearchPosition;
 			corpusIds: string[];
+			particle?: Particle;
+			offsetPerParticle?: number;
 			limitPerParticle?: number;
 		},
 		signal?: AbortSignal
@@ -61,6 +64,10 @@ export class ApiClient {
 			pos: args.pos,
 			limitPerParticle: String(args.limitPerParticle ?? 150)
 		});
+		if (args.particle !== undefined) params.set('particle', args.particle);
+		if (args.offsetPerParticle !== undefined) {
+			params.set('offsetPerParticle', String(args.offsetPerParticle));
+		}
 		for (const corpusId of args.corpusIds) params.append('corpusId', corpusId);
 		return this.request('/api/collocations', params, signal);
 	}
@@ -71,6 +78,7 @@ export class ApiClient {
 			particle: string;
 			verb: string;
 			corpusIds: string[];
+			offset?: number;
 			limit?: number;
 		},
 		signal?: AbortSignal
@@ -79,6 +87,7 @@ export class ApiClient {
 			noun: args.noun,
 			particle: args.particle,
 			verb: args.verb,
+			offset: String(args.offset ?? 0),
 			limit: String(args.limit ?? 5)
 		});
 		for (const corpusId of args.corpusIds) params.append('corpusId', corpusId);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { CollocationItem, ParticleGroup } from '$lib/api/types';
+import type { CollocationItem, Particle, ParticleGroup } from '$lib/api/types';
 import { barReference, corpusColorMap, itemBarSegments, particleMassSegments } from './search';
 
 const alphaItem: CollocationItem = {
@@ -15,7 +15,7 @@ const alphaItem: CollocationItem = {
 };
 
 function group(
-	particle: string,
+	particle: Particle,
 	items: CollocationItem[],
 	distribution: ParticleGroup['corpusDistribution']
 ): ParticleGroup {
@@ -61,7 +61,7 @@ describe('presentation search math', () => {
 
 	it('chooses a per-particle or response-wide reference without changing item order', () => {
 		const small = { ...alphaItem, verb: '調べる', meanFrequencyPerMillion: 40_000 };
-		const other = {
+		const other: CollocationItem = {
 			...alphaItem,
 			particle: 'が',
 			verb: '進める',

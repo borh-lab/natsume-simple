@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { CollocationsResponse, CorporaResponse } from '$lib/api/types';
-import { SearchController, type SearchApi } from './controller.svelte';
+import {
+	collocationPageSize,
+	responseMatchesResult,
+	SearchController,
+	type SearchApi
+} from './controller.svelte';
 
 function deferred<T>() {
 	let resolve!: (value: T) => void;
@@ -12,15 +17,54 @@ function deferred<T>() {
 	return { promise, resolve, reject };
 }
 
-function response(databaseBuildId: string): CollocationsResponse {
+function response(
+	databaseBuildId: string,
+	selectedCorpusIds: string[] = ['alpha']
+): CollocationsResponse {
 	return {
 		particleGroups: [],
-		selectedCorpusIds: ['alpha'],
+		selectedCorpusIds,
 		databaseBuildId
 	};
 }
 
 describe('SearchController', () => {
+	it('derives a response-safe collocation page size', () => {
+		expect(collocationPageSize(1)).toBe(200);
+		expect(collocationPageSize(2)).toBe(200);
+		expect(collocationPageSize(3)).toBe(150);
+	});
+
+	it('matches responses only to the submitted build and canonical corpora', () => {
+		const candidate = {
+			databaseBuildId: 'build-1',
+			selectedCorpusIds: ['alpha', 'beta']
+		};
+
+		expect(responseMatchesResult(candidate, 'build-1', ['alpha', 'beta'])).toBe(true);
+		expect(responseMatchesResult(candidate, 'build-2', ['alpha', 'beta'])).toBe(false);
+		expect(responseMatchesResult(candidate, 'build-1', ['alpha'])).toBe(false);
+		expect(responseMatchesResult(candidate, 'build-1', ['beta', 'alpha'])).toBe(false);
+	});
+
+	it('submits the selection-dependent page size', async () => {
+		const limits: Array<number | undefined> = [];
+		const api: SearchApi = {
+			getCorpora: async () => ({ corpora: [], databaseBuildId: 'x' }),
+			getCollocations: async (args) => {
+				limits.push(args.limitPerParticle);
+				return response('submitted', args.corpusIds);
+			}
+		};
+		const controller = new SearchController(api);
+		controller.selectedCorpusIds = ['alpha', 'beta', 'ted'];
+		await controller.submit();
+		controller.selectedCorpusIds = ['alpha', 'beta'];
+		await controller.submit();
+
+		expect(limits).toEqual([150, 200]);
+	});
+
 	it('allows only the latest request to replace visible results', async () => {
 		const first = deferred<CollocationsResponse>();
 		const second = deferred<CollocationsResponse>();

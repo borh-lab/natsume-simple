@@ -30,6 +30,49 @@ describe('ApiClient', () => {
 		expect(url.searchParams.has('rankBy')).toBe(false);
 	});
 
+	it('serializes targeted collocation and example offsets', async () => {
+		const requests: string[] = [];
+		const fetcher = vi.fn(async (input: RequestInfo | URL) => {
+			requests.push(String(input));
+			return new Response(
+				JSON.stringify({
+					particleGroups: [],
+					examples: [],
+					hasMore: false,
+					selectedCorpusIds: ['alpha', 'beta', 'ted'],
+					databaseBuildId: 'fixture'
+				}),
+				{ headers: { 'content-type': 'application/json' } }
+			);
+		});
+		const client = new ApiClient('https://example.test', fetcher);
+
+		await client.getCollocations({
+			term: '情報',
+			pos: 'noun',
+			corpusIds: ['alpha', 'beta', 'ted'],
+			particle: 'を',
+			offsetPerParticle: 150,
+			limitPerParticle: 150
+		});
+		await client.getExamples({
+			noun: '情報',
+			particle: 'を',
+			verb: '集める',
+			corpusIds: ['alpha', 'beta', 'ted'],
+			offset: 5,
+			limit: 20
+		});
+
+		const collocations = new URL(requests[0]).searchParams;
+		expect(collocations.get('particle')).toBe('を');
+		expect(collocations.get('offsetPerParticle')).toBe('150');
+		expect(collocations.get('limitPerParticle')).toBe('150');
+		const examples = new URL(requests[1]).searchParams;
+		expect(examples.get('offset')).toBe('5');
+		expect(examples.get('limit')).toBe('20');
+	});
+
 	it('turns the public error envelope into a stable client error', async () => {
 		const fetcher = vi.fn(
 			async () =>

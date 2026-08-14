@@ -1,4 +1,31 @@
-import type { CollocationsResponse, CorporaResponse, Corpus, SearchPosition } from '$lib/api/types';
+import type {
+	CollocationsResponse,
+	CorporaResponse,
+	Corpus,
+	Particle,
+	SearchPosition
+} from '$lib/api/types';
+
+export const MAX_COLLOCATIONS_PER_PARTICLE = 200;
+export const COLLOCATION_ITEM_CORPUS_BUDGET = 450;
+
+export function collocationPageSize(corpusCount: number): number {
+	return Math.min(
+		MAX_COLLOCATIONS_PER_PARTICLE,
+		Math.floor(COLLOCATION_ITEM_CORPUS_BUDGET / corpusCount)
+	);
+}
+
+export function responseMatchesResult(
+	response: { databaseBuildId: string; selectedCorpusIds: readonly string[] },
+	databaseBuildId: string,
+	corpusIds: readonly string[]
+): boolean {
+	return (
+		response.databaseBuildId === databaseBuildId &&
+		sameValues(response.selectedCorpusIds, corpusIds)
+	);
+}
 
 export type SearchApi = {
 	getCorpora(signal?: AbortSignal): Promise<CorporaResponse>;
@@ -7,6 +34,9 @@ export type SearchApi = {
 			term: string;
 			pos: SearchPosition;
 			corpusIds: string[];
+			particle?: Particle;
+			offsetPerParticle?: number;
+			limitPerParticle?: number;
 		},
 		signal?: AbortSignal
 	): Promise<CollocationsResponse>;
@@ -86,7 +116,8 @@ export class SearchController {
 				{
 					term: input.term,
 					pos: input.pos,
-					corpusIds: [...input.corpusIds]
+					corpusIds: [...input.corpusIds],
+					limitPerParticle: collocationPageSize(input.corpusIds.length)
 				},
 				request.signal
 			);
