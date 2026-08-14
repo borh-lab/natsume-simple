@@ -24,15 +24,24 @@
 	);
 	const segments = $derived(stackSegments(item.contributions, selectedCorpusIds, counts, rankBy));
 	const colors = ['#dc2626', '#7c3aed', '#16a34a', '#2563eb', '#ca8a04', '#db2777'];
+	let expanded = $state(false);
 </script>
 
 <div class="py-1">
-	<SentenceExamples
-		{client}
-		{item}
-		{selectedCorpusIds}
-		{segments}
-		{colors}
-		label={pos === 'noun' ? item.verb : item.noun}
-	/>
+	<details class="w-full min-w-0" ontoggle={(event) => (expanded = event.currentTarget.open)}>
+		<summary class="flex cursor-pointer items-center gap-2 font-medium">
+			<svg width="64" height="20" aria-hidden="true" class="shrink-0 rounded">
+				{#each segments as segment, index (segment.corpusId)}
+					<rect
+						x={`${segment.offset}%`}
+						width={`${segment.percentage}%`}
+						height="20"
+						fill={colors[index % colors.length]}
+					/>
+				{/each}
+			</svg>
+			<span>{pos === 'noun' ? item.verb : item.noun}</span>
+		</summary>
+		<SentenceExamples {client} {item} {selectedCorpusIds} {expanded} />
+	</details>
 </div>

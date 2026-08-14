@@ -1,35 +1,27 @@
 import { expect, test } from '@playwright/test';
 
-async function expectSpreadsheet(
-	page: import('@playwright/test').Page,
-	width: number,
-	expectOverflow: boolean
-) {
+async function expectSpreadsheet(page: import('@playwright/test').Page, width: number) {
 	await page.setViewportSize({ width, height: 844 });
 	await page.goto('/');
 	await page.getByRole('combobox', { name: 'Search term' }).fill('情報');
 	await page.getByRole('button', { name: 'Go' }).click();
 	const region = page.getByRole('region', { name: 'Particle collocations' });
 	await expect(region).toBeVisible();
+	const columns = region.getByTestId('particle-column');
+	await expect.poll(() => columns.count()).toBeGreaterThan(1);
 	const dimensions = await region.evaluate((element) => ({
 		clientWidth: element.clientWidth,
 		scrollWidth: element.scrollWidth
 	}));
-	if (expectOverflow) {
-		expect(dimensions.scrollWidth).toBeGreaterThan(dimensions.clientWidth);
-	}
-	const columns = region.getByTestId('particle-column');
-	expect(await columns.count()).toBeGreaterThan(1);
+	expect(dimensions.scrollWidth).toBeGreaterThan(dimensions.clientWidth);
 	for (const column of await columns.all()) {
 		expect(await column.evaluate((element) => getComputedStyle(element).width)).toBe('320px');
 	}
-	if (expectOverflow) {
-		await region.focus();
-		await page.keyboard.press('ArrowRight');
-		await expect.poll(() => region.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
-		await page.keyboard.press('End');
-		await expect.poll(() => region.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
-	}
+	await region.focus();
+	await page.keyboard.press('ArrowRight');
+	await expect.poll(() => region.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
+	await page.keyboard.press('End');
+	await expect.poll(() => region.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
 }
 
 test('searches, filters, reranks, and safely expands examples', async ({ page }) => {
@@ -50,8 +42,11 @@ test('searches, filters, reranks, and safely expands examples', async ({ page })
 	await expect(page.getByRole('heading', { name: 'を', exact: true })).toBeVisible();
 
 	const collocation = page.locator('summary').filter({ hasText: '集める' });
+	await expect(collocation.locator('svg')).toBeVisible();
+	await expect(collocation.getByText('集める', { exact: true })).toBeVisible();
 	await collocation.click();
 	const disclosure = page.locator('details').filter({ hasText: '集める' }).first();
+	await expect(disclosure.locator(':scope > [data-testid="sentence-examples"]')).toBeVisible();
 	await expect(
 		disclosure.locator('li').filter({ hasText: '情報を集める。情報を集める。' })
 	).toHaveCount(2);
@@ -138,7 +133,7 @@ test('opens suggestions only while focus remains in the search widget', async ({
 	await page.waitForTimeout(350);
 	await expect(search).toHaveAttribute('aria-expanded', 'false');
 
-	await search.focus();
+	await page.getByLabel('Search direction').focus();
 	await expect(search).toHaveAttribute('aria-expanded', 'true');
 	const suggestion = page.locator('[role="option"] button').first();
 	const label = await suggestion.textContent();
@@ -160,6 +155,37 @@ test('opens suggestions only while focus remains in the search widget', async ({
 	await page.waitForTimeout(350);
 	await expect(search).toHaveAttribute('aria-expanded', 'true');
 	await page.getByRole('heading', { name: 'Natsume Simple' }).focus();
+	await expect(search).toHaveAttribute('aria-expanded', 'false');
+});
+
+test('keeps autocomplete dismissed when submission invalidates a pending lookup', async ({
+	page
+}) => {
+	let releaseLookup = () => {};
+	const lookupReleased = new Promise<void>((resolve) => (releaseLookup = resolve));
+	let markLookupStarted = () => {};
+	const lookupStarted = new Promise<void>((resolve) => (markLookupStarted = resolve));
+	await page.route('**/api/suggestions**', async (route) => {
+		const query = new URL(route.request().url()).searchParams.get('q');
+		if (query !== '情') {
+			await route.continue();
+			return;
+		}
+		markLookupStarted();
+		await lookupReleased;
+		await route.continue();
+	});
+
+	await page.goto('/');
+	const search = page.getByRole('combobox', { name: 'Search term' });
+	await search.fill('情');
+	await lookupStarted;
+	await page.getByRole('button', { name: 'Go' }).click();
+	releaseLookup();
+	await page.waitForResponse((response) => {
+		const url = new URL(response.url());
+		return url.pathname === '/api/suggestions' && url.searchParams.get('q') === '情';
+	});
 	await expect(search).toHaveAttribute('aria-expanded', 'false');
 });
 
@@ -193,8 +219,8 @@ test('keeps autocomplete dismissed when a pending lookup completes', async ({ pa
 });
 
 test('renders a keyboard-scrollable particle spreadsheet', async ({ page }) => {
-	await expectSpreadsheet(page, 375, true);
-	await expectSpreadsheet(page, 1280, false);
+	await expectSpreadsheet(page, 375);
+	await expectSpreadsheet(page, 1280);
 });
 
 test('reuses the primary controls on a mobile viewport', async ({ page }) => {

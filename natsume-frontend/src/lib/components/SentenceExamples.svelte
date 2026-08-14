@@ -1,23 +1,18 @@
 <script lang="ts">
 	import type { ApiClient } from '$lib/api/client';
 	import type { CollocationItem, Example } from '$lib/api/types';
-	import type { StackSegment } from '$lib/presentation/search';
 	import { sentenceSegments } from '$lib/sentence';
 
 	let {
 		client,
 		item,
 		selectedCorpusIds,
-		segments,
-		colors,
-		label = item.verb
+		expanded
 	}: {
 		client: ApiClient;
 		item: CollocationItem;
 		selectedCorpusIds: string[];
-		segments: StackSegment[];
-		colors: string[];
-		label?: string;
+		expanded: boolean;
 	} = $props();
 	let status = $state<'idle' | 'loading' | 'success' | 'empty' | 'error'>('idle');
 	let examples = $state<Example[]>([]);
@@ -45,47 +40,30 @@
 		}
 	}
 
+	$effect(() => {
+		if (expanded) void load();
+	});
 	$effect(() => () => request?.abort());
 </script>
 
-<details
-	class="w-full min-w-0"
-	ontoggle={(event) => {
-		if (event.currentTarget.open) load();
-	}}
->
-	<summary class="flex cursor-pointer items-center gap-2 font-medium">
-		<svg width="64" height="20" aria-hidden="true" class="shrink-0 rounded">
-			{#each segments as segment, index (segment.corpusId)}
-				<rect
-					x={`${segment.offset}%`}
-					width={`${segment.percentage}%`}
-					height="20"
-					fill={colors[index % colors.length]}
-				/>
+<div class="mt-2 w-full text-sm" aria-live="polite" data-testid="sentence-examples">
+	{#if status === 'loading'}
+		<p>Loading examples…</p>
+	{:else if status === 'empty'}
+		<p>No examples found.</p>
+	{:else if status === 'error'}
+		<p class="text-red-700 dark:text-red-300">Examples could not be loaded.</p>
+	{:else}
+		<ul class="space-y-2">
+			{#each examples as example (example)}
+				<li class="rounded bg-gray-100 p-2 dark:bg-gray-800">
+					<strong>{example.sourceTitle}:</strong>
+					{#each sentenceSegments( example.text, [{ ...example.nounSpan, type: 'noun' }, { ...example.particleSpan, type: 'particle' }, { ...example.verbSpan, type: 'verb' }] ) as segment, index (index)}
+						{#if segment.className}<span class={segment.className}>{segment.text}</span
+							>{:else}{segment.text}{/if}
+					{/each}
+				</li>
 			{/each}
-		</svg>
-		<span>{label}</span>
-	</summary>
-	<div class="mt-2 w-full text-sm" aria-live="polite" data-testid="sentence-examples">
-		{#if status === 'loading'}
-			<p>Loading examples…</p>
-		{:else if status === 'empty'}
-			<p>No examples found.</p>
-		{:else if status === 'error'}
-			<p class="text-red-700 dark:text-red-300">Examples could not be loaded.</p>
-		{:else}
-			<ul class="space-y-2">
-				{#each examples as example, exampleIndex (exampleIndex)}
-					<li class="rounded bg-gray-100 p-2 dark:bg-gray-800">
-						<strong>{example.sourceTitle}:</strong>
-						{#each sentenceSegments( example.text, [{ ...example.nounSpan, type: 'noun' }, { ...example.particleSpan, type: 'particle' }, { ...example.verbSpan, type: 'verb' }] ) as segment, index (index)}
-							{#if segment.className}<span class={segment.className}>{segment.text}</span
-								>{:else}{segment.text}{/if}
-						{/each}
-					</li>
-				{/each}
-			</ul>
-		{/if}
-	</div>
-</details>
+		</ul>
+	{/if}
+</div>

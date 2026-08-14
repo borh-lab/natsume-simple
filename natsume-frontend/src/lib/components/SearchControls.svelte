@@ -16,11 +16,11 @@
 	} = $props();
 
 	let suggestions = $state<Suggestion[]>([]);
-	let open = $state(false);
 	let active = $state(-1);
 	let focusedWithin = $state(false);
-	let dismissedQuery: string | null = null;
+	let dismissedQuery = $state<string | null>(null);
 	let requestGeneration = 0;
+	let open = $derived(focusedWithin && suggestions.length > 0 && dismissedQuery !== term.trim());
 
 	$effect(() => {
 		const query = term.trim();
@@ -28,7 +28,6 @@
 		const generation = ++requestGeneration;
 		if (!query) {
 			suggestions = [];
-			open = false;
 			return;
 		}
 		const timer = setTimeout(async () => {
@@ -36,12 +35,10 @@
 				const found = await findSuggestions(query, position);
 				if (generation !== requestGeneration) return;
 				suggestions = found;
-				open = dismissedQuery !== query && focusedWithin && suggestions.length > 0;
 				active = -1;
 			} catch {
 				if (generation !== requestGeneration) return;
 				suggestions = [];
-				open = false;
 			}
 		}, 300);
 		return () => clearTimeout(timer);
@@ -50,7 +47,6 @@
 	function dismissAutocomplete() {
 		dismissedQuery = term.trim();
 		requestGeneration += 1;
-		open = false;
 		active = -1;
 	}
 
@@ -58,7 +54,6 @@
 		term = suggestion.lemma;
 		dismissedQuery = suggestion.lemma.trim();
 		requestGeneration += 1;
-		open = false;
 		active = -1;
 		onsubmit();
 	}
@@ -67,7 +62,6 @@
 		const next = event.relatedTarget;
 		if (!(next instanceof Node) || !event.currentTarget.contains(next)) {
 			focusedWithin = false;
-			open = false;
 		}
 	}
 
@@ -125,7 +119,6 @@
 			bind:value={term}
 			oninput={() => (dismissedQuery = null)}
 			onkeydown={keydown}
-			onfocus={() => (open = dismissedQuery !== term.trim() && suggestions.length > 0)}
 		/>
 		{#if open}
 			<ul

@@ -33,7 +33,13 @@ def build_search_artifact(directory: Path) -> Path:
             (7, 1, 4, '情報を分析する。'),
             (8, 1, 5, '情報を分析する。'),
             (9, 3, 3, '情報を調べる。'),
-            (10, 3, 4, '情報を調べる。');
+            (10, 3, 4, '情報を調べる。'),
+            (11, 1, 6, '情報に載る。'),
+            (12, 1, 7, '情報で見る。'),
+            (13, 1, 8, '情報から得る。'),
+            (14, 1, 9, '情報より知る。'),
+            (15, 1, 10, '情報と比べる。'),
+            (16, 1, 11, '情報へ送る。');
         INSERT INTO collocation_occurrence VALUES
             (1, '情報', 'を', '集める', 0, 2, 2, 3, 3, 6, 'fixture-extractor'),
             (1, '情報', 'を', '集める', 7, 9, 9, 10, 10, 13, 'fixture-extractor'),
@@ -45,11 +51,17 @@ def build_search_artifact(directory: Path) -> Path:
             (7, '情報', 'を', '分析する', 0, 2, 2, 3, 3, 7, 'fixture-extractor'),
             (8, '情報', 'を', '分析する', 0, 2, 2, 3, 3, 7, 'fixture-extractor'),
             (9, '情報', 'を', '調べる', 0, 2, 2, 3, 3, 6, 'fixture-extractor'),
-            (10, '情報', 'を', '調べる', 0, 2, 2, 3, 3, 6, 'fixture-extractor');
+            (10, '情報', 'を', '調べる', 0, 2, 2, 3, 3, 6, 'fixture-extractor'),
+            (11, '情報', 'に', '載る', 0, 2, 2, 3, 3, 5, 'fixture-extractor'),
+            (12, '情報', 'で', '見る', 0, 2, 2, 3, 3, 5, 'fixture-extractor'),
+            (13, '情報', 'から', '得る', 0, 2, 2, 4, 4, 6, 'fixture-extractor'),
+            (14, '情報', 'より', '知る', 0, 2, 2, 4, 4, 6, 'fixture-extractor'),
+            (15, '情報', 'と', '比べる', 0, 2, 2, 3, 3, 6, 'fixture-extractor'),
+            (16, '情報', 'へ', '送る', 0, 2, 2, 3, 3, 5, 'fixture-extractor');
         INSERT INTO corpus_stats VALUES
-            ('alpha', 2, 6, 7), ('beta', 1, 4, 4);
+            ('alpha', 2, 12, 13), ('beta', 1, 4, 4);
         INSERT INTO lemma_frequency VALUES
-            ('noun', '情報', 9), ('noun', '研究', 1),
+            ('noun', '情報', 15), ('noun', '研究', 1),
             ('verb', '分析する', 3), ('verb', '集める', 3),
             ('verb', '調べる', 2), ('verb', '進める', 2);
         """
