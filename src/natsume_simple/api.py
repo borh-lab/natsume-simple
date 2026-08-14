@@ -29,6 +29,7 @@ QUERY_CAPACITY = 16
 QUERY_TIMEOUT_SECONDS = 2.0
 MAX_COLLOCATIONS_PER_PARTICLE = 200
 COLLOCATION_ITEM_CORPUS_BUDGET = 450
+MAX_DATABASE_OFFSET = (1 << 63) - 1
 Particle = Literal["が", "を", "に", "で", "から", "より", "と", "へ"]
 PARTICLES: tuple[Particle, ...] = ("が", "を", "に", "で", "から", "より", "と", "へ")
 request_logger = logging.getLogger("natsume_simple.api.requests")
@@ -582,7 +583,7 @@ def create_app(artifact_dir: Path, *, frontend_dir: Path | None = None) -> FastA
         verb: Annotated[str, Query(min_length=1, max_length=64)],
         corpusId: Annotated[list[str] | None, Query()] = None,
         limit: Annotated[int, Query(ge=1, le=20)] = 5,
-        offset: Annotated[int, Query(ge=0)] = 0,
+        offset: Annotated[int, Query(ge=0, le=MAX_DATABASE_OFFSET)] = 0,
     ) -> ExamplesResponse:
         def load_rows():
             all_corpora = [

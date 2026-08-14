@@ -640,6 +640,21 @@ def test_example_offset_rejects_negative_values(tmp_path: Path):
     assert response.status_code == 422
 
 
+def test_example_offset_rejects_values_outside_duckdb_range(tmp_path: Path):
+    with fixture_client(tmp_path) as client:
+        response = client.get(
+            "/api/examples",
+            params={
+                "noun": "情報",
+                "particle": "を",
+                "verb": "集める",
+                "offset": 2**63,
+            },
+        )
+
+    assert response.status_code == 422
+
+
 @pytest.mark.parametrize("corpus_id", ["unknown", ""])
 @pytest.mark.parametrize("route", ["collocations", "examples"])
 def test_corpus_selection_rejects_unknown_and_empty_ids(

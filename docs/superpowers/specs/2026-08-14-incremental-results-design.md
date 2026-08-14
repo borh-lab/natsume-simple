@@ -223,4 +223,4 @@ It also rejects a total example count. The present consumer needs to know only w
 
 ## Lifecycle
 
-After implementation, the durable API parameters and response field move into the README endpoint documentation, and behavior is owned by contract/browser tests. This design document is retired with the implementation scaffolding rather than becoming a parallel operational manual.
+After implementation, the durable API parameters and response field move into the README endpoint documentation, and behavior is owned by contract/browser tests. This document remains only as the decision and measurement record; the completed task checklist is retired rather than becoming a parallel operational manual.
