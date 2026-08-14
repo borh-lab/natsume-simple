@@ -5,12 +5,14 @@
 		term = $bindable(),
 		pos = $bindable(),
 		loading,
+		dirty,
 		onsubmit,
 		findSuggestions
 	}: {
 		term: string;
 		pos: SearchPosition;
 		loading: boolean;
+		dirty: boolean;
 		onsubmit: () => void | Promise<void>;
 		findSuggestions: (query: string, pos: SearchPosition) => Promise<Suggestion[]>;
 	} = $props();
@@ -150,6 +152,6 @@
 		class="h-10 rounded bg-red-700 px-4 font-bold text-white hover:bg-red-600 disabled:opacity-60"
 		disabled={loading}
 	>
-		{loading ? 'Searching…' : 'Go'}
+		{loading ? 'Searching…' : dirty ? 'Update results' : 'Go'}
 	</button>
 </form>

@@ -1,14 +1,29 @@
 <script lang="ts">
-	import type { CollocationsResponse } from '$lib/api/types';
-	let { result, stale }: { result: CollocationsResponse | null; stale: boolean } = $props();
+	import type { VisibleSearchResult } from '$lib/search/controller.svelte';
+	let {
+		result,
+		stale,
+		draftDiffers
+	}: { result: VisibleSearchResult | null; stale: boolean; draftDiffers: boolean } = $props();
 	const count = $derived(
-		result?.particleGroups.reduce((sum, group) => sum + group.returnedCount, 0) ?? 0
+		result?.response.particleGroups.reduce((sum, group) => sum + group.returnedCount, 0) ?? 0
+	);
+	const direction = $derived(
+		result?.input.pos === 'verb' ? 'Verb–particle search' : 'Noun–particle search'
 	);
 </script>
 
 {#if result}
-	<p class="text-sm text-gray-600 dark:text-gray-300" aria-live="polite">
-		{count.toLocaleString()} results
-		{#if stale}<strong class="ml-2 text-amber-700 dark:text-amber-300">Previous result</strong>{/if}
-	</p>
+	<div class="space-y-1 text-sm" aria-live="polite">
+		<p class="text-gray-600 dark:text-gray-300">
+			{count.toLocaleString()} results for “{result.input.term}” · {direction}
+		</p>
+		{#if draftDiffers}
+			<p class="font-medium text-amber-700 dark:text-amber-300">
+				Controls changed — update results to apply them.
+			</p>
+		{:else if stale}
+			<p class="font-medium text-amber-700 dark:text-amber-300">Previous result</p>
+		{/if}
+	</div>
 {/if}

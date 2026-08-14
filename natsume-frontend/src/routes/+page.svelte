@@ -31,6 +31,7 @@
 				bind:term={controller.term}
 				bind:pos={controller.pos}
 				loading={controller.status === 'loading'}
+				dirty={controller.draftDiffersFromResult}
 				onsubmit={() => controller.submit()}
 				findSuggestions={async (query, pos) =>
 					(await client.getSuggestions(query, pos)).suggestions}
@@ -47,7 +48,11 @@
 		disabled={controller.status === 'loading'}
 		ontoggle={(corpusId) => controller.toggleCorpus(corpusId)}
 	/>
-	<SearchSummary result={controller.result} stale={controller.resultIsStale} />
+	<SearchSummary
+		result={controller.result}
+		stale={controller.resultIsStale}
+		draftDiffers={controller.draftDiffersFromResult}
+	/>
 	{#if controller.status === 'error'}
 		<p class="rounded bg-red-100 p-3 text-red-900" role="alert">{controller.errorMessage}</p>
 	{:else if controller.status === 'empty'}
@@ -56,9 +61,9 @@
 	{#if controller.result}
 		<ParticleOverview
 			{client}
-			result={controller.result}
+			result={controller.result.response}
 			corpora={controller.corpora}
-			pos={controller.pos}
+			pos={controller.result.input.pos}
 		/>
 	{/if}
 </main>

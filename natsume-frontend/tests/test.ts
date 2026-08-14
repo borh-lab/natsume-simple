@@ -3,8 +3,9 @@ import { expect, test } from '@playwright/test';
 async function expectSpreadsheet(page: import('@playwright/test').Page, width: number) {
 	await page.setViewportSize({ width, height: 844 });
 	await page.goto('/');
+	await expect(page.getByText(/results for “時間”/)).toBeVisible();
 	await page.getByRole('combobox', { name: 'Search term' }).fill('情報');
-	await page.getByRole('button', { name: 'Go' }).click();
+	await page.getByRole('button', { name: 'Update results' }).click();
 	const region = page.getByRole('region', { name: 'Particle collocations' });
 	await expect(region).toBeVisible();
 	const columns = region.getByTestId('particle-column');
@@ -43,7 +44,7 @@ test('searches, filters, rescales, and safely expands examples', async ({ page }
 			const url = new URL(response.url());
 			return url.pathname === '/api/collocations' && url.searchParams.get('term') === '情報';
 		}),
-		page.getByRole('button', { name: 'Go' }).click()
+		page.getByRole('button', { name: 'Update results' }).click()
 	]);
 	await expect(page.getByRole('heading', { name: 'を', exact: true })).toBeVisible();
 
@@ -116,7 +117,7 @@ test('supports both query directions and theme control', async ({ page }) => {
 				url.searchParams.get('term') === '集める'
 			);
 		}),
-		page.getByRole('button', { name: 'Go' }).click()
+		page.getByRole('button', { name: 'Update results' }).click()
 	]);
 	await expect(page.locator('summary').filter({ hasText: '情報' })).toBeVisible();
 
@@ -145,6 +146,25 @@ test('supports both query directions and theme control', async ({ page }) => {
 	expect(shortPage.bodyBackground).toBe(dark.bodyBackground);
 	expect(shortPage.bodyColor).toBe(dark.bodyColor);
 	expect(shortPage.bodyHeight).toBeGreaterThanOrEqual(shortPage.viewportHeight);
+});
+
+test('keeps displayed results tied to the submitted search while controls are edited', async ({
+	page
+}) => {
+	await page.goto('/');
+	const search = page.getByRole('combobox', { name: 'Search term' });
+	await search.fill('情報');
+	await page.getByRole('button', { name: 'Update results' }).click();
+	await expect(page.getByText(/results for “情報” · Noun–particle search/)).toBeVisible();
+	await expect(page.locator('summary').filter({ hasText: '集める' })).toBeVisible();
+
+	await page.getByLabel('Search direction').selectOption('verb');
+	await search.fill('集める');
+
+	await expect(page.getByText(/results for “情報” · Noun–particle search/)).toBeVisible();
+	await expect(page.locator('summary').filter({ hasText: '集める' })).toBeVisible();
+	await expect(page.getByText('Controls changed — update results to apply them.')).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Update results' })).toBeVisible();
 });
 
 test('opens suggestions only while focus remains in the search widget', async ({ page }) => {
@@ -203,7 +223,7 @@ test('keeps autocomplete dismissed when submission invalidates a pending lookup'
 	const search = page.getByRole('combobox', { name: 'Search term' });
 	await search.fill('情');
 	await lookupStarted;
-	await page.getByRole('button', { name: 'Go' }).click();
+	await page.getByRole('button', { name: 'Update results' }).click();
 	releaseLookup();
 	await page.waitForResponse((response) => {
 		const url = new URL(response.url());

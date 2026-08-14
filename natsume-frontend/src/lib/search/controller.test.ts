@@ -40,7 +40,7 @@ describe('SearchController', () => {
 		first.resolve(response('first'));
 		await firstRequest;
 
-		expect(controller.result?.databaseBuildId).toBe('second');
+		expect(controller.result?.response.databaseBuildId).toBe('second');
 		expect(controller.status).toBe('empty');
 	});
 
@@ -61,8 +61,31 @@ describe('SearchController', () => {
 
 		await controller.submit();
 
-		expect(controller.result?.databaseBuildId).toBe('success');
+		expect(controller.result?.response.databaseBuildId).toBe('success');
 		expect(controller.status).toBe('error');
+		expect(controller.resultIsStale).toBe(true);
+	});
+
+	it('keeps visible results tied to the submitted term and direction', async () => {
+		const api: SearchApi = {
+			getCorpora: async () => ({ corpora: [], databaseBuildId: 'x' }),
+			getCollocations: async () => response('submitted')
+		};
+		const controller = new SearchController(api);
+		controller.term = '情報';
+		controller.pos = 'noun';
+		controller.selectedCorpusIds = ['alpha'];
+
+		await controller.submit();
+		controller.term = '集める';
+		controller.pos = 'verb';
+
+		expect(controller.result?.input).toEqual({
+			term: '情報',
+			pos: 'noun',
+			corpusIds: ['alpha']
+		});
+		expect(controller.draftDiffersFromResult).toBe(true);
 		expect(controller.resultIsStale).toBe(true);
 	});
 });

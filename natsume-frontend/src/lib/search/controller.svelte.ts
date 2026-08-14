@@ -14,15 +14,41 @@ export type SearchApi = {
 
 export type SearchStatus = 'idle' | 'loading' | 'success' | 'empty' | 'error';
 
+export type SearchInput = Readonly<{
+	term: string;
+	pos: SearchPosition;
+	corpusIds: readonly string[];
+}>;
+
+export type VisibleSearchResult = Readonly<{
+	response: CollocationsResponse;
+	input: SearchInput;
+}>;
+
 export class SearchController {
 	term = $state('時間');
 	pos = $state<SearchPosition>('noun');
 	corpora = $state<Corpus[]>([]);
 	selectedCorpusIds = $state<string[]>([]);
 	status = $state<SearchStatus>('idle');
-	result = $state<CollocationsResponse | null>(null);
+	result = $state<VisibleSearchResult | null>(null);
 	errorMessage = $state<string | null>(null);
-	resultIsStale = $state(false);
+
+	get draftDiffersFromResult(): boolean {
+		if (!this.result) return false;
+		return (
+			this.term.trim() !== this.result.input.term ||
+			this.pos !== this.result.input.pos ||
+			!sameValues(this.selectedCorpusIds, this.result.input.corpusIds)
+		);
+	}
+
+	get resultIsStale(): boolean {
+		return (
+			this.result !== null &&
+			(this.draftDiffersFromResult || this.status === 'loading' || this.status === 'error')
+		);
+	}
 
 	private generation = 0;
 	private request: AbortController | null = null;
@@ -43,27 +69,33 @@ export class SearchController {
 
 	async submit(): Promise<void> {
 		if (!this.term.trim() || this.selectedCorpusIds.length === 0) return;
+		const input: SearchInput = {
+			term: this.term.trim(),
+			pos: this.pos,
+			corpusIds: [...this.selectedCorpusIds]
+		};
 		this.request?.abort();
 		const request = new AbortController();
 		this.request = request;
 		const generation = ++this.generation;
 		this.status = 'loading';
 		this.errorMessage = null;
-		this.resultIsStale = this.result !== null;
 
 		try {
 			const result = await this.api.getCollocations(
 				{
-					term: this.term.trim(),
-					pos: this.pos,
-					corpusIds: this.selectedCorpusIds
+					term: input.term,
+					pos: input.pos,
+					corpusIds: [...input.corpusIds]
 				},
 				request.signal
 			);
 			if (generation !== this.generation) return;
-			this.result = result;
+			this.result = {
+				response: result,
+				input: { ...input, corpusIds: [...result.selectedCorpusIds] }
+			};
 			this.selectedCorpusIds = result.selectedCorpusIds;
-			this.resultIsStale = false;
 			this.status = result.particleGroups.some((group) => group.items.length > 0)
 				? 'success'
 				: 'empty';
@@ -71,7 +103,6 @@ export class SearchController {
 			if (generation !== this.generation || isAbort(error)) return;
 			this.status = 'error';
 			this.errorMessage = errorMessage(error);
-			this.resultIsStale = this.result !== null;
 		}
 	}
 
@@ -86,6 +117,10 @@ export class SearchController {
 		}
 		await this.submit();
 	}
+}
+
+function sameValues(left: readonly string[], right: readonly string[]): boolean {
+	return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
 function isAbort(error: unknown): boolean {
