@@ -66,7 +66,7 @@ def check_release_artifact(
             "SELECT source_manifest_sha256 FROM build_metadata"
         ).fetchone()[0]
 
-    if corpus_ids != ["jnlp", "wiki"]:
+    if corpus_ids != ["jnlp", "ted", "wiki"]:
         raise ReleaseCheckError("release_corpus_mismatch")
     wikipedia_ids = {
         source["externalId"]
@@ -77,9 +77,31 @@ def check_release_artifact(
         raise ReleaseCheckError("wikipedia_identity_mismatch")
 
     try:
-        manifest_sources = manifest["identityInputs"]["sources"]
+        identity_inputs = manifest["identityInputs"]
+        manifest_sources = identity_inputs["sources"]
+        source_files = identity_inputs["sourceFiles"]
     except (KeyError, TypeError) as error:
         raise ReleaseCheckError("manifest_source_mismatch") from error
+    expected_ted_file = {
+        "corpusId": sources.ted_archive.source_lock_corpus_id,
+        "name": sources.ted_archive.name,
+        "sha256": sources.ted_archive.sha256,
+        "size": sources.ted_archive.size,
+    }
+    if (
+        not isinstance(source_files, list)
+        or [
+            source_file
+            for source_file in source_files
+            if isinstance(source_file, dict)
+            and source_file.get("corpusId")
+            == sources.ted_archive.source_lock_corpus_id
+        ]
+        != [expected_ted_file]
+    ):
+        raise ReleaseCheckError("ted_source_file_mismatch")
+    if identity_inputs.get("sourceContentHash") != "natsume-source-content-v1":
+        raise ReleaseCheckError("source_content_hash_mismatch")
     if manifest_sources != database_sources:
         raise ReleaseCheckError("manifest_source_mismatch")
     if source_manifest_sha256(manifest_sources) != stored_source_checksum:
