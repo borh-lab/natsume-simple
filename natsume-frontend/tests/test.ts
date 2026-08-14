@@ -31,11 +31,15 @@ test('searches, filters, reranks, and safely expands examples', async ({ page })
 test('supports both query directions and theme control', async ({ page }) => {
 	await page.goto('/');
 	await expect(page.getByRole('button', { name: 'Go' })).toBeEnabled();
-	expect(
-		await page
-			.locator('header > div > *')
-			.evaluateAll((elements) => elements.map((element) => element.tagName))
-	).toEqual(['H1', 'FORM', 'BUTTON']);
+	const brand = page.getByTestId('brand');
+	const controls = page.getByTestId('header-controls');
+	await expect(brand.getByRole('img', { name: 'Natsume Simple' })).toHaveAttribute(
+		'src',
+		'/favicon.png'
+	);
+	await expect(brand.getByRole('heading', { name: 'Natsume Simple' })).toBeVisible();
+	await expect(controls.getByRole('combobox', { name: 'Search term' })).toBeVisible();
+	await expect(controls.getByRole('button', { name: 'Toggle dark mode' })).toBeVisible();
 	const direction = page.getByLabel('Search direction');
 	const search = page.getByRole('combobox', { name: 'Search term' });
 	await direction.selectOption('verb');
@@ -53,8 +57,31 @@ test('supports both query directions and theme control', async ({ page }) => {
 	]);
 	await expect(page.locator('summary').filter({ hasText: '情報' })).toBeVisible();
 
-	await page.getByRole('button', { name: 'Toggle dark mode' }).click();
+	const light = await page.evaluate(() => ({
+		htmlBackground: getComputedStyle(document.documentElement).backgroundColor,
+		bodyBackground: getComputedStyle(document.body).backgroundColor,
+		bodyColor: getComputedStyle(document.body).color
+	}));
+	await controls.getByRole('button', { name: 'Toggle dark mode' }).click();
 	await expect(page.locator('html')).toHaveClass(/dark/);
+	const dark = await page.evaluate(() => ({
+		htmlBackground: getComputedStyle(document.documentElement).backgroundColor,
+		bodyBackground: getComputedStyle(document.body).backgroundColor,
+		bodyColor: getComputedStyle(document.body).color
+	}));
+	expect(dark).not.toEqual(light);
+	expect(dark.htmlBackground).not.toBe('rgba(0, 0, 0, 0)');
+	expect(dark.bodyBackground).not.toBe('rgba(0, 0, 0, 0)');
+	await page.locator('main').evaluate((element) => element.replaceChildren());
+	const shortPage = await page.evaluate(() => ({
+		bodyBackground: getComputedStyle(document.body).backgroundColor,
+		bodyColor: getComputedStyle(document.body).color,
+		bodyHeight: document.body.getBoundingClientRect().height,
+		viewportHeight: window.innerHeight
+	}));
+	expect(shortPage.bodyBackground).toBe(dark.bodyBackground);
+	expect(shortPage.bodyColor).toBe(dark.bodyColor);
+	expect(shortPage.bodyHeight).toBeGreaterThanOrEqual(shortPage.viewportHeight);
 });
 
 test('reuses the primary controls on a mobile viewport', async ({ page }) => {

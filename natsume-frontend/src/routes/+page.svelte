@@ -18,16 +18,22 @@
 <svelte:head><title>Natsume Simple</title></svelte:head>
 
 <header class="border-b bg-white dark:border-gray-700 dark:bg-gray-900">
-	<div class="mx-auto flex max-w-screen-2xl flex-wrap items-center justify-between gap-3 p-4">
-		<h1 class="text-2xl font-bold">Natsume Simple</h1>
-		<SearchControls
-			bind:term={controller.term}
-			bind:pos={controller.pos}
-			loading={controller.status === 'loading'}
-			onsubmit={() => controller.submit()}
-			findSuggestions={async (query, pos) => (await client.getSuggestions(query, pos)).suggestions}
-		/>
-		<ThemeSwitch />
+	<div class="mx-auto flex max-w-screen-2xl flex-wrap items-center gap-3 p-4">
+		<div class="flex items-center gap-3" data-testid="brand">
+			<img class="h-8 w-8" src="/favicon.png" alt="Natsume Simple" />
+			<h1 class="text-2xl font-bold" tabindex="-1">Natsume Simple</h1>
+		</div>
+		<div class="ml-auto flex flex-wrap items-center justify-end gap-2" data-testid="header-controls">
+			<SearchControls
+				bind:term={controller.term}
+				bind:pos={controller.pos}
+				loading={controller.status === 'loading'}
+				onsubmit={() => controller.submit()}
+				findSuggestions={async (query, pos) =>
+					(await client.getSuggestions(query, pos)).suggestions}
+			/>
+			<ThemeSwitch />
+		</div>
 	</div>
 </header>
 
