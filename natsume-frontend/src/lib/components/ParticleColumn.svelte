@@ -2,9 +2,9 @@
 	import { untrack } from 'svelte';
 	import type { ApiClient } from '$lib/api/client';
 	import type { Corpus, ParticleGroup, SearchPosition } from '$lib/api/types';
+	import { corpusStyleForSlot } from '$lib/presentation/colors';
 	import {
 		barReference,
-		CORPUS_COLORS,
 		corpusColorMap,
 		particleMassSegments,
 		type BarScale
@@ -116,7 +116,8 @@
 				class="absolute inset-y-0"
 				style:left={`${segment.offset}%`}
 				style:width={`${segment.percentage}%`}
-				style:background-color={CORPUS_COLORS[colorSlots[segment.corpusId] % CORPUS_COLORS.length]}
+				style:background-color={corpusStyleForSlot(colorSlots[segment.corpusId]).color}
+				data-corpus-id={segment.corpusId}
 				title={`${corpusLabels[segment.corpusId]}: ${segment.rawFrequency.toLocaleString()} occurrences · ${segment.frequencyPerMillion.toLocaleString(undefined, { maximumFractionDigits: 1 })} per million`}
 			></span>
 		{/each}

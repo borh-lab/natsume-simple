@@ -1,3 +1,5 @@
+import { ROLE_TEXT_CLASSES } from '$lib/presentation/colors';
+
 export type SentenceSpan = {
 	start: number;
 	end: number;
@@ -7,12 +9,6 @@ export type SentenceSpan = {
 export type SentenceSegment = {
 	text: string;
 	className?: string;
-};
-
-const highlightClasses: Record<SentenceSpan['type'], string> = {
-	noun: 'font-bold text-blue-600 dark:text-blue-400',
-	particle: 'font-bold text-red-600 dark:text-red-400',
-	verb: 'font-bold text-green-600 dark:text-green-400'
 };
 
 export function sentenceSegments(text: string, spans: SentenceSpan[]): SentenceSegment[] {
@@ -27,7 +23,7 @@ export function sentenceSegments(text: string, spans: SentenceSpan[]): SentenceS
 		if (offset < span.start) segments.push({ text: text.slice(offset, span.start) });
 		segments.push({
 			text: text.slice(span.start, span.end),
-			className: highlightClasses[span.type]
+			className: ROLE_TEXT_CLASSES[span.type]
 		});
 		offset = span.end;
 	}

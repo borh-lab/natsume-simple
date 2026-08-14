@@ -1,7 +1,8 @@
 <script lang="ts">
 	import type { ApiClient } from '$lib/api/client';
 	import type { CollocationItem, Corpus, SearchPosition } from '$lib/api/types';
-	import { CORPUS_COLORS, itemBarSegments } from '$lib/presentation/search';
+	import { corpusStyleForSlot } from '$lib/presentation/colors';
+	import { itemBarSegments } from '$lib/presentation/search';
 	import SentenceExamples from './SentenceExamples.svelte';
 
 	let {
@@ -62,8 +63,9 @@
 						x={segment.offset}
 						width={segment.percentage}
 						height="16"
-						fill={CORPUS_COLORS[colorSlots[segment.corpusId] % CORPUS_COLORS.length]}
+						fill={corpusStyleForSlot(colorSlots[segment.corpusId]).color}
 						data-testid="bar-segment"
+						data-corpus-id={segment.corpusId}
 					>
 						<title
 							>{corpusLabels[segment.corpusId]}: {segment.rawFrequency.toLocaleString()} occurrences ·

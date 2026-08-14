@@ -2,8 +2,6 @@ import type { CollocationItem, ParticleGroup } from '$lib/api/types';
 
 export type BarScale = 'particle' | 'global';
 
-export const CORPUS_COLORS = ['#dc2626', '#7c3aed', '#16a34a', '#2563eb', '#ca8a04', '#db2777'];
-
 export type BarSegment = {
 	corpusId: string;
 	rawFrequency: number;

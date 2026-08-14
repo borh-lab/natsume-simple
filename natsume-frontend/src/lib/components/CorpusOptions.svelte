@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Corpus } from '$lib/api/types';
-	import { CORPUS_COLORS, corpusColorMap } from '$lib/presentation/search';
+	import { corpusStyleForSlot } from '$lib/presentation/colors';
+	import { corpusColorMap } from '$lib/presentation/search';
 
 	let {
 		corpora,
@@ -29,7 +30,9 @@
 			/>
 			<span
 				class="h-2.5 w-2.5 rounded-sm"
-				style:background-color={CORPUS_COLORS[colorSlots[corpus.id] % CORPUS_COLORS.length]}
+				style:background-color={corpusStyleForSlot(colorSlots[corpus.id]).color}
+				data-testid="corpus-swatch"
+				data-corpus-id={corpus.id}
 				aria-hidden="true"
 			></span>
 			{corpus.label}
