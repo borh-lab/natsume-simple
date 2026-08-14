@@ -26,21 +26,13 @@
 	const colors = ['#dc2626', '#7c3aed', '#16a34a', '#2563eb', '#ca8a04', '#db2777'];
 </script>
 
-<div class="flex items-start gap-2 py-1">
-	<svg width="64" height="20" aria-hidden="true" class="mt-1 shrink-0 rounded">
-		{#each segments as segment, index (segment.corpusId)}
-			<rect
-				x={`${segment.offset}%`}
-				width={`${segment.percentage}%`}
-				height="20"
-				fill={colors[index % colors.length]}
-			/>
-		{/each}
-	</svg>
+<div class="py-1">
 	<SentenceExamples
 		{client}
 		{item}
 		{selectedCorpusIds}
+		{segments}
+		{colors}
 		label={pos === 'noun' ? item.verb : item.noun}
 	/>
 </div>

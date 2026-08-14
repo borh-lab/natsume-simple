@@ -1,17 +1,22 @@
 <script lang="ts">
 	import type { ApiClient } from '$lib/api/client';
 	import type { CollocationItem, Example } from '$lib/api/types';
+	import type { StackSegment } from '$lib/presentation/search';
 	import { sentenceSegments } from '$lib/sentence';
 
 	let {
 		client,
 		item,
 		selectedCorpusIds,
+		segments,
+		colors,
 		label = item.verb
 	}: {
 		client: ApiClient;
 		item: CollocationItem;
 		selectedCorpusIds: string[];
+		segments: StackSegment[];
+		colors: string[];
 		label?: string;
 	} = $props();
 	let status = $state<'idle' | 'loading' | 'success' | 'empty' | 'error'>('idle');
@@ -44,13 +49,25 @@
 </script>
 
 <details
-	class="min-w-0"
+	class="w-full min-w-0"
 	ontoggle={(event) => {
 		if (event.currentTarget.open) load();
 	}}
 >
-	<summary class="cursor-pointer font-medium">{label}</summary>
-	<div class="ml-4 mt-2 text-sm" aria-live="polite">
+	<summary class="flex cursor-pointer items-center gap-2 font-medium">
+		<svg width="64" height="20" aria-hidden="true" class="shrink-0 rounded">
+			{#each segments as segment, index (segment.corpusId)}
+				<rect
+					x={`${segment.offset}%`}
+					width={`${segment.percentage}%`}
+					height="20"
+					fill={colors[index % colors.length]}
+				/>
+			{/each}
+		</svg>
+		<span>{label}</span>
+	</summary>
+	<div class="mt-2 w-full text-sm" aria-live="polite" data-testid="sentence-examples">
 		{#if status === 'loading'}
 			<p>Loading examples…</p>
 		{:else if status === 'empty'}
@@ -59,7 +76,7 @@
 			<p class="text-red-700 dark:text-red-300">Examples could not be loaded.</p>
 		{:else}
 			<ul class="space-y-2">
-				{#each examples as example (example.sentenceId)}
+				{#each examples as example}
 					<li class="rounded bg-gray-100 p-2 dark:bg-gray-800">
 						<strong>{example.sourceTitle}:</strong>
 						{#each sentenceSegments( example.text, [{ ...example.nounSpan, type: 'noun' }, { ...example.particleSpan, type: 'particle' }, { ...example.verbSpan, type: 'verb' }] ) as segment, index (index)}

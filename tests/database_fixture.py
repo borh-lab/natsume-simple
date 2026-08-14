@@ -24,7 +24,7 @@ def build_search_artifact(directory: Path) -> Path:
             (2, 'alpha', 'a2', 'Alpha two', 'sha-a2'),
             (3, 'beta', 'b1', 'Beta one', 'sha-b1');
         INSERT INTO sentence VALUES
-            (1, 1, 1, '情報を集める。'),
+            (1, 1, 1, '情報を集める。情報を集める。'),
             (2, 2, 1, '情報を安全に集める。'),
             (3, 3, 1, '<img src=x onerror=alert(1)>情報を集める。'),
             (4, 1, 2, '研究が進める。'),
@@ -36,6 +36,7 @@ def build_search_artifact(directory: Path) -> Path:
             (10, 3, 4, '情報を調べる。');
         INSERT INTO collocation_occurrence VALUES
             (1, '情報', 'を', '集める', 0, 2, 2, 3, 3, 6, 'fixture-extractor'),
+            (1, '情報', 'を', '集める', 7, 9, 9, 10, 10, 13, 'fixture-extractor'),
             (2, '情報', 'を', '集める', 0, 2, 2, 3, 6, 9, 'fixture-extractor'),
             (3, '情報', 'を', '集める', 28, 30, 30, 31, 31, 34, 'fixture-extractor'),
             (4, '研究', 'が', '進める', 0, 2, 2, 3, 3, 6, 'fixture-extractor'),
@@ -46,7 +47,7 @@ def build_search_artifact(directory: Path) -> Path:
             (9, '情報', 'を', '調べる', 0, 2, 2, 3, 3, 6, 'fixture-extractor'),
             (10, '情報', 'を', '調べる', 0, 2, 2, 3, 3, 6, 'fixture-extractor');
         INSERT INTO corpus_stats VALUES
-            ('alpha', 2, 6, 6), ('beta', 1, 4, 4);
+            ('alpha', 2, 6, 7), ('beta', 1, 4, 4);
         INSERT INTO lemma_frequency VALUES
             ('noun', '情報', 9), ('noun', '研究', 1),
             ('verb', '分析する', 3), ('verb', '集める', 3),

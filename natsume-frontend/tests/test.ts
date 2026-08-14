@@ -33,6 +33,8 @@ async function expectSpreadsheet(
 }
 
 test('searches, filters, reranks, and safely expands examples', async ({ page }) => {
+	const pageErrors: string[] = [];
+	page.on('pageerror', (error) => pageErrors.push(error.message));
 	await page.goto('/');
 	await expect(page.getByRole('button', { name: 'Go' })).toBeEnabled();
 
@@ -49,8 +51,19 @@ test('searches, filters, reranks, and safely expands examples', async ({ page })
 
 	const collocation = page.locator('summary').filter({ hasText: '集める' });
 	await collocation.click();
-	await expect(page.getByText('情報を集める。', { exact: false }).first()).toBeVisible();
+	const disclosure = page.locator('details').filter({ hasText: '集める' }).first();
+	await expect(
+		disclosure.locator('li').filter({ hasText: '情報を集める。情報を集める。' })
+	).toHaveCount(2);
+	await expect(page.getByText('Loading examples…')).toHaveCount(0);
 	await expect(page.locator('img[src="x"]')).toHaveCount(0);
+	const disclosureBox = await disclosure.boundingBox();
+	const examplesBox = await disclosure.locator('[data-testid="sentence-examples"]').boundingBox();
+	expect(disclosureBox).not.toBeNull();
+	expect(examplesBox).not.toBeNull();
+	expect(Math.abs((examplesBox?.x ?? 0) - (disclosureBox?.x ?? 0))).toBeLessThanOrEqual(1);
+	expect(Math.abs((examplesBox?.width ?? 0) - (disclosureBox?.width ?? 0))).toBeLessThanOrEqual(2);
+	expect(pageErrors.filter((message) => message.includes('each_key_duplicate'))).toEqual([]);
 
 	await page.locator('#corpus-alpha').uncheck();
 	await expect(page.locator('#corpus-alpha')).not.toBeChecked();

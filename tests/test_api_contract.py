@@ -47,7 +47,7 @@ def test_ready_and_corpora_describe_the_deployed_artifact(tmp_path: Path):
                 {
                     "id": "alpha",
                     "label": "Alpha",
-                    "collocationCount": 6,
+                    "collocationCount": 7,
                     "sentenceCount": 6,
                 },
                 {
