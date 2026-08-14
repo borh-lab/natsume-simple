@@ -380,6 +380,63 @@ test('distinguishes expandable rows in light and dark mode', async ({ page }) =>
 	).not.toBe('none');
 });
 
+test('centers an accessible search-direction control in the responsive header', async ({
+	page
+}) => {
+	await page.setViewportSize({ width: 1280, height: 844 });
+	await page.goto('/');
+	const controls = page.getByTestId('header-controls');
+	const group = page.getByRole('group', { name: 'Search direction' });
+	const nounRadio = group.getByRole('radio', { name: 'Noun-particle collocations' });
+	const verbRadio = group.getByRole('radio', { name: 'Verb-particle collocations' });
+	await expect(nounRadio).toBeChecked();
+	await expect(verbRadio).toBeVisible();
+	await verbRadio.check();
+	await expect(verbRadio).toBeChecked();
+	await nounRadio.check();
+	const desktopBox = await controls.boundingBox();
+	expect(desktopBox).not.toBeNull();
+	expect(Math.abs((desktopBox?.x ?? 0) + (desktopBox?.width ?? 0) / 2 - 640)).toBeLessThanOrEqual(
+		4
+	);
+	const roleColors = await group
+		.locator('[data-role]')
+		.evaluateAll((elements) => elements.map((element) => getComputedStyle(element).color));
+	const selectedSurface = nounRadio.locator('xpath=following-sibling::span');
+	const selectedBackground = await selectedSurface.evaluate(
+		(element) => getComputedStyle(element).backgroundColor
+	);
+	expect(roleColors).not.toContain(selectedBackground);
+	await page.getByRole('heading', { name: 'Natsume Simple' }).focus();
+	await page.keyboard.press('Tab');
+	await expect(nounRadio).toBeFocused();
+	expect(
+		await selectedSurface.evaluate((element) => getComputedStyle(element).outlineStyle)
+	).not.toBe('none');
+	expect(roleColors).not.toContain(
+		await page
+			.getByRole('button', { name: 'Go' })
+			.evaluate((element) => getComputedStyle(element).backgroundColor)
+	);
+
+	await page.setViewportSize({ width: 1024, height: 844 });
+	const laptopBrandBox = await page.getByTestId('brand').boundingBox();
+	const laptopControlsBox = await controls.boundingBox();
+	expect(laptopBrandBox).not.toBeNull();
+	expect(laptopControlsBox).not.toBeNull();
+	expect(laptopControlsBox?.y ?? 0).toBeGreaterThanOrEqual(
+		(laptopBrandBox?.y ?? 0) + (laptopBrandBox?.height ?? 0)
+	);
+
+	await page.setViewportSize({ width: 390, height: 844 });
+	const brandBox = await page.getByTestId('brand').boundingBox();
+	const mobileBox = await controls.boundingBox();
+	expect(brandBox).not.toBeNull();
+	expect(mobileBox).not.toBeNull();
+	expect(mobileBox?.y ?? 0).toBeGreaterThanOrEqual((brandBox?.y ?? 0) + (brandBox?.height ?? 0));
+	expect(Math.abs((mobileBox?.x ?? 0) + (mobileBox?.width ?? 0) / 2 - 195)).toBeLessThanOrEqual(4);
+});
+
 test('supports both query directions and theme control', async ({ page }) => {
 	await page.goto('/');
 	await expect(page.getByRole('button', { name: 'Go' })).toBeEnabled();
@@ -391,10 +448,10 @@ test('supports both query directions and theme control', async ({ page }) => {
 	);
 	await expect(brand.getByRole('heading', { name: 'Natsume Simple' })).toBeVisible();
 	await expect(controls.getByRole('combobox', { name: 'Search term' })).toBeVisible();
-	await expect(controls.getByRole('button', { name: 'Toggle dark mode' })).toBeVisible();
-	const direction = page.getByLabel('Search direction');
+	await expect(page.getByRole('button', { name: 'Toggle dark mode' })).toBeVisible();
+	const direction = page.getByRole('group', { name: 'Search direction' });
 	const search = page.getByRole('combobox', { name: 'Search term' });
-	await direction.selectOption('verb');
+	await direction.getByRole('radio', { name: 'Verb-particle collocations' }).check();
 	await search.fill('集める');
 	await Promise.all([
 		page.waitForResponse((response) => {
@@ -414,7 +471,7 @@ test('supports both query directions and theme control', async ({ page }) => {
 		bodyBackground: getComputedStyle(document.body).backgroundColor,
 		bodyColor: getComputedStyle(document.body).color
 	}));
-	await controls.getByRole('button', { name: 'Toggle dark mode' }).click();
+	await page.getByRole('button', { name: 'Toggle dark mode' }).click();
 	await expect(page.locator('html')).toHaveClass(/dark/);
 	const dark = await page.evaluate(() => ({
 		htmlBackground: getComputedStyle(document.documentElement).backgroundColor,
@@ -446,7 +503,10 @@ test('keeps displayed results tied to the submitted search while controls are ed
 	await expect(page.getByText(/results for “情報” · Noun–particle search/)).toBeVisible();
 	await expect(page.locator('summary').filter({ hasText: '集める' })).toBeVisible();
 
-	await page.getByLabel('Search direction').selectOption('verb');
+	await page
+		.getByRole('group', { name: 'Search direction' })
+		.getByRole('radio', { name: 'Verb-particle collocations' })
+		.check();
 	await search.fill('集める');
 
 	await expect(page.getByText(/results for “情報” · Noun–particle search/)).toBeVisible();
@@ -464,7 +524,10 @@ test('opens suggestions only while focus remains in the search widget', async ({
 	await page.waitForTimeout(350);
 	await expect(search).toHaveAttribute('aria-expanded', 'false');
 
-	await page.getByLabel('Search direction').focus();
+	await page
+		.getByRole('group', { name: 'Search direction' })
+		.getByRole('radio', { name: 'Noun-particle collocations' })
+		.focus();
 	await expect(search).toHaveAttribute('aria-expanded', 'true');
 	const suggestion = page.locator('[role="option"] button').first();
 	const label = await suggestion.textContent();
@@ -559,7 +622,7 @@ test('reuses the primary controls on a mobile viewport', async ({ page }) => {
 	await page.setViewportSize({ width: 390, height: 844 });
 	await page.goto('/');
 
-	await expect(page.getByLabel('Search direction')).toBeVisible();
+	await expect(page.getByRole('group', { name: 'Search direction' })).toBeVisible();
 	await expect(page.getByRole('combobox', { name: 'Search term' })).toBeVisible();
 	await expect(page.getByLabel('Bar scale')).toBeVisible();
 	await expect(page.getByRole('button', { name: 'Toggle dark mode' })).toBeVisible();

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { SearchPosition, Suggestion } from '$lib/api/types';
+	import { ROLE_TEXT_CLASSES } from '$lib/presentation/colors';
 
 	let {
 		term = $bindable(),
@@ -96,15 +97,47 @@
 		onsubmit();
 	}}
 >
-	<label class="sr-only" for="search-position">Search direction</label>
-	<select
-		id="search-position"
-		class="h-10 rounded border bg-white px-2 dark:border-gray-600 dark:bg-gray-800"
-		bind:value={pos}
-	>
-		<option value="noun">Noun-Particle Collocations</option>
-		<option value="verb">Verb-Particle Collocations</option>
-	</select>
+	<fieldset class="flex h-10 rounded border border-gray-400 dark:border-gray-600">
+		<legend class="sr-only">Search direction</legend>
+		<label class="relative flex h-full">
+			<input
+				class="peer absolute inset-0 h-full w-full cursor-pointer appearance-none opacity-0"
+				type="radio"
+				name="search-position"
+				value="noun"
+				aria-label="Noun-particle collocations"
+				bind:group={pos}
+			/>
+			<span
+				class="flex h-full items-center gap-1 rounded-l px-2 text-sm peer-checked:bg-gray-200 peer-focus-visible:outline-2 peer-focus-visible:outline-offset-0 peer-focus-visible:outline-gray-900 dark:peer-checked:bg-gray-700 dark:peer-focus-visible:outline-gray-100"
+			>
+				<span class={ROLE_TEXT_CLASSES.noun} data-role="noun">Noun</span><span aria-hidden="true"
+					>→</span
+				><span class={ROLE_TEXT_CLASSES.particle} data-role="particle">Particle</span><span
+					aria-hidden="true">→</span
+				><span class={ROLE_TEXT_CLASSES.verb} data-role="verb">Verb</span>
+			</span>
+		</label>
+		<label class="relative flex h-full border-l border-gray-400 dark:border-gray-600">
+			<input
+				class="peer absolute inset-0 h-full w-full cursor-pointer appearance-none opacity-0"
+				type="radio"
+				name="search-position"
+				value="verb"
+				aria-label="Verb-particle collocations"
+				bind:group={pos}
+			/>
+			<span
+				class="flex h-full items-center gap-1 rounded-r px-2 text-sm peer-checked:bg-gray-200 peer-focus-visible:outline-2 peer-focus-visible:outline-offset-0 peer-focus-visible:outline-gray-900 dark:peer-checked:bg-gray-700 dark:peer-focus-visible:outline-gray-100"
+			>
+				<span class={ROLE_TEXT_CLASSES.noun} data-role="noun">Noun</span><span aria-hidden="true"
+					>←</span
+				><span class={ROLE_TEXT_CLASSES.particle} data-role="particle">Particle</span><span
+					aria-hidden="true">←</span
+				><span class={ROLE_TEXT_CLASSES.verb} data-role="verb">Verb</span>
+			</span>
+		</label>
+	</fieldset>
 	<div class="relative">
 		<label class="sr-only" for="search-input">Search term</label>
 		<input
@@ -149,7 +182,7 @@
 	</div>
 	<button
 		type="submit"
-		class="h-10 rounded bg-red-700 px-4 font-bold text-white hover:bg-red-600 disabled:opacity-60"
+		class="h-10 rounded bg-gray-900 px-4 font-bold text-white hover:bg-gray-700 disabled:opacity-60 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-gray-300"
 		disabled={loading}
 	>
 		{loading ? 'Searching…' : dirty ? 'Update results' : 'Go'}
