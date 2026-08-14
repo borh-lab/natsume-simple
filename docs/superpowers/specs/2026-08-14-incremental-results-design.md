@@ -1,6 +1,8 @@
 # Incremental Collocation and Example Results
 
-Status: Approved for implementation
+Status: Revised after review; awaiting implementation approval
+
+This is a design for planned behavior. Commit `5f7f0b9` changed this document only; the current API and frontend do not yet implement particle targeting, offsets, or `hasMore`.
 
 ## Purpose
 
@@ -17,7 +19,7 @@ Users can inspect more than the first 150 collocations in any particle column an
 ## Constraints
 
 - Pagination is independent per particle and per expanded collocation.
-- Initial search responses retain the current 150-item page size.
+- Page size is derived from the selected corpus count and the existing response budget.
 - A page must remain below the existing response-size bound.
 - Pages from different `databaseBuildId` values are never combined.
 - Corpus selection, submitted term, and search direction remain part of result identity.
@@ -36,15 +38,15 @@ Offset pagination is sufficient because the underlying artifact is immutable and
 `GET /api/collocations` gains two optional parameters:
 
 - `particle`: one of `が`, `を`, `に`, `で`, `から`, `より`, `と`, or `へ`.
-- `offset`: an integer greater than or equal to zero, defaulting to zero.
+- `offsetPerParticle`: an integer greater than or equal to zero, defaulting to zero.
 
-`offset > 0` requires `particle`; otherwise the endpoint returns the common `400 invalid_parameter` envelope. Omitting `particle` retains the current initial-search behavior and returns every non-empty particle group. Supplying `particle` filters the database query by particle before aggregation. It returns exactly that group when the particle has matches before pagination, including when the requested page itself is empty; it returns no groups only when the particle has no matches.
+`offsetPerParticle > 0` requires `particle`; otherwise the endpoint returns the common `400 invalid_parameter` envelope. Omitting `particle` retains the current initial-search behavior and returns every non-empty particle group. Supplying `particle` filters the database query by particle before aggregation. It returns exactly that group when the particle has matches before pagination, including when the requested page itself is empty; it returns no groups only when the particle has no matches.
 
 Each group retains the existing fields:
 
 - `totalMatchingCollocations` is the full selection-specific count for that particle.
 - `returnedCount` is the number of items in this page.
-- `items` is the deterministic slice `[offset:offset + limitPerParticle]`.
+- `items` is the deterministic slice `[offsetPerParticle:offsetPerParticle + limitPerParticle]`.
 - `corpusDistribution` is calculated over every matching item, not only the page.
 
 Ordering remains:
@@ -55,7 +57,19 @@ Ordering remains:
 4. ascending particle;
 5. ascending verb.
 
-The existing `limitPerParticle` validation and item/corpus budget apply to every page. The frontend uses pages of 150, so a three-corpus page remains within the measured bound.
+The existing `limitPerParticle` validation and item/corpus budget apply to every page. The frontend computes one capacity for the submitted selection:
+
+`pageSize = min(200, floor(450 / selectedCorpusIds.length))`
+
+It uses that value for both the initial response and later particle pages. The current three-corpus selection therefore uses 150; one- and two-corpus selections use 200. Artifact startup currently rejects more than three corpora, but the formula prevents an automatic `400` if that separate invariant is later relaxed. Any increase to the artifact corpus limit still requires the maximum-response fixture to prove the one-mebibyte bound.
+
+### Accepted repeated-page cost
+
+Particle targeting bounds transfer size but does not make the serving calculation proportional to the page. Every later page still reads all matching `collocation_frequency` rows for that term and particle, combines corpus contributions, sorts the full unique group, recomputes its distribution, and only then slices the requested page.
+
+On the three-corpus `20260814T003410Z-c8a55484c9c15371c88417240b288754` artifact, the largest group is verb `する` with particle `を`: 6,946 per-corpus rows combine into 5,461 unique collocations. Exhausting it requires 37 requests at the three-corpus page size. On the current host, the targeted DuckDB row query measured 189.7 ms cold and 10.7–15.1 ms warm; those figures exclude Python aggregation and response serialization.
+
+This repeated full-group work is accepted to keep one ranking implementation and one response shape. The implementation must add targeted later-page requests to the existing service benchmark. Revisit SQL-side pagination or a materialized serving relation if the curated page request reaches the existing one-second p95 gate or times out; do not add an index or cache solely from the asymptotic concern.
 
 ## Example API
 
@@ -73,7 +87,11 @@ The complete example order is:
 6. verb start and end;
 7. extractor ID.
 
-The final tie-breaker is not exposed, but it is stored and participates in the occurrence uniqueness constraint.
+The expanded order is a correctness prerequisite, not an optional refinement. The current query orders only by corpus, source, and sentence, so multiple matching occurrences in one sentence can change relative position between offset requests.
+
+The new order is total because the query fixes noun, particle, and verb; a sentence ID determines exactly one source and corpus; and the occurrence uniqueness constraint then makes sentence ID, all six span bounds, and extractor ID unique for the fixed triple. The final extractor tie-breaker is stored but need not be exposed on the wire.
+
+This is a present-data issue: the same artifact contains 11,527 sentence/triple groups with multiple occurrences, with as many as 10 tied under the current three-key order. The largest example result has 4,020 occurrences. The artifact declares no explicit secondary indexes; `EXPLAIN` for the proposed total order uses sequential scans followed by `TOP_N`. Measured against the largest result, it took 333.8 ms on the first cold request and 11.6–13.9 ms warm at offsets from zero through 5,000. No new index is specified now. The same one-second p95/timeout trigger used for collocation pages owns any later physical-design work.
 
 ## Frontend data flow
 
@@ -91,7 +109,7 @@ Each `ParticleColumn` owns only its incremental interaction state:
 - `idle | loading | error` page status;
 - the current page request and abort controller.
 
-The request uses the visible result's submitted term, direction, and canonical corpus IDs; the target particle; `offset = items.length`; and `limitPerParticle = 150`.
+The request uses the visible result's submitted term, direction, and canonical corpus IDs; the target particle; `offsetPerParticle = items.length`; and the selection-derived `pageSize` as `limitPerParticle`.
 
 Only one request per column may run at once. A successful response is appended only when:
 
@@ -101,17 +119,19 @@ Only one request per column may run at once. A successful response is appended o
 
 A mismatch is not merged. The column reports that the data changed and asks the user to update the search. A network or capacity error preserves the rows already loaded and exposes a retry action.
 
-The column displays `Showing N of M`. While `N < M`, its footer offers `Load min(150, M - N) more`. The button is disabled and labelled as loading while its request is active. It disappears when all rows are shown.
+The column displays `Showing N of M`. While `N < M`, its footer offers `Load min(pageSize, M - N) more`. The button is disabled and labelled as loading while its request is active. It disappears when all rows are shown.
 
 Appending lower-ranked rows cannot change either bar reference: the within-particle maximum and across-particle maximum are already present in the first descending page. Corpus distribution is also stable because the server calculates it over the complete matching set.
 
 ### Per-collocation examples
 
-`SentenceExamples` keeps its existing local ownership and initially requests five examples at offset zero. It records `hasMore` and appends subsequent pages of five using `offset = examples.length`.
+`SentenceExamples` keeps its existing local ownership and initially requests five examples at offset zero. It records `hasMore` and appends subsequent pages of up to 20—the endpoint's existing maximum—using `offset = examples.length`.
 
 Loaded examples remain visible during an additional request or a retryable error. Responses with a different `databaseBuildId` or corpus selection are not appended. The request is aborted when the row unmounts.
 
 The disclosure displays `N examples shown`. While `hasMore` is true, a full-width footer offers `Load more examples`. When at least one example has loaded and `hasMore` is false, the footer changes to `All examples shown`. A zero-result initial request instead keeps the existing `No examples found` state.
+
+Not reporting the total means the user cannot know before loading whether six or six hundred examples exist. This is the accepted cost of avoiding a count query on every example page. Revisit the decision if users need scale preview or direct navigation rather than sequential evidence browsing.
 
 Both incremental owners use one shared pure identity predicate for `databaseBuildId` and canonical corpus IDs. Request lifecycle and accumulated rows remain local because the two consumers have different page sizes, response shapes, and visual states. A generic pagination store or loader interface would hide those differences without serving a second implementation.
 
@@ -136,7 +156,7 @@ The particle-level load-more footer is visually separate from collocation summar
 - Page request errors are local; existing rows and other columns remain usable.
 - Artifact or corpus-identity mismatch never produces a mixed list.
 - An empty collocation page is treated as exhausted only when the column's known total has already been reached; otherwise it is reported as an inconsistent response.
-- Example exhaustion follows the server's `hasMore` value; an empty page with `hasMore = true` is inconsistent.
+- An example offset at or past the end returns an empty page with `hasMore = false`; the client treats it as exhausted.
 
 ## Tests
 
@@ -145,14 +165,15 @@ Backend contract tests cover:
 - targeted particle filtering;
 - the second page's exact order and absence of overlap;
 - full-set totals and corpus distribution on later pages;
-- rejection of an offset without a particle;
+- rejection of `offsetPerParticle` without a particle;
 - unchanged response-size enforcement;
 - example `hasMore` semantics, successive pages, and complete tie ordering;
 - parameter bounds and common error envelopes.
 
 Frontend unit tests cover:
 
-- client serialization of particle and offset parameters;
+- client serialization of collocation `particle`/`offsetPerParticle` and example `offset` parameters;
+- page-size derivation for one-, two-, and three-corpus selections;
 - total-matching collocation summary math;
 - append/exhaustion decisions as pure presentation calculations where useful.
 
