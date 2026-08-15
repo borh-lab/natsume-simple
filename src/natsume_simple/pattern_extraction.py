@@ -1,10 +1,9 @@
 import logging
 import re
-from itertools import chain, dropwhile, pairwise, takewhile
+from itertools import dropwhile, pairwise, takewhile
 
 import ginza  # type: ignore
-import spacy  # type: ignore
-import torch  # type: ignore
+import spacy  # type: ignore  # noqa: F401 - exposed to module doctests
 from spacy.symbols import (  # type: ignore
     ADJ,
     ADP,
@@ -26,40 +25,6 @@ from spacy.symbols import (  # type: ignore
 from spacy.tokens import Doc, Span, Token  # type: ignore
 
 logger = logging.getLogger(__name__)
-
-
-def load_nlp_model(
-    model_name: str | None = None,
-) -> spacy.language.Language:
-    """
-    Load and return the NLP model.
-
-    Args:
-        model_name (Optional[str]): The name of the model to load. If None, tries to load 'ja_ginza_bert_large' first, then falls back to 'ja_ginza'.
-
-    Returns:
-        spacy.language.Language: The loaded NLP model.
-    """
-
-    if torch.cuda.is_available() or torch.backends.mps.is_available():
-        logger.info("GPU is available. Enabling GPU support for spaCy.")
-        try:
-            spacy.require_gpu()
-        except ValueError as e:
-            logger.error(f"Error enabling GPU support: {e}, using CPU.")
-    else:
-        logger.info("GPU is not available. Using whatever spaCy finds or the CPU.")
-        spacy.prefer_gpu()
-
-    if model_name:
-        nlp = spacy.load(model_name)
-    else:
-        try:
-            nlp = spacy.load("ja_ginza_bert_large")
-        except OSError:
-            nlp = spacy.load("ja_ginza")
-
-    return nlp
 
 
 def simple_lemma(token: Token) -> str:
@@ -112,25 +77,20 @@ def normalize_verb_span(tokens: Doc | Span) -> tuple[str | None, int, int]:
         >>> normalize_verb_span(nlp("たらしめている"))
         ('たらしめる', 0, 7)
     """
-    # Chain filtering steps together
     clean_tokens = list(
-        chain(
-            takewhile(
-                lambda token: (
-                    token.pos not in {ADP, SCONJ, PART}
-                    and token.tag_ not in {"助詞-接続助詞"}
-                    or (
-                        token.pos == AUX and token.lemma_ == "れる"
-                    )  # Keep れる auxiliary
-                    or (
-                        token.pos == ADJ and token.dep_ == "amod"
-                    )  # Keep ADJ when it modifies
-                ),
-                dropwhile(
-                    lambda token: token.pos in {ADP, CCONJ, SCONJ, PART},
-                    (token for token in tokens if token.pos not in {PUNCT, SYM}),
-                ),
-            )
+        takewhile(
+            lambda token: (
+                token.pos not in {ADP, SCONJ, PART}
+                and token.tag_ not in {"助詞-接続助詞"}
+                or (token.pos == AUX and token.lemma_ == "れる")  # Keep れる auxiliary
+                or (
+                    token.pos == ADJ and token.dep_ == "amod"
+                )  # Keep ADJ when it modifies
+            ),
+            dropwhile(
+                lambda token: token.pos in {ADP, CCONJ, SCONJ, PART},
+                (token for token in tokens if token.pos not in {PUNCT, SYM}),
+            ),
         )
     )
     visible_tokens = [token for token in tokens if token.pos not in {PUNCT, SYM}]
