@@ -48,6 +48,8 @@ The existing `limit`, `offset`, `hasMore`, response schema, query timeout, reque
 - noun search: `648 matches · “こと”–particle–verb`;
 - verb search: `648 matches · noun–particle–“集める”`.
 
+The count label uses `match` for exactly one result and `matches` otherwise.
+
 The searched term is bold in the visible pattern. The placeholders stay lowercase and neutral because they describe roles rather than controls or corpus identity. The `title` retains the compact plain-text pattern. The accessible label expands it semantically rather than asking a screen reader to infer grammar from punctuation:
 
 - noun search: `648 matches; searched noun “こと”; pattern noun, particle, verb`;
