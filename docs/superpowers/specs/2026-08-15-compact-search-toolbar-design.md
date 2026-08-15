@@ -1,6 +1,8 @@
 # Compact Search Header and Results Toolbar
 
-Status: Approved for implementation
+Status: Implemented
+
+Implementation evidence: the Svelte type/unit/build gates, the 17-scenario Playwright suite, and the hermetic Nix frontend, Playwright, packaged-frontend, and server-smoke checks pass on the completed implementation.
 
 ## Purpose
 
