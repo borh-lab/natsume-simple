@@ -43,6 +43,45 @@ nix develop                 # 上記の union
 Dev Container / Codespaces は `.devcontainer/devcontainer.json` から同じ flake を
 使います。別の Dockerfile、rootless variant、ROCm variant はありません。
 
+### Optional uv model environments
+
+The project lock targets Python 3.14. Model choice and accelerator choice are independent:
+
+```bash
+uv sync --extra builder --extra cpu
+uv sync --extra builder --extra electra --extra cpu
+uv sync --extra builder --extra rocm
+uv sync --extra builder --extra electra --extra rocm
+```
+
+`builder` provides `ja_ginza`; `electra` additionally provides
+`ja_ginza_electra`. Select exactly one of `cpu`, `cuda`, or `rocm`. These uv
+environments are for corpus work and model experiments; the published server and
+OCI image remain CPU-only and contain no NLP model stack.
+
+ROCm is supported on Linux x86-64 when the host provides a compatible kernel
+driver, `/dev/kfd`, and ROCm runtime. The tested host uses an RX 7900 XTX and
+ROCm 7.2:
+
+```bash
+export PATH=/opt/rocm/bin:$PATH
+export LD_LIBRARY_PATH=/opt/rocm/lib:/opt/rocm/lib64
+export HIP_DEVICE_LIB_PATH=/opt/rocm/amdgcn/bitcode
+export ROCM_HOME=/opt/rocm
+uv run --extra builder --extra electra --extra rocm python your_script.py
+```
+
+In a process that uses both Torch and CuPy, initialize Torch's HIP runtime before
+importing spaCy/Thinc (`import torch; assert torch.cuda.is_available()`). The
+ROCm smoke test runs each model in a fresh process to enforce this ordering.
+`spacy.require_gpu(0)` is the runtime gate; there is no automatic CPU fallback.
+
+The Python 3.14 ELECTRA composition intentionally carries two upstream metadata
+discrepancies: `spacy-alignments` declares Python `<3.14`, and
+`spacy-transformers` declares Transformers `<4.26`. The locked stack is verified
+by loading and parsing with both models; `uv pip check --python .venv/bin/python`
+must report exactly those two incompatibilities and no others.
+
 ### Backend and frontend development
 
 Backend:
@@ -182,9 +221,9 @@ are operator release evidence because they require large external inputs and NLP
 they are intentionally not default CI inputs. The network-independent builder smoke only
 checks the packaged command surface with tiny fixtures.
 
-CPU and CUDA Python extras are mutually exclusive. The published server and image are
-CPU-only and contain no Torch, spaCy, GiNZA, wtpsplit, Polars, Node, Jupyter, or CUDA
-closure.
+CPU, CUDA, and ROCm Python extras are pairwise mutually exclusive. The published server
+and image are CPU-only and contain no Torch, spaCy, GiNZA, wtpsplit, Polars, Node,
+Jupyter, CUDA, or ROCm closure.
 
 ## OCI image
 

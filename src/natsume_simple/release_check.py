@@ -146,7 +146,7 @@ def _check_license_policy(source_lock: Path) -> None:
             and corpora["ted"]["status"] == "no-grant-asserted"
             and corpora["ted"]["spdxExpression"] is None
         )
-    except (OSError, json.JSONDecodeError, KeyError, TypeError):
+    except OSError, json.JSONDecodeError, KeyError, TypeError:
         valid = False
     if not valid:
         raise ReleaseCheckError("license_policy_mismatch")

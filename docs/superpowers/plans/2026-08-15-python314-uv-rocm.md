@@ -1,5 +1,8 @@
 # Python 3.14 and uv-managed ROCm Implementation Plan
 
+**Status:** Executed 2026-08-15. Implementation discoveries are recorded in the
+approved design and README; the commands below remain the historical execution plan.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make Python 3.14 the project's single Python version and add independent uv extras for the standard and ELECTRA GiNZA models on CPU, CUDA, or ROCm.
@@ -13,9 +16,9 @@
 - `.python-version` contains `3.14`; `project.requires-python` is exactly `>=3.14,<3.15`.
 - `builder` keeps `ginza==5.2.0` and `ja-ginza==5.2.0`; `electra` is separate and contains `ja-ginza-electra==5.2.0`, `transformers==4.57.6`, and `tokenizers==0.22.2`.
 - `cpu`, `cuda`, and `rocm` conflict pairwise; each Torch requirement uses only its matching explicit uv index.
-- `rocm` contains `torch==2.13.0+rocm7.2` and `cupy-rocm-7-0==14.1.1` only on Linux x86-64.
+- `rocm` contains `torch==2.13.0+rocm7.2`, `cupy-rocm-7-0==14.1.1`, and the directly routed `triton-rocm==3.7.1` only on Linux x86-64.
 - The only dependency override is `transformers==4.57.6`; do not add a Tokenizers override or widen to Transformers 5.
-- `spacy-alignments` builds with `PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1`; do not patch `.venv`, vendor wheels, or add post-install hooks.
+- `spacy-alignments` and `sudachipy` build with `PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1`; do not patch `.venv`, vendor wheels, or add post-install hooks.
 - uv owns Python packages. The host owns `/dev/kfd`, the kernel driver, and the ROCm runtime under `/opt/rocm`.
 - Nix remains CPU-only and consumes `uv.lock`; do not add a Nix ROCm package set.
 - The corpus builder continues to load standard `ja_ginza`; do not add a model-selection CLI argument.

@@ -113,7 +113,7 @@ def test_nix_builds_sudachipy_with_its_legacy_python_314_requirements() -> None:
     flake = (ROOT / "flake.nix").read_text(encoding="utf-8")
 
     assert '"sudachipy"' in flake
-    assert 'setuptools-rust = [ ];' in flake
+    assert "setuptools-rust = [ ];" in flake
     assert "pkgs.cargo" in flake
     assert "pkgs.rustc" in flake
     assert "pkgs.rustPlatform.cargoSetupHook" in flake

@@ -1,6 +1,6 @@
 # Python 3.14 and uv-managed ROCm Design
 
-**Status:** Approved for implementation
+**Status:** Implemented 2026-08-15
 
 ## Purpose
 
@@ -43,14 +43,14 @@ uv supports optional-dependency-specific package indexes, explicit conflicts bet
 - `builder` retains `ginza==5.2.0` and `ja-ginza==5.2.0` and remains the normal corpus-builder dependency set.
 - Add `electra` containing `ja-ginza-electra==5.2.0`, `transformers==4.57.6`, and `tokenizers==0.22.2`.
 - Add `transformers==4.57.6` to `tool.uv.override-dependencies`. This replaces only the stale `<4.26` requirement published by `spacy-transformers==1.1.9`; Transformers is requested only by `electra`, so the override does not add it to standard builder environments.
-- Add `PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1` for `spacy-alignments` under `tool.uv.extra-build-variables`. Python 3.14 has no published wheel for `spacy-alignments==0.9.2`; uv must carry the build input that made its source distribution compile successfully.
+- Add `PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1` for `spacy-alignments` and `sudachipy` under `tool.uv.extra-build-variables`. Python 3.14 has no published wheels for these locked versions; uv must carry the build input that made their source distributions compile successfully.
 - Do not add a model-selection argument to `natsume-corpus`. The production builder continues to load `ja_ginza`; the `electra` extra serves direct model experiments and hardware validation. Add a builder model selector only when a corpus build is intentionally compared or switched.
 
 ### Accelerator extras
 
 - Keep `cpu` with `torch==2.13.0+cpu`.
 - Keep `cuda` with `torch==2.13.0+cu126` and `cupy-cuda12x>=14.1.1,<15`.
-- Add `rocm` with `torch==2.13.0+rocm7.2` and `cupy-rocm-7-0==14.1.1` on Linux x86-64.
+- Add `rocm` with `torch==2.13.0+rocm7.2`, `cupy-rocm-7-0==14.1.1`, and `triton-rocm==3.7.1` on Linux x86-64. Triton is direct because uv's explicit extra-specific index routing does not apply transitively from Torch.
 - Declare every pair among `cpu`, `cuda`, and `rocm` as conflicting. A uv environment has exactly one accelerator policy.
 - Add an explicit `pytorch-rocm` index at `https://download.pytorch.org/whl/rocm7.2` and select it only from the `rocm` extra.
 
@@ -94,6 +94,11 @@ uv run --extra builder --extra electra --extra rocm python ...
 
 Multi-GPU hosts select the intended device with the existing `HIP_VISIBLE_DEVICES`, `ROCR_VISIBLE_DEVICES`, and `GPU_DEVICE_ORDINAL` controls. Installation does not imply that a usable GPU exists: `spacy.require_gpu(0)` remains the runtime gate and must fail rather than silently falling back when ROCm is unavailable.
 
+Torch must initialize HIP before Thinc imports CuPy when both runtimes share one
+process. The verified ordering is `import torch`, call `torch.cuda.is_available()`,
+then import spaCy/Thinc. The ROCm parity test uses a fresh subprocess so pytest's
+model-free spaCy fixture cannot reverse that order.
+
 ## Verification
 
 ### Configuration contract
@@ -107,7 +112,7 @@ A model-free test reads `pyproject.toml` and asserts:
 - the ROCm extra contains both ROCm Torch and CuPy.
 - ELECTRA pins Transformers 4.57.6 and Tokenizers 0.22.2;
 - the single dependency override is Transformers 4.57.6;
-- the `spacy-alignments` build receives `PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1`.
+- the `spacy-alignments` and `sudachipy` builds receive `PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1`.
 
 This test protects the relationship whose failure would otherwise make every uv sync select the wrong binary family.
 
@@ -116,7 +121,7 @@ This test protects the relationship whose failure would otherwise make every uv 
 - Regenerate `uv.lock` with Python 3.14 and run `uv lock --check`.
 - Sync and smoke `builder+cpu` and `builder+electra+cpu` from the lock.
 - Load each model and parse the representative Japanese fixture set.
-- Confirm `uv pip check` reports exactly the two recorded ELECTRA metadata discrepancies and no others.
+- Confirm `uv pip check --python .venv/bin/python` reports exactly the two recorded ELECTRA metadata discrepancies and no others.
 - On the matching AMD host, sync `builder+rocm` and `builder+electra+rocm` from the same lock.
 - Require CuPy HIP execution for standard GiNZA and both Torch ROCm allocation and successful parsing for ELECTRA.
 - Compare the observable parses between CPU and ROCm. Do not add a performance threshold; this gate asks whether the backend works.
@@ -129,6 +134,10 @@ This test protects the relationship whose failure would otherwise make every uv 
 - No new Nix ROCm package set. Add one only when a Nix-built ROCm closure, rather than a uv environment on a ROCm host, becomes a deployment requirement.
 - No ELECTRA builder flag. Add one when an actual corpus build uses ELECTRA.
 - No vendored dependency wheels or project-owned upstream fork. Reconsider only if upstream Python 3.14 support remains blocked and ELECTRA becomes a production requirement.
+
+The Nix CPU closure uses the upstream SudachiPy Cargo lock at a pinned commit because
+the PyPI sdist omits `Cargo.lock` and its build metadata omits setuptools-rust and Rust.
+This is fixed-input build plumbing, not a second Python dependency graph.
 
 ## Documentation
 
