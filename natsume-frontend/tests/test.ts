@@ -467,9 +467,7 @@ test('distinguishes expandable rows in light and dark mode', async ({ page }) =>
 	);
 });
 
-test('centers an accessible search control at the responsive header boundary', async ({
-	page
-}) => {
+test('centers an accessible search control at the responsive header boundary', async ({ page }) => {
 	await page.setViewportSize({ width: 1024, height: 844 });
 	await page.goto('/');
 	const controls = page.getByTestId('header-controls');
@@ -642,7 +640,9 @@ test('keeps displayed results tied to the submitted search while controls are ed
 	await expect(page.getByRole('button', { name: 'Update' })).toBeVisible();
 });
 
-test('keeps accepted identity and bar scale in one responsive results toolbar', async ({ page }) => {
+test('keeps accepted identity and bar scale in one responsive results toolbar', async ({
+	page
+}) => {
 	await page.setViewportSize({ width: 1280, height: 844 });
 	await page.goto('/');
 	await expect(page.getByRole('button', { name: 'Go' })).toBeEnabled();

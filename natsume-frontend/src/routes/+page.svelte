@@ -82,11 +82,7 @@
 			class="relative flex h-10 min-w-0 items-center gap-2 border-y border-gray-200 px-1 dark:border-gray-700"
 			data-testid="results-toolbar"
 		>
-			<div
-				class="relative shrink-0"
-				bind:this={optionsWidget}
-				onfocusout={closeOptionsOnFocusout}
-			>
+			<div class="relative shrink-0" bind:this={optionsWidget} onfocusout={closeOptionsOnFocusout}>
 				<button
 					type="button"
 					class="h-8 rounded border border-gray-400 bg-white px-2 text-sm font-medium hover:bg-gray-100 focus-visible:outline-2 focus-visible:outline-offset-0 dark:border-gray-600 dark:bg-gray-900 dark:hover:bg-gray-800 xl:hidden"
@@ -107,7 +103,9 @@
 						ontoggle={(corpusId) => controller.toggleCorpus(corpusId)}
 					/>
 					{#if controller.result}
-						<div class="flex shrink-0 items-center gap-1.5 border-gray-300 text-sm xl:border-l xl:pl-2 dark:border-gray-600">
+						<div
+							class="flex shrink-0 items-center gap-1.5 border-gray-300 text-sm xl:border-l xl:pl-2 dark:border-gray-600"
+						>
 							<label for="bar-scale">Bar scale</label>
 							<select
 								id="bar-scale"

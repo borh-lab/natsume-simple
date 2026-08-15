@@ -99,36 +99,36 @@
 	<fieldset class="flex h-10 shrink-0 items-center">
 		<legend class="float-left mr-1 text-sm font-medium">Search by</legend>
 		<div class="flex h-10 rounded border border-gray-400 dark:border-gray-600">
-		<label class="relative flex h-full">
-			<input
-				class="peer absolute inset-0 h-full w-full cursor-pointer appearance-none opacity-0"
-				type="radio"
-				name="search-position"
-				value="noun"
-				aria-label="Noun-particle collocations"
-				bind:group={pos}
-			/>
-			<span
-				class="flex h-full items-center rounded-l px-2 text-sm peer-checked:bg-gray-200 peer-checked:font-bold peer-checked:shadow-[inset_0_0_0_2px_currentColor] peer-focus-visible:outline-2 peer-focus-visible:outline-offset-0 peer-focus-visible:outline-gray-900 dark:peer-checked:bg-gray-700 dark:peer-focus-visible:outline-gray-100"
-			>
-				Noun
-			</span>
-		</label>
-		<label class="relative flex h-full border-l border-gray-400 dark:border-gray-600">
-			<input
-				class="peer absolute inset-0 h-full w-full cursor-pointer appearance-none opacity-0"
-				type="radio"
-				name="search-position"
-				value="verb"
-				aria-label="Verb-particle collocations"
-				bind:group={pos}
-			/>
-			<span
-				class="flex h-full items-center rounded-r px-2 text-sm peer-checked:bg-gray-200 peer-checked:font-bold peer-checked:shadow-[inset_0_0_0_2px_currentColor] peer-focus-visible:outline-2 peer-focus-visible:outline-offset-0 peer-focus-visible:outline-gray-900 dark:peer-checked:bg-gray-700 dark:peer-focus-visible:outline-gray-100"
-			>
-				Verb
-			</span>
-		</label>
+			<label class="relative flex h-full">
+				<input
+					class="peer absolute inset-0 h-full w-full cursor-pointer appearance-none opacity-0"
+					type="radio"
+					name="search-position"
+					value="noun"
+					aria-label="Noun-particle collocations"
+					bind:group={pos}
+				/>
+				<span
+					class="flex h-full items-center rounded-l px-2 text-sm peer-checked:bg-gray-200 peer-checked:font-bold peer-checked:shadow-[inset_0_0_0_2px_currentColor] peer-focus-visible:outline-2 peer-focus-visible:outline-offset-0 peer-focus-visible:outline-gray-900 dark:peer-checked:bg-gray-700 dark:peer-focus-visible:outline-gray-100"
+				>
+					Noun
+				</span>
+			</label>
+			<label class="relative flex h-full border-l border-gray-400 dark:border-gray-600">
+				<input
+					class="peer absolute inset-0 h-full w-full cursor-pointer appearance-none opacity-0"
+					type="radio"
+					name="search-position"
+					value="verb"
+					aria-label="Verb-particle collocations"
+					bind:group={pos}
+				/>
+				<span
+					class="flex h-full items-center rounded-r px-2 text-sm peer-checked:bg-gray-200 peer-checked:font-bold peer-checked:shadow-[inset_0_0_0_2px_currentColor] peer-focus-visible:outline-2 peer-focus-visible:outline-offset-0 peer-focus-visible:outline-gray-900 dark:peer-checked:bg-gray-700 dark:peer-focus-visible:outline-gray-100"
+				>
+					Verb
+				</span>
+			</label>
 		</div>
 	</fieldset>
 	<div class="relative min-w-0 flex-1">
