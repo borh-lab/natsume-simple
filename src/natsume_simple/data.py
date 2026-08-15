@@ -43,23 +43,14 @@ def is_japanese(line: str, min_length: int = 200) -> bool:
 
     def is_japanese_char(c: str) -> bool:
         code = ord(c)
-        return any(
-            [
-                # Hiragana (3040-309F)
-                0x3040 <= code <= 0x309F,
-                # Katakana (30A0-30FF)
-                0x30A0 <= code <= 0x30FF,
-                # Kanji (4E00-9FFF)
-                0x4E00 <= code <= 0x9FFF,
-                # Fullwidth ASCII variants (FF00-FF5E)
-                0xFF00 <= code <= 0xFF5E,
-                # Japanese punctuation and symbols (3000-303F)
-                0x3000 <= code <= 0x303F,
-                # Additional CJK symbols and punctuation (31F0-31FF)
-                0x31F0 <= code <= 0x31FF,
-                # Additional Kanji (3400-4DBF)
-                0x3400 <= code <= 0x4DBF,
-            ]
+        return (
+            0x3040 <= code <= 0x309F  # Hiragana
+            or 0x30A0 <= code <= 0x30FF  # Katakana
+            or 0x4E00 <= code <= 0x9FFF  # Kanji
+            or 0xFF00 <= code <= 0xFF5E  # Fullwidth ASCII variants
+            or 0x3000 <= code <= 0x303F  # Japanese punctuation and symbols
+            or 0x31F0 <= code <= 0x31FF  # Additional CJK symbols and punctuation
+            or 0x3400 <= code <= 0x4DBF  # Additional Kanji
         )
 
     if len(line) < min_length:
