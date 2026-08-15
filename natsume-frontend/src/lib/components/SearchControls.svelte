@@ -1,6 +1,5 @@
 <script lang="ts">
 	import type { SearchPosition, Suggestion } from '$lib/api/types';
-	import { ROLE_TEXT_CLASSES } from '$lib/presentation/colors';
 
 	let {
 		term = $bindable(),
@@ -88,7 +87,7 @@
 </script>
 
 <form
-	class="flex flex-wrap items-center gap-2"
+	class="flex w-full min-w-0 flex-nowrap items-center gap-2"
 	onfocusin={() => (focusedWithin = true)}
 	onfocusout={focusout}
 	onsubmit={(event) => {
@@ -97,8 +96,9 @@
 		onsubmit();
 	}}
 >
-	<fieldset class="flex h-10 rounded border border-gray-400 dark:border-gray-600">
-		<legend class="sr-only">Search direction</legend>
+	<fieldset class="flex h-10 shrink-0 items-center">
+		<legend class="float-left mr-1 text-sm font-medium">Search by</legend>
+		<div class="flex h-10 rounded border border-gray-400 dark:border-gray-600">
 		<label class="relative flex h-full">
 			<input
 				class="peer absolute inset-0 h-full w-full cursor-pointer appearance-none opacity-0"
@@ -109,13 +109,9 @@
 				bind:group={pos}
 			/>
 			<span
-				class="flex h-full items-center gap-1 rounded-l px-2 text-sm peer-checked:bg-gray-200 peer-focus-visible:outline-2 peer-focus-visible:outline-offset-0 peer-focus-visible:outline-gray-900 dark:peer-checked:bg-gray-700 dark:peer-focus-visible:outline-gray-100"
+				class="flex h-full items-center rounded-l px-2 text-sm peer-checked:bg-gray-200 peer-checked:font-bold peer-checked:shadow-[inset_0_0_0_2px_currentColor] peer-focus-visible:outline-2 peer-focus-visible:outline-offset-0 peer-focus-visible:outline-gray-900 dark:peer-checked:bg-gray-700 dark:peer-focus-visible:outline-gray-100"
 			>
-				<span class={ROLE_TEXT_CLASSES.noun} data-role="noun">Noun</span><span aria-hidden="true"
-					>→</span
-				><span class={ROLE_TEXT_CLASSES.particle} data-role="particle">Particle</span><span
-					aria-hidden="true">→</span
-				><span class={ROLE_TEXT_CLASSES.verb} data-role="verb">Verb</span>
+				Noun
 			</span>
 		</label>
 		<label class="relative flex h-full border-l border-gray-400 dark:border-gray-600">
@@ -128,23 +124,20 @@
 				bind:group={pos}
 			/>
 			<span
-				class="flex h-full items-center gap-1 rounded-r px-2 text-sm peer-checked:bg-gray-200 peer-focus-visible:outline-2 peer-focus-visible:outline-offset-0 peer-focus-visible:outline-gray-900 dark:peer-checked:bg-gray-700 dark:peer-focus-visible:outline-gray-100"
+				class="flex h-full items-center rounded-r px-2 text-sm peer-checked:bg-gray-200 peer-checked:font-bold peer-checked:shadow-[inset_0_0_0_2px_currentColor] peer-focus-visible:outline-2 peer-focus-visible:outline-offset-0 peer-focus-visible:outline-gray-900 dark:peer-checked:bg-gray-700 dark:peer-focus-visible:outline-gray-100"
 			>
-				<span class={ROLE_TEXT_CLASSES.noun} data-role="noun">Noun</span><span aria-hidden="true"
-					>←</span
-				><span class={ROLE_TEXT_CLASSES.particle} data-role="particle">Particle</span><span
-					aria-hidden="true">←</span
-				><span class={ROLE_TEXT_CLASSES.verb} data-role="verb">Verb</span>
+				Verb
 			</span>
 		</label>
+		</div>
 	</fieldset>
-	<div class="relative">
+	<div class="relative min-w-0 flex-1">
 		<label class="sr-only" for="search-input">Search term</label>
 		<input
 			id="search-input"
 			name="search-input"
 			type="search"
-			class="h-10 rounded border bg-white px-3 dark:border-gray-600 dark:bg-gray-800"
+			class="h-10 w-full min-w-0 rounded border bg-white px-3 dark:border-gray-600 dark:bg-gray-800"
 			placeholder="Search term"
 			autocomplete="off"
 			role="combobox"
@@ -182,9 +175,9 @@
 	</div>
 	<button
 		type="submit"
-		class="h-10 rounded bg-gray-900 px-4 font-bold text-white hover:bg-gray-700 disabled:opacity-60 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-gray-300"
+		class="h-10 min-w-[5.5rem] shrink-0 rounded bg-gray-900 px-3 font-bold text-white hover:bg-gray-700 disabled:opacity-60 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-gray-300"
 		disabled={loading}
 	>
-		{loading ? 'Searching…' : dirty ? 'Update results' : 'Go'}
+		{loading ? 'Searching…' : dirty ? 'Update' : 'Go'}
 	</button>
 </form>

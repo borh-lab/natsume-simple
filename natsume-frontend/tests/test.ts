@@ -5,7 +5,7 @@ async function expectSpreadsheet(page: import('@playwright/test').Page, width: n
 	await page.goto('/');
 	await expect(page.getByText(/results for “時間”/)).toBeVisible();
 	await page.getByRole('combobox', { name: 'Search term' }).fill('情報');
-	await page.getByRole('button', { name: 'Update results' }).click();
+	await page.getByRole('button', { name: 'Update' }).click();
 	const region = page.getByRole('region', { name: 'Particle collocations' });
 	await expect(region).toBeVisible();
 	const columns = region.getByTestId('particle-column');
@@ -44,7 +44,7 @@ test('searches, filters, rescales, and safely expands examples', async ({ page }
 			const url = new URL(response.url());
 			return url.pathname === '/api/collocations' && url.searchParams.get('term') === '情報';
 		}),
-		page.getByRole('button', { name: 'Update results' }).click()
+		page.getByRole('button', { name: 'Update' }).click()
 	]);
 	await expect(page.getByRole('heading', { name: 'を', exact: true })).toBeVisible();
 
@@ -96,22 +96,12 @@ test('searches, filters, rescales, and safely expands examples', async ({ page }
 			.getByTestId('example-source')
 			.evaluate((element) => getComputedStyle(element).color)
 	);
-	for (const [role, className] of [
-		['noun', '.text-blue-600'],
-		['particle', '.text-red-600'],
-		['verb', '.text-green-600']
-	] as const) {
-		const selectorColor = await page
-			.getByRole('group', { name: 'Search direction' })
-			.locator(`[data-role="${role}"]`)
-			.first()
-			.evaluate((element) => getComputedStyle(element).color);
+	for (const className of ['.text-blue-600', '.text-red-600', '.text-green-600']) {
 		const sentenceColor = await disclosure
 			.locator(className)
 			.first()
 			.evaluate((element) => getComputedStyle(element).color);
-		expect(selectorColor).toBe(sentenceColor);
-		expect(alphaColors).not.toContain(selectorColor);
+		expect(alphaColors).not.toContain(sentenceColor);
 	}
 	await expect(page.getByText('Loading examples…')).toHaveCount(0);
 	await expect(page.locator('img[src="x"]')).toHaveCount(0);
@@ -194,7 +184,7 @@ test('loads more examples without hiding the accepted page', async ({ page }) =>
 	await page.goto('/');
 	await expect(page.getByRole('button', { name: 'Go' })).toBeEnabled();
 	await page.getByRole('combobox', { name: 'Search term' }).fill('情報');
-	await page.getByRole('button', { name: 'Update results' }).click();
+	await page.getByRole('button', { name: 'Update' }).click();
 	const disclosure = page.locator('details').filter({ hasText: '集める' }).first();
 	await disclosure.locator('summary').click();
 	await expect(disclosure.getByRole('button', { name: 'Load more examples' })).toBeVisible();
@@ -231,7 +221,7 @@ test('rejects a later example page from a different artifact', async ({ page }) 
 	await page.goto('/');
 	await expect(page.getByRole('button', { name: 'Go' })).toBeEnabled();
 	await page.getByRole('combobox', { name: 'Search term' }).fill('情報');
-	await page.getByRole('button', { name: 'Update results' }).click();
+	await page.getByRole('button', { name: 'Update' }).click();
 	const disclosure = page.locator('details').filter({ hasText: '集める' }).first();
 	await disclosure.locator('summary').click();
 	await disclosure.getByRole('button', { name: 'Load more examples' }).click();
@@ -265,7 +255,7 @@ test('keeps accepted examples visible when a later page fails', async ({ page })
 	await page.goto('/');
 	await expect(page.getByRole('button', { name: 'Go' })).toBeEnabled();
 	await page.getByRole('combobox', { name: 'Search term' }).fill('情報');
-	await page.getByRole('button', { name: 'Update results' }).click();
+	await page.getByRole('button', { name: 'Update' }).click();
 	const disclosure = page.locator('details').filter({ hasText: '集める' }).first();
 	await disclosure.locator('summary').click();
 	await disclosure.getByRole('button', { name: 'Load more examples' }).click();
@@ -350,7 +340,7 @@ test('loads more collocations in only the selected particle column', async ({ pa
 			const url = new URL(response.url());
 			return url.pathname === '/api/collocations' && url.searchParams.get('term') === '情報';
 		}),
-		page.getByRole('button', { name: 'Update results' }).click()
+		page.getByRole('button', { name: 'Update' }).click()
 	]);
 	const woColumn = page.getByTestId('particle-column').filter({
 		has: page.getByRole('heading', { name: 'を', exact: true })
@@ -388,7 +378,7 @@ test('distinguishes expandable rows in light and dark mode', async ({ page }) =>
 	await page.goto('/');
 	await expect(page.getByRole('button', { name: 'Go' })).toBeEnabled();
 	await page.getByRole('combobox', { name: 'Search term' }).fill('情報');
-	await page.getByRole('button', { name: 'Update results' }).click();
+	await page.getByRole('button', { name: 'Update' }).click();
 	const column = page.getByTestId('particle-column').filter({
 		has: page.getByRole('heading', { name: 'を', exact: true })
 	});
@@ -422,9 +412,9 @@ test('distinguishes expandable rows in light and dark mode', async ({ page }) =>
 	expect(await firstSummary.evaluate((element) => getComputedStyle(element).borderRadius)).toBe(
 		'0px'
 	);
-	const roleColors = await page
-		.getByRole('group', { name: 'Search direction' })
-		.locator('[data-role]')
+	const roleColors = await details
+		.nth(0)
+		.locator('.text-blue-600, .text-red-600, .text-green-600')
 		.evaluateAll((elements) => elements.map((element) => getComputedStyle(element).color));
 	await page.getByRole('region', { name: 'Particle collocations' }).focus();
 	await page.keyboard.press('Tab');
@@ -480,7 +470,7 @@ test('centers an accessible search-direction control in the responsive header', 
 	await page.setViewportSize({ width: 1280, height: 844 });
 	await page.goto('/');
 	const controls = page.getByTestId('header-controls');
-	const group = page.getByRole('group', { name: 'Search direction' });
+	const group = page.getByRole('group', { name: 'Search by' });
 	const nounRadio = group.getByRole('radio', { name: 'Noun-particle collocations' });
 	const verbRadio = group.getByRole('radio', { name: 'Verb-particle collocations' });
 	await expect(nounRadio).toBeChecked();
@@ -493,25 +483,17 @@ test('centers an accessible search-direction control in the responsive header', 
 	expect(Math.abs((desktopBox?.x ?? 0) + (desktopBox?.width ?? 0) / 2 - 640)).toBeLessThanOrEqual(
 		4
 	);
-	const roleColors = await group
-		.locator('[data-role]')
-		.evaluateAll((elements) => elements.map((element) => getComputedStyle(element).color));
 	const selectedSurface = nounRadio.locator('xpath=following-sibling::span');
 	const selectedBackground = await selectedSurface.evaluate(
 		(element) => getComputedStyle(element).backgroundColor
 	);
-	expect(roleColors).not.toContain(selectedBackground);
+	expect(selectedBackground).not.toBe('rgba(0, 0, 0, 0)');
 	await page.getByRole('heading', { name: 'Natsume Simple' }).focus();
 	await page.keyboard.press('Tab');
 	await expect(nounRadio).toBeFocused();
 	expect(
 		await selectedSurface.evaluate((element) => getComputedStyle(element).outlineStyle)
 	).not.toBe('none');
-	expect(roleColors).not.toContain(
-		await page
-			.getByRole('button', { name: 'Go' })
-			.evaluate((element) => getComputedStyle(element).backgroundColor)
-	);
 
 	await page.setViewportSize({ width: 1024, height: 844 });
 	const laptopBrandBox = await page.getByTestId('brand').boundingBox();
@@ -531,6 +513,45 @@ test('centers an accessible search-direction control in the responsive header', 
 	expect(Math.abs((mobileBox?.x ?? 0) + (mobileBox?.width ?? 0) / 2 - 195)).toBeLessThanOrEqual(4);
 });
 
+test('renders a compact and unambiguous search mode control', async ({ page }) => {
+	await page.setViewportSize({ width: 1024, height: 844 });
+	await page.goto('/');
+
+	const group = page.getByRole('group', { name: 'Search by' });
+	const noun = group.getByRole('radio', { name: 'Noun-particle collocations' });
+	const verb = group.getByRole('radio', { name: 'Verb-particle collocations' });
+	await expect(noun).toBeChecked();
+	await expect(verb).not.toBeChecked();
+	await expect(group.getByText('Noun', { exact: true })).toBeVisible();
+	await expect(group.getByText('Verb', { exact: true })).toBeVisible();
+	await expect(group.locator('[data-role]')).toHaveCount(0);
+
+	const nounSurface = noun.locator('xpath=following-sibling::span');
+	const verbSurface = verb.locator('xpath=following-sibling::span');
+	const selected = await nounSurface.evaluate((element) => {
+		const style = getComputedStyle(element);
+		return {
+			background: style.backgroundColor,
+			fontWeight: Number(style.fontWeight),
+			shadow: style.boxShadow
+		};
+	});
+	const unselectedBackground = await verbSurface.evaluate(
+		(element) => getComputedStyle(element).backgroundColor
+	);
+	expect(selected.background).not.toBe(unselectedBackground);
+	expect(selected.fontWeight).toBeGreaterThanOrEqual(600);
+	expect(selected.shadow).not.toBe('none');
+
+	const submit = page.getByRole('button', { name: 'Go' });
+	const goWidth = (await submit.boundingBox())?.width ?? 0;
+	await page.getByRole('combobox', { name: 'Search term' }).fill('情報');
+	const update = page.getByRole('button', { name: 'Update' });
+	await expect(update).toBeVisible();
+	const updateWidth = (await update.boundingBox())?.width ?? 0;
+	expect(Math.abs(updateWidth - goWidth)).toBeLessThanOrEqual(1);
+});
+
 test('supports both query directions and theme control', async ({ page }) => {
 	await page.goto('/');
 	await expect(page.getByRole('button', { name: 'Go' })).toBeEnabled();
@@ -543,7 +564,7 @@ test('supports both query directions and theme control', async ({ page }) => {
 	await expect(brand.getByRole('heading', { name: 'Natsume Simple' })).toBeVisible();
 	await expect(controls.getByRole('combobox', { name: 'Search term' })).toBeVisible();
 	await expect(page.getByRole('button', { name: 'Toggle dark mode' })).toBeVisible();
-	const direction = page.getByRole('group', { name: 'Search direction' });
+	const direction = page.getByRole('group', { name: 'Search by' });
 	const search = page.getByRole('combobox', { name: 'Search term' });
 	await direction.getByRole('radio', { name: 'Verb-particle collocations' }).check();
 	await search.fill('集める');
@@ -556,7 +577,7 @@ test('supports both query directions and theme control', async ({ page }) => {
 				url.searchParams.get('term') === '集める'
 			);
 		}),
-		page.getByRole('button', { name: 'Update results' }).click()
+		page.getByRole('button', { name: 'Update' }).click()
 	]);
 	await expect(page.locator('summary').filter({ hasText: '情報' })).toBeVisible();
 
@@ -593,12 +614,12 @@ test('keeps displayed results tied to the submitted search while controls are ed
 	await page.goto('/');
 	const search = page.getByRole('combobox', { name: 'Search term' });
 	await search.fill('情報');
-	await page.getByRole('button', { name: 'Update results' }).click();
+	await page.getByRole('button', { name: 'Update' }).click();
 	await expect(page.getByText(/results for “情報” · Noun–particle search/)).toBeVisible();
 	await expect(page.locator('summary').filter({ hasText: '集める' })).toBeVisible();
 
 	await page
-		.getByRole('group', { name: 'Search direction' })
+		.getByRole('group', { name: 'Search by' })
 		.getByRole('radio', { name: 'Verb-particle collocations' })
 		.check();
 	await search.fill('集める');
@@ -606,7 +627,7 @@ test('keeps displayed results tied to the submitted search while controls are ed
 	await expect(page.getByText(/results for “情報” · Noun–particle search/)).toBeVisible();
 	await expect(page.locator('summary').filter({ hasText: '集める' })).toBeVisible();
 	await expect(page.getByText('Controls changed — update results to apply them.')).toBeVisible();
-	await expect(page.getByRole('button', { name: 'Update results' })).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Update' })).toBeVisible();
 });
 
 test('opens suggestions only while focus remains in the search widget', async ({ page }) => {
@@ -619,7 +640,7 @@ test('opens suggestions only while focus remains in the search widget', async ({
 	await expect(search).toHaveAttribute('aria-expanded', 'false');
 
 	await page
-		.getByRole('group', { name: 'Search direction' })
+		.getByRole('group', { name: 'Search by' })
 		.getByRole('radio', { name: 'Noun-particle collocations' })
 		.focus();
 	await expect(search).toHaveAttribute('aria-expanded', 'true');
@@ -668,7 +689,7 @@ test('keeps autocomplete dismissed when submission invalidates a pending lookup'
 	const search = page.getByRole('combobox', { name: 'Search term' });
 	await search.fill('情');
 	await lookupStarted;
-	await page.getByRole('button', { name: 'Update results' }).click();
+	await page.getByRole('button', { name: 'Update' }).click();
 	releaseLookup();
 	await page.waitForResponse((response) => {
 		const url = new URL(response.url());
@@ -716,7 +737,7 @@ test('reuses the primary controls on a mobile viewport', async ({ page }) => {
 	await page.setViewportSize({ width: 390, height: 844 });
 	await page.goto('/');
 
-	await expect(page.getByRole('group', { name: 'Search direction' })).toBeVisible();
+	await expect(page.getByRole('group', { name: 'Search by' })).toBeVisible();
 	await expect(page.getByRole('combobox', { name: 'Search term' })).toBeVisible();
 	await expect(page.getByLabel('Bar scale')).toBeVisible();
 	await expect(page.getByRole('button', { name: 'Toggle dark mode' })).toBeVisible();
