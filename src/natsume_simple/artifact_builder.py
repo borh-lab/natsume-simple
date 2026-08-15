@@ -521,7 +521,7 @@ def source_manifest_sha256(source_identities: list[dict[str, str]]) -> str:
 
 
 def _validate_persisted_facts(connection: duckdb.DuckDBPyConnection) -> None:
-    corpus_stats_match = connection.execute(
+    corpus_stats_row = connection.execute(
         """
         SELECT NOT EXISTS (
             (SELECT * FROM corpus_stats EXCEPT
@@ -547,6 +547,6 @@ def _validate_persisted_facts(connection: duckdb.DuckDBPyConnection) -> None:
              EXCEPT SELECT * FROM corpus_stats)
         )
         """
-    ).fetchone()[0]
-    if not corpus_stats_match:
+    ).fetchone()
+    if corpus_stats_row is None or not corpus_stats_row[0]:
         raise ArtifactBuildError("corpus_stats_mismatch")

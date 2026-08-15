@@ -557,6 +557,7 @@
                     pkgs.mypy
                     pkgs.nixfmt
                     pkgs.ruff
+                    testPython
                   ];
                 }
                 ''
@@ -567,7 +568,11 @@
                   nixfmt --check flake.nix
                   ruff format --check
                   ruff check src tests
-                  mypy --ignore-missing-imports --show-error-context src
+                  MYPYPATH="$PWD/src" mypy \
+                    --explicit-package-bases \
+                    --ignore-missing-imports \
+                    --show-error-context \
+                    src
                   touch "$out"
                 '';
             frontend = frontendCheck;

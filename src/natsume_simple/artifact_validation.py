@@ -46,9 +46,12 @@ def validate_artifact(artifact_dir: Path) -> tuple[Path, dict[str, Any]]:
             metadata = connection.execute(
                 "SELECT schema_version, artifact_instance_id FROM build_metadata"
             ).fetchone()
-            corpus_count = connection.execute("SELECT count(*) FROM corpus").fetchone()[
-                0
-            ]
+            corpus_count_row = connection.execute(
+                "SELECT count(*) FROM corpus"
+            ).fetchone()
+            if corpus_count_row is None:
+                raise ArtifactValidationError("database_unreadable")
+            corpus_count = corpus_count_row[0]
             corpus_ids = [
                 row[0]
                 for row in connection.execute(

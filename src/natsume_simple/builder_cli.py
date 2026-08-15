@@ -346,6 +346,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
     parser = _parser()
     args = parser.parse_args(argv)
+    result: Path | tuple[Path, Path, Path] | dict[str, object]
     try:
         if args.command == "prepare-jnlp":
             from natsume_simple.corpus_pipeline import prepare_jnlp_archive

@@ -81,9 +81,12 @@ def check_release_artifact(
                 """
             ).fetchall()
         ]
-        stored_source_checksum = connection.execute(
+        stored_source_checksum_row = connection.execute(
             "SELECT source_manifest_sha256 FROM build_metadata"
-        ).fetchone()[0]
+        ).fetchone()
+        if stored_source_checksum_row is None:
+            raise ReleaseCheckError("source_manifest_checksum_missing")
+        stored_source_checksum = stored_source_checksum_row[0]
 
     if corpus_ids != ["jnlp", "ted", "wiki"]:
         raise ReleaseCheckError("release_corpus_mismatch")
