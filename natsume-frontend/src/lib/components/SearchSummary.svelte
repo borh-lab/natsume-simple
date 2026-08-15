@@ -11,22 +11,25 @@
 			0
 		) ?? 0
 	);
-	const direction = $derived(
-		result?.input.pos === 'verb' ? 'Verb–particle search' : 'Noun–particle search'
+	const direction = $derived(result?.input.pos === 'verb' ? 'Verb' : 'Noun');
+	const identity = $derived(
+		result ? `${count.toLocaleString()} matches · “${result.input.term}” · ${direction}` : ''
 	);
 </script>
 
 {#if result}
-	<div class="space-y-1 text-sm" aria-live="polite">
-		<p class="text-gray-600 dark:text-gray-300">
-			{count.toLocaleString()} matching results for “{result.input.term}” · {direction}
-		</p>
+	<div class="flex min-w-0 flex-1 items-center gap-2 text-sm" aria-live="polite">
+		<p class="min-w-0 truncate text-gray-600 dark:text-gray-300" title={identity}>{identity}</p>
 		{#if draftDiffers}
-			<p class="font-medium text-amber-700 dark:text-amber-300">
-				Controls changed — update results to apply them.
-			</p>
+			<span
+				class="shrink-0 rounded border border-gray-400 bg-gray-100 px-1.5 py-0.5 font-medium text-gray-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+				>Not applied</span
+			>
 		{:else if stale}
-			<p class="font-medium text-amber-700 dark:text-amber-300">Previous result</p>
+			<span
+				class="shrink-0 rounded border border-gray-400 bg-gray-100 px-1.5 py-0.5 font-medium text-gray-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+				>Previous result</span
+			>
 		{/if}
 	</div>
 {/if}

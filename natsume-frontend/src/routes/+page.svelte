@@ -6,14 +6,47 @@
 	import SearchControls from '$lib/components/SearchControls.svelte';
 	import SearchSummary from '$lib/components/SearchSummary.svelte';
 	import ThemeSwitch from '$lib/components/ThemeSwitch.svelte';
+	import type { BarScale } from '$lib/presentation/search';
 	import { SearchController } from '$lib/search/controller.svelte';
 	import '../tailwind.css';
 
 	const client = new ApiClient(import.meta.env.VITE_API_URL || '');
 	const controller = new SearchController(client);
+	let barScale = $state<BarScale>('particle');
+	let optionsOpen = $state(false);
+	let optionsWidget = $state<HTMLDivElement>();
+	const optionsLabel = $derived(
+		controller.selectedCorpusIds.length === controller.corpora.length
+			? 'Options'
+			: `Options · ${controller.selectedCorpusIds.length}/${controller.corpora.length}`
+	);
+
+	function closeOptionsOnOutside(event: PointerEvent) {
+		if (
+			optionsOpen &&
+			event.target instanceof Node &&
+			optionsWidget &&
+			!optionsWidget.contains(event.target)
+		) {
+			optionsOpen = false;
+		}
+	}
+
+	function closeOptionsOnFocusout(event: FocusEvent & { currentTarget: HTMLDivElement }) {
+		const next = event.relatedTarget;
+		if (next instanceof Node && next !== document.body && !event.currentTarget.contains(next)) {
+			optionsOpen = false;
+		}
+	}
+
+	function closeOptionsOnEscape(event: KeyboardEvent) {
+		if (event.key === 'Escape') optionsOpen = false;
+	}
 
 	onMount(() => controller.initialize());
 </script>
+
+<svelte:window onpointerdown={closeOptionsOnOutside} onkeydown={closeOptionsOnEscape} />
 
 <svelte:head><title>Natsume Simple</title></svelte:head>
 
@@ -43,18 +76,58 @@
 	</div>
 </header>
 
-<main class="w-full min-w-0 space-y-4 p-4">
-	<CorpusOptions
-		corpora={controller.corpora}
-		selectedCorpusIds={controller.selectedCorpusIds}
-		disabled={controller.status === 'loading'}
-		ontoggle={(corpusId) => controller.toggleCorpus(corpusId)}
-	/>
-	<SearchSummary
-		result={controller.result}
-		stale={controller.resultIsStale}
-		draftDiffers={controller.draftDiffersFromResult}
-	/>
+<main class="w-full min-w-0 space-y-2 p-4">
+	{#if controller.corpora.length > 0}
+		<div
+			class="relative flex h-10 min-w-0 items-center gap-2 border-y border-gray-200 px-1 dark:border-gray-700"
+			data-testid="results-toolbar"
+		>
+			<div
+				class="relative shrink-0"
+				bind:this={optionsWidget}
+				onfocusout={closeOptionsOnFocusout}
+			>
+				<button
+					type="button"
+					class="h-8 rounded border border-gray-400 bg-white px-2 text-sm font-medium hover:bg-gray-100 focus-visible:outline-2 focus-visible:outline-offset-0 dark:border-gray-600 dark:bg-gray-900 dark:hover:bg-gray-800 xl:hidden"
+					aria-expanded={optionsOpen}
+					aria-controls="results-options"
+					onclick={() => (optionsOpen = !optionsOpen)}
+				>
+					{optionsLabel}
+				</button>
+				<div
+					id="results-options"
+					class={`${optionsOpen ? 'flex' : 'hidden xl:flex'} absolute left-0 top-full z-30 mt-1 w-[min(24rem,calc(100vw-2rem))] flex-col gap-2 rounded border border-gray-300 bg-white p-2 shadow-lg dark:border-gray-600 dark:bg-gray-900 xl:static xl:mt-0 xl:w-auto xl:flex-row xl:items-center xl:border-0 xl:bg-transparent xl:p-0 xl:shadow-none xl:dark:bg-transparent`}
+				>
+					<CorpusOptions
+						corpora={controller.corpora}
+						selectedCorpusIds={controller.selectedCorpusIds}
+						disabled={controller.status === 'loading'}
+						ontoggle={(corpusId) => controller.toggleCorpus(corpusId)}
+					/>
+					{#if controller.result}
+						<div class="flex shrink-0 items-center gap-1.5 border-gray-300 text-sm xl:border-l xl:pl-2 dark:border-gray-600">
+							<label for="bar-scale">Bar scale</label>
+							<select
+								id="bar-scale"
+								class="h-8 rounded border bg-white px-1.5 dark:border-gray-600 dark:bg-gray-800"
+								bind:value={barScale}
+							>
+								<option value="particle">Within particle</option>
+								<option value="global">Across particles</option>
+							</select>
+						</div>
+					{/if}
+				</div>
+			</div>
+			<SearchSummary
+				result={controller.result}
+				stale={controller.resultIsStale}
+				draftDiffers={controller.draftDiffersFromResult}
+			/>
+		</div>
+	{/if}
 	{#if controller.status === 'error'}
 		<p class="rounded bg-red-100 p-3 text-red-900" role="alert">{controller.errorMessage}</p>
 	{:else if controller.status === 'empty'}
@@ -62,7 +135,12 @@
 	{/if}
 	{#if controller.result}
 		{#key controller.result}
-			<ParticleOverview {client} result={controller.result} corpora={controller.corpora} />
+			<ParticleOverview
+				{client}
+				result={controller.result}
+				corpora={controller.corpora}
+				{barScale}
+			/>
 		{/key}
 	{/if}
 </main>
