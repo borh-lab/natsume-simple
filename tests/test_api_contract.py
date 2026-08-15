@@ -683,9 +683,7 @@ def test_balanced_examples_round_robin_and_fill_exhausted(tmp_path: Path):
         "gamma",
     ]
     assert first["hasMore"] is True
-    assert [example["corpusId"] for example in remainder["examples"]] == [
-        "alpha"
-    ]
+    assert [example["corpusId"] for example in remainder["examples"]] == ["alpha"]
     assert remainder["hasMore"] is False
 
 
@@ -698,12 +696,8 @@ def test_example_pages_compose_and_repeat(tmp_path: Path):
             ).json()
             for offset in (0, 2, 4)
         ]
-        complete = client.get(
-            "/api/examples", params={**params, "limit": 20}
-        ).json()
-        repeated = client.get(
-            "/api/examples", params={**params, "limit": 20}
-        ).json()
+        complete = client.get("/api/examples", params={**params, "limit": 20}).json()
+        repeated = client.get("/api/examples", params={**params, "limit": 20}).json()
 
     assert [[item["corpusId"] for item in page["examples"]] for page in pages] == [
         ["alpha", "beta"],
