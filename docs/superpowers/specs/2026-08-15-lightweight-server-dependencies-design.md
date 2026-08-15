@@ -1,7 +1,10 @@
 # Lightweight Server Dependencies
 
-Status: Revised after architecture review on 2026-08-15; awaiting implementation
-approval.
+Status: Implemented on 2026-08-15.
+
+Implementation evidence: the isolated locked uv backend import reports no builder,
+NLP, model, or accelerator modules, and the Nix source-quality, backend,
+package-server, server-closure, and server-smoke checks pass on the implemented tree.
 
 ## Purpose
 
@@ -9,17 +12,17 @@ Keep the public read-only server runnable without the corpus builder, spaCy, GiN
 Torch, accelerator libraries, or NLP models, and make both the Nix and uv workflows
 prove that boundary.
 
-## Current evidence
+## Evidence before implementation
 
 - `natsume_simple.api` imports DuckDB, Pydantic, AnyIO, FastAPI, and the local
   DuckDB-only artifact validator. It does not import the corpus pipeline or NLP code.
 - The Nix `serverPython` environment selects only the `backend` extra.
 - The Nix server closure check rejects several builder and accelerator dependencies,
   and the server smoke check starts the packaged service against a fixture artifact.
-- Pydantic is currently a base dependency even though only the API uses it.
-- AnyIO is imported directly by the API but currently arrives only as a transitive
-  FastAPI dependency.
-- The README documents the Nix server path but not the equivalent uv-only backend
+- Pydantic was a base dependency even though only the API used it.
+- AnyIO was imported directly by the API but arrived only as a transitive FastAPI
+  dependency.
+- The README documented the Nix server path but not the equivalent uv-only backend
   launch.
 
 ## Considered approaches
