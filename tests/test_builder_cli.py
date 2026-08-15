@@ -24,7 +24,7 @@ def test_artifact_instance_id_is_utc_timestamp_plus_128_bits():
     assert re.fullmatch(r"\d{8}T\d{6}Z-[0-9a-f]{32}", instance_id)
 
 
-def test_path_sha256_covers_relative_names_and_contents(tmp_path: Path):
+def test_path_sha256_covers_relative_names_and_contents(tmp_path: Path, monkeypatch):
     model = tmp_path / "model"
     model.mkdir()
     (model / "a").write_bytes(b"first")
@@ -36,6 +36,14 @@ def test_path_sha256_covers_relative_names_and_contents(tmp_path: Path):
         expected.update(b"\0")
         expected.update(content)
 
+    expected_file = hashlib.sha256(b"first").hexdigest()
+    monkeypatch.setattr(
+        Path,
+        "read_bytes",
+        lambda path: pytest.fail(f"read_bytes used for {path}"),
+    )
+
+    assert builder_cli.path_sha256(model / "a") == expected_file
     assert builder_cli.path_sha256(model) == expected.hexdigest()
 
 

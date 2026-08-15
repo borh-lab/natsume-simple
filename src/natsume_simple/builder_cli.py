@@ -31,18 +31,19 @@ def new_artifact_instance_id(
 
 def path_sha256(path: Path) -> str:
     """Hash a file, or a directory's ordered relative names and file contents."""
-    digest = hashlib.sha256()
     if path.is_file():
-        digest.update(path.read_bytes())
-        return digest.hexdigest()
+        with path.open("rb") as source:
+            return hashlib.file_digest(source, "sha256").hexdigest()
     if not path.is_dir():
         raise FileNotFoundError(path)
+    digest = hashlib.sha256()
     for item in sorted(
         candidate for candidate in path.rglob("*") if candidate.is_file()
     ):
         digest.update(item.relative_to(path).as_posix().encode())
         digest.update(b"\0")
-        digest.update(item.read_bytes())
+        with item.open("rb") as source:
+            hashlib.file_digest(source, lambda: digest)
     return digest.hexdigest()
 
 

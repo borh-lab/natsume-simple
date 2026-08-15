@@ -26,6 +26,20 @@ def test_publish_and_rollback_replace_one_current_pointer(tmp_path: Path):
     assert not (deploy / "current.next").exists()
 
 
+def test_publish_streams_database_checksum_validation(tmp_path: Path, monkeypatch):
+    artifact = build_fixture(tmp_path / "artifact", "fixture")
+    deploy = tmp_path / "deploy"
+    monkeypatch.setattr(
+        Path,
+        "read_bytes",
+        lambda path: pytest.fail(f"read_bytes used for {path}"),
+    )
+
+    publish_artifact(artifact, deploy)
+
+    assert current_artifact(deploy) == artifact.resolve()
+
+
 def test_invalid_artifact_cannot_change_current_pointer(tmp_path: Path):
     artifacts = tmp_path / "artifacts"
     artifacts.mkdir()

@@ -34,7 +34,8 @@ def validate_artifact(artifact_dir: Path) -> tuple[Path, dict[str, Any]]:
 
     database_path = artifact_dir / "corpus.duckdb"
     try:
-        checksum = hashlib.sha256(database_path.read_bytes()).hexdigest()
+        with database_path.open("rb") as source:
+            checksum = hashlib.file_digest(source, "sha256").hexdigest()
     except OSError as error:
         raise ArtifactValidationError("database_unreadable") from error
     if checksum != expected_checksum:

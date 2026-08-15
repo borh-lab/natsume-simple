@@ -145,10 +145,8 @@ def verify_file(path: Path, locked: LockedFile) -> None:
     """Verify one local file against its locked byte count and SHA-256."""
     try:
         stat = path.stat()
-        digest = hashlib.sha256()
         with path.open("rb") as source:
-            for chunk in iter(lambda: source.read(1024 * 1024), b""):
-                digest.update(chunk)
+            digest = hashlib.file_digest(source, "sha256")
     except OSError as error:
         raise ReleaseInputError("source_unreadable") from error
     if stat.st_size != locked.size:

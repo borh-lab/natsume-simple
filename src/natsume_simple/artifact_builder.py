@@ -365,7 +365,8 @@ def _write_artifact_files(
     metadata: BuildMetadata,
 ) -> None:
     relation_counts = _relation_counts(records)
-    database_sha256 = hashlib.sha256(database_path.read_bytes()).hexdigest()
+    with database_path.open("rb") as source:
+        database_sha256 = hashlib.file_digest(source, "sha256").hexdigest()
     applied_identity_inputs = {
         **metadata.identity_inputs,
         "sources": _source_identity_inputs(records.sources),

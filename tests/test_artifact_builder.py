@@ -158,6 +158,19 @@ def test_build_artifact_derives_serving_facts_and_layout(tmp_path: Path):
         }
 
 
+def test_build_artifact_streams_database_checksum(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(
+        Path,
+        "read_bytes",
+        lambda path: pytest.fail(f"read_bytes used for {path}"),
+    )
+
+    artifact = build_fixture(tmp_path / "artifact", "fixture")
+
+    manifest = json.loads((artifact / "manifest.json").read_text())
+    assert len(manifest["databaseSha256"]) == 64
+
+
 def test_repeated_builds_keep_identity_inputs_and_relations(tmp_path: Path):
     first = build_fixture(tmp_path / "artifact-a", "fixture-a")
     second = build_fixture(tmp_path / "artifact-b", "fixture-b")
