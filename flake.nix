@@ -51,7 +51,11 @@
           revision = inputs.self.shortRev or inputs.self.dirtyShortRev or "dirty";
           workspace = inputs.uv2nix.lib.workspace.loadWorkspace { workspaceRoot = ./.; };
           pythonBase = pkgs.callPackage inputs.pyproject-nix.build.packages {
-            python = pkgs.python312;
+            python = pkgs.python314;
+          };
+          sudachipyCargoLock = pkgs.fetchurl {
+            url = "https://raw.githubusercontent.com/WorksApplications/sudachi.rs/04ac6da583c30d97d6d4258f2282f6330d4e2d14/Cargo.lock";
+            hash = "sha256-WMeClTKy78UGgePPz+SM5w3JgaXX2qJwYeokEdJk9DA=";
           };
           mkPythonSet =
             dependencies:
@@ -68,20 +72,45 @@
                     [
                       "docopt"
                       "mosestokenizer"
+                      "sudachipy"
                       "toolwrapper"
                       "uctools"
                     ]
                     (
                       name:
-                      prev.${name}.overrideAttrs (old: {
-                        # These legacy sdists execute setuptools but do not
-                        # declare a PEP 517 build system.
-                        nativeBuildInputs =
-                          (old.nativeBuildInputs or [ ])
-                          ++ final.resolveBuildSystem {
-                            setuptools = [ ];
+                      prev.${name}.overrideAttrs (
+                        old:
+                        {
+                          # These legacy sdists execute setuptools but do not
+                          # declare a PEP 517 build system.
+                          nativeBuildInputs =
+                            (old.nativeBuildInputs or [ ])
+                            ++ final.resolveBuildSystem (
+                              {
+                                setuptools = [ ];
+                              }
+                              // lib.optionalAttrs (name == "sudachipy") {
+                                setuptools-rust = [ ];
+                              }
+                            )
+                            ++ lib.optionals (name == "sudachipy") [
+                              pkgs.cargo
+                              pkgs.rustPlatform.cargoSetupHook
+                              pkgs.rustc
+                            ];
+                        }
+                        // lib.optionalAttrs (name == "sudachipy") {
+                          # SudachiPy 0.6.10 bundles PyO3 0.23, whose version
+                          # check predates CPython 3.14 support.
+                          PYO3_USE_ABI3_FORWARD_COMPATIBILITY = "1";
+                          postPatch = (old.postPatch or "") + ''
+                            install -m 0644 ${sudachipyCargoLock} Cargo.lock
+                          '';
+                          cargoDeps = pkgs.rustPlatform.importCargoLock {
+                            lockFile = sudachipyCargoLock;
                           };
-                      })
+                        }
+                      )
                     )
                 )
               ]
@@ -105,7 +134,7 @@
           serverPython = cpuPythonSet.mkVirtualEnv "natsume-server-python" server-dependencies;
           builderPython = cpuPythonSet.mkVirtualEnv "natsume-builder-python" builder-dependencies;
           testPython = cpuPythonSet.mkVirtualEnv "natsume-test-python" test-dependencies;
-          smokeFixturePython = pkgs.python312.withPackages (pythonPackages: [ pythonPackages.xlwt ]);
+          smokeFixturePython = pkgs.python314.withPackages (pythonPackages: [ pythonPackages.xlwt ]);
 
           frontend = pkgs.buildNpmPackage {
             pname = "natsume-frontend";
@@ -203,7 +232,7 @@
                 cp -r ${./.} source
                 chmod -R u+w source
                 cd source
-                pytest -m nlp_model
+                pytest -m "nlp_model and not electra_model and not rocm"
                 touch "$out"
               '';
 

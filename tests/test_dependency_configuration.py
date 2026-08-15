@@ -99,3 +99,23 @@ def test_rocm_transitive_packages_use_the_rocm_index() -> None:
     sources = project_configuration()["tool"]["uv"]["sources"]
 
     assert sources["triton-rocm"] == [{"index": "pytorch-rocm", "extra": "rocm"}]
+
+
+def test_nix_consumers_use_python_314() -> None:
+    flake = (ROOT / "flake.nix").read_text(encoding="utf-8")
+
+    assert "python = pkgs.python314;" in flake
+    assert "smokeFixturePython = pkgs.python314.withPackages" in flake
+    assert "pkgs.python312" not in flake
+
+
+def test_nix_builds_sudachipy_with_its_legacy_python_314_requirements() -> None:
+    flake = (ROOT / "flake.nix").read_text(encoding="utf-8")
+
+    assert '"sudachipy"' in flake
+    assert 'setuptools-rust = [ ];' in flake
+    assert "pkgs.cargo" in flake
+    assert "pkgs.rustc" in flake
+    assert "pkgs.rustPlatform.cargoSetupHook" in flake
+    assert "pkgs.rustPlatform.importCargoLock" in flake
+    assert 'PYO3_USE_ABI3_FORWARD_COMPATIBILITY = "1";' in flake
