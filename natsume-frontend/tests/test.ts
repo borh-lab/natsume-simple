@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test';
 async function expectSpreadsheet(page: import('@playwright/test').Page, width: number) {
 	await page.setViewportSize({ width, height: 844 });
 	await page.goto('/');
-	await expect(page.getByText(/results for “時間”/)).toBeVisible();
+	await expect(page.getByText(/matches · “時間” · Noun/)).toBeVisible();
 	await page.getByRole('combobox', { name: 'Search term' }).fill('情報');
 	await page.getByRole('button', { name: 'Update' }).click();
 	const region = page.getByRole('region', { name: 'Particle collocations' });
@@ -54,7 +54,7 @@ test('searches, filters, rescales, and safely expands examples', async ({ page }
 			collocationRequests.push(request.url());
 	});
 	const collocation = page.locator('summary').filter({ hasText: '集める' });
-	await expect(collocation.locator('svg')).toBeVisible();
+	await expect(collocation.getByTestId('item-bar')).toBeVisible();
 	await expect(collocation.getByText('集める', { exact: true })).toBeVisible();
 	await collocation.click();
 	const disclosure = page.locator('details').filter({ hasText: '集める' }).first();
@@ -349,7 +349,7 @@ test('loads more collocations in only the selected particle column', async ({ pa
 		has: page.getByRole('heading', { name: 'が', exact: true })
 	});
 	await expect(
-		page.getByText(`${expectedTotal} matching results for “情報” · Noun–particle search`, {
+		page.getByText(`${expectedTotal} matches · “情報” · Noun`, {
 			exact: true
 		})
 	).toBeVisible();
@@ -366,7 +366,7 @@ test('loads more collocations in only the selected particle column', async ({ pa
 	await expect(woColumn.getByText('追加する', { exact: true })).toBeVisible();
 	expect(await gaColumn.locator('summary').count()).toBe(otherCount);
 	await expect(
-		page.getByText(`${expectedTotal} matching results for “情報” · Noun–particle search`, {
+		page.getByText(`${expectedTotal} matches · “情報” · Noun`, {
 			exact: true
 		})
 	).toBeVisible();
@@ -386,8 +386,11 @@ test('distinguishes expandable rows in light and dark mode', async ({ page }) =>
 	await expect.poll(() => details.count()).toBeGreaterThan(1);
 	const firstSummary = details.nth(0).locator('summary');
 	const secondSummary = details.nth(1).locator('summary');
-	const chevron = firstSummary.locator('[aria-hidden="true"]');
+	const chevron = firstSummary.getByTestId('disclosure-chevron');
 	await expect(chevron).toBeVisible();
+	expect(await chevron.evaluate((element) => getComputedStyle(element).color)).not.toBe(
+		'rgba(0, 0, 0, 0)'
+	);
 	const collapsedTransform = await chevron.evaluate(
 		(element) => getComputedStyle(element).transform
 	);
@@ -624,7 +627,7 @@ test('keeps displayed results tied to the submitted search while controls are ed
 	const search = page.getByRole('combobox', { name: 'Search term' });
 	await search.fill('情報');
 	await page.getByRole('button', { name: 'Update' }).click();
-	await expect(page.getByText(/results for “情報” · Noun–particle search/)).toBeVisible();
+	await expect(page.getByText(/matches · “情報” · Noun/)).toBeVisible();
 	await expect(page.locator('summary').filter({ hasText: '集める' })).toBeVisible();
 
 	await page
@@ -633,10 +636,54 @@ test('keeps displayed results tied to the submitted search while controls are ed
 		.check();
 	await search.fill('集める');
 
-	await expect(page.getByText(/results for “情報” · Noun–particle search/)).toBeVisible();
+	await expect(page.getByText(/matches · “情報” · Noun/)).toBeVisible();
 	await expect(page.locator('summary').filter({ hasText: '集める' })).toBeVisible();
-	await expect(page.getByText('Controls changed — update results to apply them.')).toBeVisible();
+	await expect(page.getByText('Not applied', { exact: true })).toBeVisible();
 	await expect(page.getByRole('button', { name: 'Update' })).toBeVisible();
+});
+
+test('keeps accepted identity and bar scale in one responsive results toolbar', async ({ page }) => {
+	await page.setViewportSize({ width: 1280, height: 844 });
+	await page.goto('/');
+	await expect(page.getByRole('button', { name: 'Go' })).toBeEnabled();
+
+	const toolbar = page.getByTestId('results-toolbar');
+	await expect(toolbar).toBeVisible();
+	const toolbarBox = await toolbar.boundingBox();
+	expect(toolbarBox?.height ?? Infinity).toBeLessThanOrEqual(40);
+	await expect(page.getByRole('button', { name: /^Options/ })).toBeHidden();
+	const scale = page.getByRole('combobox', { name: 'Bar scale', exact: true });
+	await expect(scale).toBeVisible();
+	await scale.selectOption('global');
+
+	const acceptedIdentity = page.getByText(/matches · “時間” · Noun/);
+	await expect(acceptedIdentity).toBeVisible();
+	await page.getByRole('combobox', { name: 'Search term' }).fill('情報');
+	await expect(acceptedIdentity).toBeVisible();
+	await expect(page.getByText('Not applied', { exact: true })).toBeVisible();
+	await page.getByRole('button', { name: 'Update' }).click();
+	await expect(page.getByText(/matches · “情報” · Noun/)).toBeVisible();
+	await expect(page.getByText('Not applied', { exact: true })).toHaveCount(0);
+	await expect(scale).toHaveValue('global');
+
+	await page.setViewportSize({ width: 1279, height: 844 });
+	const options = page.getByRole('button', { name: /^Options/ });
+	await expect(options).toBeVisible();
+	await expect(scale).toBeHidden();
+	const spreadsheetTop = (await page.getByTestId('particle-overview').boundingBox())?.y ?? 0;
+	await options.click();
+	await expect(options).toHaveAttribute('aria-expanded', 'true');
+	await expect(scale).toBeVisible();
+	expect((await page.getByTestId('particle-overview').boundingBox())?.y ?? 0).toBe(spreadsheetTop);
+	await page.locator('#corpus-alpha').uncheck();
+	await expect(page.locator('#corpus-alpha')).not.toBeChecked();
+	await expect(options).toHaveAttribute('aria-expanded', 'true');
+	await expect(options).toHaveText('Options · 1/2');
+	await page.keyboard.press('Escape');
+	await expect(options).toHaveAttribute('aria-expanded', 'false');
+	expect(await toolbar.evaluate((element) => element.scrollWidth)).toBeLessThanOrEqual(
+		await toolbar.evaluate((element) => element.clientWidth)
+	);
 });
 
 test('opens suggestions only while focus remains in the search widget', async ({ page }) => {
@@ -748,6 +795,7 @@ test('reuses the primary controls on a mobile viewport', async ({ page }) => {
 
 	await expect(page.getByRole('group', { name: 'Search by' })).toBeVisible();
 	await expect(page.getByRole('combobox', { name: 'Search term' })).toBeVisible();
+	await page.getByRole('button', { name: /^Options/ }).click();
 	await expect(page.getByLabel('Bar scale')).toBeVisible();
 	await expect(page.getByRole('button', { name: 'Toggle dark mode' })).toBeVisible();
 });

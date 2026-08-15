@@ -43,7 +43,15 @@
 		<summary
 			class="grid min-h-0 w-full cursor-pointer grid-cols-[auto_minmax(5rem,2fr)_minmax(0,3fr)] items-center gap-1 px-1 py-1 text-sm leading-5 hover:bg-gray-100 focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-gray-700 group-open:bg-gray-200 dark:hover:bg-gray-800 dark:focus-visible:outline-gray-200 dark:group-open:bg-gray-700"
 		>
-			<span aria-hidden="true" class="disclosure-chevron inline-block transition-transform">▶</span>
+			<svg
+				viewBox="0 0 10 10"
+				class="disclosure-chevron h-3 w-3 text-gray-600 transition-transform dark:text-gray-300"
+				fill="currentColor"
+				aria-hidden="true"
+				data-testid="disclosure-chevron"
+			>
+				<path d="M2 1.5 8 5 2 8.5Z" />
+			</svg>
 			<svg
 				viewBox="0 0 100 16"
 				preserveAspectRatio="none"
