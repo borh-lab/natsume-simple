@@ -1309,12 +1309,13 @@ version = "0.3.0"
 source = { editable = "." }
 dependencies = [
     { name = "duckdb" },
-    { name = "pydantic" },
 ]
 
 [package.optional-dependencies]
 backend = [
+    { name = "anyio" },
     { name = "fastapi" },
+    { name = "pydantic" },
     { name = "uvicorn" },
 ]
 builder = [
@@ -1362,6 +1363,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "anyio", marker = "extra == 'backend'", specifier = ">=4.14.2,<5" },
     { name = "click", marker = "extra == 'builder'", specifier = ">=8.4.2,<9" },
     { name = "confection", marker = "extra == 'builder'", specifier = ">=0.1.5,<1" },
     { name = "cupy-cuda12x", marker = "extra == 'cuda'", specifier = ">=14.1.1,<15" },
@@ -1374,7 +1376,7 @@ requires-dist = [
     { name = "ja-ginza-electra", marker = "extra == 'electra'", specifier = "==5.2.0" },
     { name = "numpy", marker = "extra == 'builder'", specifier = ">=2,<3" },
     { name = "polars", extras = ["pyarrow", "excel"], marker = "extra == 'builder'", specifier = ">=1.43.2,<2" },
-    { name = "pydantic", specifier = ">=2.13.4,<3" },
+    { name = "pydantic", marker = "extra == 'backend'", specifier = ">=2.13.4,<3" },
     { name = "pytest", marker = "extra == 'test'", specifier = ">=9.1.1,<10" },
     { name = "spacy", marker = "extra == 'builder'", specifier = ">=3.8.11,<3.8.12" },
     { name = "tokenizers", marker = "extra == 'electra'", specifier = "==0.22.2" },

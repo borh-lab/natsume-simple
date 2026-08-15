@@ -15,6 +15,18 @@ def test_uv_selects_only_python_314() -> None:
     assert (ROOT / ".python-version").read_text(encoding="utf-8") == "3.14\n"
 
 
+def test_backend_extra_owns_every_direct_server_dependency() -> None:
+    configuration = project_configuration()
+
+    assert configuration["project"]["dependencies"] == ["duckdb>=1.5.5,<2"]
+    assert configuration["project"]["optional-dependencies"]["backend"] == [
+        "anyio>=4.14.2,<5",
+        "fastapi>=0.141.1,<1",
+        "pydantic>=2.13.4,<3",
+        "uvicorn>=0.52.1,<1",
+    ]
+
+
 def test_model_and_accelerator_extras_are_orthogonal() -> None:
     configuration = project_configuration()
     extras = configuration["project"]["optional-dependencies"]

@@ -91,6 +91,44 @@ nix develop .#server --command \
   uvicorn natsume_simple.api:app --reload --host 127.0.0.1 --port 8000
 ```
 
+The equivalent uv environment selects only the backend extra:
+
+```bash
+NATSUME_ARTIFACT_DIR=deploy/current \
+uv run --locked --no-dev --extra backend \
+  uvicorn natsume_simple.api:app --host 127.0.0.1 --port 8000
+```
+
+This ordinary command may reuse the checkout's existing `.venv`. To prove the
+backend composition itself contains no NLP or accelerator modules, use an isolated
+environment:
+
+```bash
+uv run --isolated --locked --no-dev --extra backend python - <<'PY'
+from importlib.util import find_spec
+
+import natsume_simple.api
+
+forbidden = (
+    "cupy",
+    "ginza",
+    "polars",
+    "spacy",
+    "tokenizers",
+    "torch",
+    "transformers",
+    "triton",
+    "wtpsplit",
+)
+present = [name for name in forbidden if find_spec(name) is not None]
+assert not present, present
+print("backend-only import passed")
+PY
+```
+
+The isolated command verifies dependency composition; `nix build
+.#checks.x86_64-linux.server-smoke` remains the end-to-end packaged-server test.
+
 `NATSUME_ARTIFACT_DIR` の既定値は `deploy/current` です。別の artifact を使う
 場合は環境変数で指定してください。
 
