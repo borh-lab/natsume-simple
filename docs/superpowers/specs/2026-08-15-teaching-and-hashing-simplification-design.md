@@ -1,6 +1,6 @@
 # Teaching and Hashing Simplification
 
-Status: Proposed for implementation
+Status: Implemented
 
 ## Purpose
 
@@ -101,3 +101,16 @@ Behavior changes discovered during the work are reported and fixed separately. T
 ## Lifecycle
 
 This document is retained as the decision record. After all focused and full Nix gates pass, its status changes to `Implemented`; the execution plan is retired.
+
+## Implementation Evidence
+
+The design landed in three independently revertible commits:
+
+- `6b167a5` — production pipeline teaching examples and legacy teaching-fork removal;
+- `f44006a` — unused NLP setup and redundant iterator removal;
+- `3425fcd` — standard streaming file hashes.
+
+Verification on 2026-08-15:
+
+- `nix flake check --print-build-logs` passed all 22 x86_64-linux checks, including 159 model-free backend tests and 18 Playwright tests;
+- `nix build .#nlp-model-integration --print-build-logs` passed 19 model-dependent tests.
