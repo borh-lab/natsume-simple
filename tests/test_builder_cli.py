@@ -8,6 +8,7 @@ from types import SimpleNamespace
 import pytest
 
 from natsume_simple import builder_cli
+from natsume_simple import data
 from natsume_simple import release_check
 from natsume_simple import release_inputs
 from natsume_simple.corpus_pipeline import AdaptationResult
@@ -126,7 +127,7 @@ def test_split_japanese_sentences_keeps_language_policy_outside_segmentation():
 
     observations = Counter()
     assert list(
-        builder_cli.split_japanese_sentences(
+        data.split_japanese_sentences(
             ("日本語の段落です。\nEnglish paragraph.",),
             splitter=Splitter(),
             observations=observations,

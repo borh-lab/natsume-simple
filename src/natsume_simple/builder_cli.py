@@ -8,43 +8,14 @@ import logging
 import os
 import secrets
 from collections import Counter
-from collections.abc import Iterable, Sequence
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 
 from natsume_simple.artifact_registry import current_artifact, publish_artifact
+from natsume_simple.data import split_japanese_sentences
 
 logger = logging.getLogger(__name__)
-
-
-def split_japanese_sentences(
-    text_units: tuple[str, ...],
-    *,
-    splitter: object,
-    observations: Counter[str] | None = None,
-) -> Iterable[str]:
-    """Split paragraphs and retain the public Japanese-content policy."""
-    from natsume_simple.data import is_japanese
-
-    paragraphs = [
-        paragraph.strip()
-        for text in text_units
-        for paragraph in text.splitlines()
-        if paragraph.strip()
-    ]
-    for group in splitter.split(paragraphs):  # type: ignore[attr-defined]
-        for sentence in group:
-            candidate = sentence.strip()
-            if not candidate:
-                continue
-            if observations is not None:
-                observations["candidate"] += 1
-            if is_japanese(candidate, min_length=5):
-                if observations is not None:
-                    observations["retained"] += 1
-                yield candidate
-            elif observations is not None:
-                observations["dropped"] += 1
 
 
 def new_artifact_instance_id(

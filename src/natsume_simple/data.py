@@ -1,99 +1,5 @@
-import logging
-import re
-from collections.abc import Iterator
-from pathlib import Path
-
-import polars as pl  # type: ignore
-import torch
-from pydantic import BaseModel, Field
-from wtpsplit import SaT  # type: ignore
-
-logger = logging.getLogger(__name__)
-
-
-class CorpusEntry(BaseModel):
-    """Standard metadata format for all corpus entries."""
-
-    corpus: str
-    title: str
-    year: int
-    author: str | None = None
-    publisher: str | None = None
-    sentences: list[str]
-    url: str | None = None
-
-
-class BaseCorpusLoader(BaseModel):
-    """Base class for all corpus loaders."""
-
-    data_dir: Path
-    corpus_dir: Path = Field(default_factory=Path)
-    corpus_name: str
-
-    def setup_corpus_dir(self) -> Path:
-        """Set up and return the corpus directory."""
-        return self.data_dir / f"{self.corpus_name}_corpus"
-
-    def split_into_sentences(self, texts: list[str], splitter: SaT) -> list[str]:
-        """Split texts into sentences using wtpsplit.
-
-        Args:
-            texts: List of texts to split
-            splitter: WTP sentence splitter model
-
-        Returns:
-            List of sentences from all input texts
-        """
-        # First split on newlines and filter empty lines for each text
-        paragraphs_per_text = [
-            [p.strip() for p in re.split(r"\n+", text) if p.strip()] for text in texts
-        ]
-
-        # Flatten paragraphs for batch processing
-        all_paragraphs = [p for paragraphs in paragraphs_per_text for p in paragraphs]
-
-        # Process all paragraphs at once with wtpsplit and flatten results
-        return [
-            sentence.strip()
-            for sentences in splitter.split(all_paragraphs)
-            for sentence in sentences
-            if sentence.strip()
-        ]
-
-    def _load_sentences(self, file_paths: list[Path]) -> list[str]:
-        """Load and filter sentences from text files.
-
-        Args:
-            file_paths: List of paths to text files
-
-        Returns:
-            List of sentences from all files
-        """
-        texts = []
-        for txt_path in file_paths:
-            full_path = self.corpus_dir / txt_path
-            try:
-                with open(full_path, "r", encoding="utf-8") as f:
-                    texts.append(f.read())
-            except (OSError, UnicodeDecodeError) as e:
-                logger.warning(f"Error loading {full_path}: {e}")
-                texts.append("")  # Add empty text to maintain alignment
-
-        # Initialize sentence splitter (do this once and store as class attribute)
-        if not hasattr(self, "_splitter"):
-            self._splitter = SaT("sat-3l-sm")
-            if torch.cuda.is_available():
-                self._splitter.half().to("cuda")
-
-        # Split all texts at once and filter Japanese sentences
-        all_sentences = self.split_into_sentences(texts, self._splitter)
-
-        # Filter Japanese sentences
-        return [sent for sent in all_sentences if is_japanese(sent, min_length=5)]
-
-    def load_metadata(self) -> Iterator[CorpusEntry]:
-        """Load metadata from standard metadata.csv if it exists."""
-        raise NotImplementedError
+from collections import Counter
+from collections.abc import Iterable
 
 
 def is_japanese(line: str, min_length: int = 200) -> bool:
@@ -165,39 +71,29 @@ def is_japanese(line: str, min_length: int = 200) -> bool:
     return (japanese_char_count / len(line)) >= 0.5
 
 
-class GenericCorpusLoader(BaseCorpusLoader):
-    """Generic loader for any corpus with a metadata.csv file."""
-
-    def __init__(self, data_dir: Path, corpus_name: str):
-        super().__init__(data_dir=data_dir, corpus_name=corpus_name)
-
-    def model_post_init(self, _context) -> None:
-        self.corpus_dir = self.setup_corpus_dir()
-        if not (self.corpus_dir / "metadata.csv").exists():
-            logger.warning(
-                f"No metadata.csv found in {self.corpus_dir}. "
-                "Please ensure it contains:\n"
-                "- title: str\n"
-                "- year: int\n"
-                "- file_path: str\n"
-                "Optional:\n"
-                "- author: str\n"
-                "- publisher: str\n"
-                "- url: str"
-            )
-
-    def load_metadata(self) -> Iterator[CorpusEntry]:
-        """Load metadata from standard metadata.csv if it exists."""
-        metadata_path = self.corpus_dir / "metadata.csv"
-        if metadata_path.exists():
-            df = pl.read_csv(metadata_path)
-            for row in df.iter_rows(named=True):
-                yield CorpusEntry(
-                    corpus=self.corpus_name,
-                    title=row["title"],
-                    year=row["year"],
-                    author=row.get("author"),
-                    publisher=row.get("publisher"),
-                    sentences=self._load_sentences([Path(row["file_path"])]),
-                    url=row.get("url"),
-                )
+def split_japanese_sentences(
+    text_units: tuple[str, ...],
+    *,
+    splitter: object,
+    observations: Counter[str] | None = None,
+) -> Iterable[str]:
+    """Split paragraphs and retain the public Japanese-content policy."""
+    paragraphs = [
+        paragraph.strip()
+        for text in text_units
+        for paragraph in text.splitlines()
+        if paragraph.strip()
+    ]
+    for group in splitter.split(paragraphs):  # type: ignore[attr-defined]
+        for sentence in group:
+            candidate = sentence.strip()
+            if not candidate:
+                continue
+            if observations is not None:
+                observations["candidate"] += 1
+            if is_japanese(candidate, min_length=5):
+                if observations is not None:
+                    observations["retained"] += 1
+                yield candidate
+            elif observations is not None:
+                observations["dropped"] += 1

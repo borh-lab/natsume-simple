@@ -1,11 +1,22 @@
 import tomllib
 from pathlib import Path
+from zipfile import ZIP_DEFLATED, ZipFile
 
 from fastapi.testclient import TestClient
 
 from natsume_simple.api import create_app
-from natsume_simple.data import BaseCorpusLoader, GenericCorpusLoader, is_japanese
-from natsume_simple.pattern_extraction import normalize_verb_span, process_sentence
+from natsume_simple.artifact_builder import (
+    CollocationOccurrence,
+    SentenceRecord,
+    SourceDocument,
+)
+from natsume_simple.corpus_pipeline import (
+    adapt_ted_iwslt_archive,
+    extract_collocations,
+    source_content_sha256,
+)
+from natsume_simple.data import is_japanese, split_japanese_sentences
+from natsume_simple.pattern_extraction import normalize_verb_span
 from tests.database_fixture import build_search_artifact
 from tests.token_observations import (
     EXTRACTION_OBSERVATIONS,
@@ -34,25 +45,39 @@ def test_boundary_inventory_targets_executable_examples():
         assert row["behavior"]
 
 
-def test_source_adaptation_example(tmp_path: Path, monkeypatch):
-    corpus_dir = tmp_path / "lesson_corpus"
-    corpus_dir.mkdir()
-    (corpus_dir / "metadata.csv").write_text(
-        "title,year,file_path\nLesson,2025,lesson.txt\n", encoding="utf-8"
+def test_source_adaptation_example(tmp_path: Path):
+    archive = tmp_path / "ja-en.zip"
+    with ZipFile(archive, "w", ZIP_DEFLATED) as output:
+        output.writestr(
+            "ja-en/train.tags.ja-en.ja",
+            "\n".join(
+                [
+                    "<doc>",
+                    "<talkid>lesson-1</talkid>",
+                    "<title>教材</title>",
+                    "教材を読む。",
+                    "</doc>",
+                ]
+            ),
+        )
+
+    adaptation = adapt_ted_iwslt_archive(archive)
+
+    assert adaptation.corpus_id == "ted"
+    assert adaptation.rejections == {}
+    assert adaptation.documents == (
+        SourceDocument(
+            corpus_id="ted",
+            external_id="lesson-1",
+            title="教材",
+            year=None,
+            author=None,
+            publisher="TED Conference LLC",
+            url=None,
+            text_units=("教材を読む。",),
+            content_sha256=source_content_sha256(("教材を読む。",)),
+        ),
     )
-    received_paths: list[list[Path]] = []
-
-    def load_fixture(_loader, paths: list[Path]) -> list[str]:
-        received_paths.append(paths)
-        return ["教材を読む。"]
-
-    monkeypatch.setattr(GenericCorpusLoader, "_load_sentences", load_fixture)
-    entry = next(
-        GenericCorpusLoader(data_dir=tmp_path, corpus_name="lesson").load_metadata()
-    )
-
-    assert received_paths == [[Path("lesson.txt")]]
-    assert entry.sentences == ["教材を読む。"]
 
 
 def test_japanese_filtering_example():
@@ -66,10 +91,10 @@ def test_segmentation_example():
             assert paragraphs == ["第一文。第二文。", "第三文。"]
             return [["第一文。", "第二文。"], ["第三文。", ""]]
 
-    loader = BaseCorpusLoader(data_dir=Path(), corpus_name="lesson")
-
-    assert loader.split_into_sentences(
-        ["第一文。第二文。\n\n第三文。"], FixtureSplitter()
+    assert list(
+        split_japanese_sentences(
+            ("第一文。第二文。\n\n第三文。",), splitter=FixtureSplitter()
+        )
     ) == ["第一文。", "第二文。", "第三文。"]
 
 
@@ -86,10 +111,26 @@ def test_occurrence_construction_example(monkeypatch):
         lambda token: token.doc[token.i :],
     )
 
-    words, occurrences = process_sentence(doc, sentence_id=7)
+    extraction = extract_collocations(
+        (SentenceRecord(("lesson", "source-1"), 0, "ことを説明するならば"),),
+        lambda _text: doc,
+        extractor_id="teaching-extractor",
+    )
 
-    assert words[0][:4] == (0, 2, "こと", "NOUN")
-    assert occurrences == [(7, "こと", "を", "説明する", 0, 2, 2, 3, 3, 10)]
+    assert extraction.rejections == {}
+    assert extraction.occurrences == (
+        CollocationOccurrence(
+            source_identity=("lesson", "source-1"),
+            sentence_ordinal=0,
+            noun="こと",
+            particle="を",
+            verb="説明する",
+            noun_span=(0, 2),
+            particle_span=(2, 3),
+            verb_span=(3, 10),
+            extractor_id="teaching-extractor",
+        ),
+    )
 
 
 def test_aggregation_example(tmp_path: Path):
