@@ -1,6 +1,8 @@
 # Balanced Examples and Pattern Identity
 
-Status: Approved for implementation
+Status: Implemented
+
+Implementation evidence: the balanced and composable example-page API contracts, grammatical-pattern browser scenarios, and the Nix `source-quality`, `backend`, `frontend`, `playwright`, `package-frontend`, and `server-smoke` checks pass on the implemented tree.
 
 ## Purpose
 
