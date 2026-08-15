@@ -35,6 +35,8 @@ The outer query orders by `corpus_row, corpus_id`, then applies the existing `LI
 
 This produces deterministic round-robin pages in canonical corpus-ID order. With three eligible corpora, consecutive results are one from each corpus while all three have evidence. When a corpus is exhausted or has no match, the remaining corpora fill subsequent positions; page capacity is not reserved for unavailable evidence.
 
+Balancing changes presentation order only. It does not deduplicate occurrences, change corpus totals, weight ranking statistics, or imply that the selected corpora contain equal amounts of evidence.
+
 Offset retains its existing meaning over the final ordered result. Concatenating pages yields the same sequence as one larger request, with no duplicates or omissions. The artifact remains immutable, so no cursor or snapshot identity is required.
 
 The existing `limit`, `offset`, `hasMore`, response schema, query timeout, request identity, and frontend append behavior do not change.
@@ -46,7 +48,10 @@ The existing `limit`, `offset`, `hasMore`, response schema, query timeout, reque
 - noun search: `648 matches · “こと”–particle–verb`;
 - verb search: `648 matches · noun–particle–“集める”`.
 
-The searched term is bold in the visible pattern. The placeholders stay lowercase and neutral because they describe roles rather than controls or corpus identity. The complete plain-text identity remains in the element's accessible label and `title`, including when the visible text truncates.
+The searched term is bold in the visible pattern. The placeholders stay lowercase and neutral because they describe roles rather than controls or corpus identity. The `title` retains the compact plain-text pattern. The accessible label expands it semantically rather than asking a screen reader to infer grammar from punctuation:
+
+- noun search: `648 matches; searched noun “こと”; pattern noun, particle, verb`;
+- verb search: `648 matches; searched verb “集める”; pattern noun, particle, verb`.
 
 The identity continues to describe only the accepted response. Editing draft controls leaves it unchanged and shows the existing `Not applied` status until a matching response is accepted.
 
@@ -67,6 +72,7 @@ API tests must prove:
 3. Concatenating several offset pages equals one request for the combined prefix, without duplicate occurrence identities or omissions.
 4. Repeating a request returns the identical order.
 5. Existing empty, exhausted, invalid-offset, response-size, timeout, and selected-corpus contracts remain green.
+6. The existing non-empty later-page service benchmark remains below its one-second p95 gate.
 
 Frontend tests must prove:
 
@@ -81,6 +87,15 @@ Frontend tests must prove:
 - No client-side balancing: it would make different page sizes produce different visible sequences and could not recover examples excluded by the server page.
 - No proportional sampling: equal exposure across available corpora is the present product requirement.
 - No schema or index change: the query already sorts matching occurrences, and the existing one-second p95 trigger owns future physical-design work.
+- No extracted ordering module or pagination abstraction: the SQL order is one cohesive endpoint invariant with no second implementation or caller.
+
+## Architecture Review
+
+The change is protocol design rather than a module-deepening candidate: the service already owns selection, total ordering, pagination, and `hasMore`, so corpus balancing belongs in the same query. The minimum sufficient implementation uses DuckDB's `ROW_NUMBER` primitive and changes no public request or response surface.
+
+The window must rank every matching occurrence before the outer limit, while the previous query could use `TOP_N`. This cost was measured against the deployed artifact's largest result (`必要–が–ある`, 4,020 occurrences across three corpora). At offset 4,000 with a 20-row page, twelve in-process runs, excluding the first two as warm-up, produced a 9.00ms warm median for the corpus-first query and 9.82ms for the balanced query, with both maxima near 10.2ms. This does not earn an index, cache, materialized relation, or new benchmark harness. The existing service benchmark remains the release gate and the one-second p95 threshold remains the revisit trigger.
+
+The test-only three-corpus fixture data belongs beside the API contract test rather than in the shared two-corpus browser fixture, because changing that shared fixture would rewrite unrelated response and color assertions.
 
 ## Relationship to Existing Decisions
 
