@@ -18,13 +18,15 @@
 <svelte:head><title>Natsume Simple</title></svelte:head>
 
 <header class="border-b bg-white dark:border-gray-700 dark:bg-gray-900">
-	<div class="grid w-full grid-cols-[1fr_1fr] items-center gap-3 p-4 xl:grid-cols-[1fr_auto_1fr]">
-		<div class="flex items-center gap-3" data-testid="brand">
+	<div
+		class="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 p-4 lg:grid-cols-[1fr_minmax(0,auto)_1fr]"
+	>
+		<div class="flex min-w-0 flex-nowrap items-center gap-3" data-testid="brand">
 			<img class="h-8 w-8" src="/favicon.png" alt="Natsume Simple" />
-			<h1 class="text-2xl font-bold" tabindex="-1">Natsume Simple</h1>
+			<h1 class="whitespace-nowrap text-2xl font-bold" tabindex="-1">Natsume Simple</h1>
 		</div>
 		<div
-			class="col-span-2 row-start-2 flex w-full flex-wrap items-center justify-center gap-2 xl:col-span-1 xl:col-start-2 xl:row-start-1 xl:w-auto xl:justify-self-center"
+			class="col-span-2 row-start-2 flex w-full min-w-0 items-center justify-center lg:col-span-1 lg:col-start-2 lg:row-start-1 lg:justify-self-center"
 			data-testid="header-controls"
 		>
 			<SearchControls
@@ -37,7 +39,7 @@
 					(await client.getSuggestions(query, pos)).suggestions}
 			/>
 		</div>
-		<div class="col-start-2 row-start-1 justify-self-end xl:col-start-3"><ThemeSwitch /></div>
+		<div class="col-start-2 row-start-1 justify-self-end lg:col-start-3"><ThemeSwitch /></div>
 	</div>
 </header>
 

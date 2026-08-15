@@ -87,7 +87,7 @@
 </script>
 
 <form
-	class="flex w-full min-w-0 flex-nowrap items-center gap-2"
+	class="flex w-full min-w-0 flex-nowrap items-center gap-1.5"
 	onfocusin={() => (focusedWithin = true)}
 	onfocusout={focusout}
 	onsubmit={(event) => {
@@ -175,7 +175,7 @@
 	</div>
 	<button
 		type="submit"
-		class="h-10 min-w-[5.5rem] shrink-0 rounded bg-gray-900 px-3 font-bold text-white hover:bg-gray-700 disabled:opacity-60 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-gray-300"
+		class="h-10 min-w-[5.25rem] shrink-0 rounded bg-gray-900 px-3 font-bold text-white hover:bg-gray-700 disabled:opacity-60 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-gray-300"
 		disabled={loading}
 	>
 		{loading ? 'Searching…' : dirty ? 'Update' : 'Go'}

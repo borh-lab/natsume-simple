@@ -464,10 +464,10 @@ test('distinguishes expandable rows in light and dark mode', async ({ page }) =>
 	);
 });
 
-test('centers an accessible search-direction control in the responsive header', async ({
+test('centers an accessible search control at the responsive header boundary', async ({
 	page
 }) => {
-	await page.setViewportSize({ width: 1280, height: 844 });
+	await page.setViewportSize({ width: 1024, height: 844 });
 	await page.goto('/');
 	const controls = page.getByTestId('header-controls');
 	const group = page.getByRole('group', { name: 'Search by' });
@@ -479,10 +479,13 @@ test('centers an accessible search-direction control in the responsive header', 
 	await expect(verbRadio).toBeChecked();
 	await nounRadio.check();
 	const desktopBox = await controls.boundingBox();
+	const desktopBrandBox = await page.getByTestId('brand').boundingBox();
 	expect(desktopBox).not.toBeNull();
-	expect(Math.abs((desktopBox?.x ?? 0) + (desktopBox?.width ?? 0) / 2 - 640)).toBeLessThanOrEqual(
+	expect(desktopBrandBox).not.toBeNull();
+	expect(Math.abs((desktopBox?.x ?? 0) + (desktopBox?.width ?? 0) / 2 - 512)).toBeLessThanOrEqual(
 		4
 	);
+	expect(Math.abs((desktopBox?.y ?? 0) - (desktopBrandBox?.y ?? 0))).toBeLessThanOrEqual(4);
 	const selectedSurface = nounRadio.locator('xpath=following-sibling::span');
 	const selectedBackground = await selectedSurface.evaluate(
 		(element) => getComputedStyle(element).backgroundColor
@@ -495,7 +498,7 @@ test('centers an accessible search-direction control in the responsive header', 
 		await selectedSurface.evaluate((element) => getComputedStyle(element).outlineStyle)
 	).not.toBe('none');
 
-	await page.setViewportSize({ width: 1024, height: 844 });
+	await page.setViewportSize({ width: 1023, height: 844 });
 	const laptopBrandBox = await page.getByTestId('brand').boundingBox();
 	const laptopControlsBox = await controls.boundingBox();
 	expect(laptopBrandBox).not.toBeNull();
@@ -503,6 +506,8 @@ test('centers an accessible search-direction control in the responsive header', 
 	expect(laptopControlsBox?.y ?? 0).toBeGreaterThanOrEqual(
 		(laptopBrandBox?.y ?? 0) + (laptopBrandBox?.height ?? 0)
 	);
+	const brandHeadingBox = await page.getByRole('heading', { name: 'Natsume Simple' }).boundingBox();
+	expect(brandHeadingBox?.height ?? Infinity).toBeLessThanOrEqual(32);
 
 	await page.setViewportSize({ width: 390, height: 844 });
 	const brandBox = await page.getByTestId('brand').boundingBox();
@@ -511,6 +516,10 @@ test('centers an accessible search-direction control in the responsive header', 
 	expect(mobileBox).not.toBeNull();
 	expect(mobileBox?.y ?? 0).toBeGreaterThanOrEqual((brandBox?.y ?? 0) + (brandBox?.height ?? 0));
 	expect(Math.abs((mobileBox?.x ?? 0) + (mobileBox?.width ?? 0) / 2 - 195)).toBeLessThanOrEqual(4);
+	expect(
+		(await page.getByRole('combobox', { name: 'Search term' }).boundingBox())?.width ?? 0
+	).toBeGreaterThanOrEqual(96);
+	expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
 });
 
 test('renders a compact and unambiguous search mode control', async ({ page }) => {
