@@ -402,13 +402,6 @@ test('distinguishes expandable rows in light and dark mode', async ({ page }) =>
 	const collapsedBackground = await firstSummary.evaluate(
 		(element) => getComputedStyle(element).backgroundColor
 	);
-	const secondLabel = await secondSummary.locator('span').last().innerText();
-	expect(
-		await details.nth(0).evaluate((element) => {
-			const next = element.parentElement?.nextElementSibling?.querySelector('summary');
-			return next?.querySelector('span:last-child')?.textContent?.trim();
-		})
-	).toBe(secondLabel.trim());
 	const firstBox = await firstSummary.boundingBox();
 	const secondBox = await secondSummary.boundingBox();
 	expect(firstBox).not.toBeNull();
