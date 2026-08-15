@@ -8,7 +8,9 @@ Vertical and horizontal space both belong primarily to the collocation spreadshe
 
 ## Current Evidence
 
-Rendered at 1440 pixels, the current page uses three rows below the header for corpora, result identity, and bar scale. At 390 pixels, corpus controls wrap and these controls occupy four rows. The direction selector repeats `Noun → Particle → Verb` twice, and its selected state relies mainly on a subtle background.
+Rendered at 1440 pixels, the current page uses three rows below the header for corpora, result identity, and bar scale. At 390 pixels, corpus controls wrap and these controls occupy four rows. The mobile header's equal-width tracks also force `Natsume Simple` onto two lines even though the theme toggle needs only one small track. The direction selector repeats `Noun → Particle → Verb` twice, and its selected state relies mainly on a subtle background.
+
+The current disclosure marker is a text `▶`. In the production font stack it renders as a bright orange emoji-style square, visually competing with the orange corpus slot. Disclosure state is interface chrome, not corpus identity, so this collision belongs to the same visual cleanup.
 
 The existing controller intentionally separates draft controls from the accepted result. Editing the term or direction sets `draftDiffersFromResult`; it does not mutate the visible result. Corpus changes submit immediately. Bar scale is presentation-only state currently owned by `ParticleOverview`.
 
@@ -16,15 +18,17 @@ The existing controller intentionally separates draft controls from the accepted
 
 ### Search header
 
-The header keeps the brand at the start, the query form centered on wide screens, and the theme toggle at the end. At narrow widths the brand and theme remain on the first row and the query form occupies the second row at full available width.
+The header keeps the brand at the start, the query form centered on wide screens, and the theme toggle at the end. At `lg` and above it uses equal outer tracks with a flexible center track so the form can use available width without losing viewport centering. Below `lg`, the first row uses `minmax(0, 1fr) auto`: the brand receives all space not required by the theme button and remains on one line. The query form occupies the second row at full available width.
 
 The query form contains:
 
-- a segmented radio group labelled `Search by` with short `Noun` and `Verb` options;
+- a visibly labelled `Search by` segmented radio group with short `Noun` and `Verb` options;
 - the search input, which grows to consume remaining width; and
 - a compact submit button labelled `Go`, `Update`, or `Searching…`.
 
-The arrows and repeated `Particle` labels are removed. The selected mode uses checked radio semantics, bold text, a neutral background, and a two-pixel inset border. Hover and keyboard focus are separately visible and remain neutral. Grammatical role colors stay reserved for annotated sentence spans.
+The arrows and repeated `Particle` labels are removed. The selected mode uses checked radio semantics, bold text, a neutral background, and a two-pixel inset ring that does not change control dimensions. Hover and keyboard focus are separately visible and remain neutral. Grammatical role colors stay reserved for annotated sentence spans.
+
+The form is width-driven rather than content-width-driven: the input has `min-width: 0`, grows into the flexible center track, and yields only to the intrinsic widths of the selector and submit button. The narrow layout therefore remains one query row rather than wrapping each control onto its own row.
 
 ### Results toolbar
 
@@ -54,6 +58,8 @@ Error and empty-result messages remain full-width content below the toolbar beca
 
 `+page.svelte` owns the header and the single results toolbar because it already composes search state, corpus state, accepted results, and the overview. It owns the `BarScale` value and passes it into `ParticleOverview`.
 
+The toolbar is implemented directly at this orchestration boundary. Its small local `optionsOpen` place and outside/Escape/focus-close behavior do not justify a wrapper component whose interface would merely repeat the page's controller inputs. The options button and control panel share one wrapper, and one corpus/scale control DOM is positioned inline at `xl` or as an overlay below it.
+
 `SearchControls.svelte` owns only draft query input, query-mode selection, autocomplete, and submission. Its public props do not grow.
 
 `SearchSummary.svelte` becomes a compact inline representation of accepted-result identity and draft status. It does not own layout rows or configuration state.
@@ -61,6 +67,8 @@ Error and empty-result messages remain full-width content below the toolbar beca
 `CorpusOptions.svelte` remains the single corpus-control implementation. The page places that same component inline or in the narrow-screen overlay; there are not separate desktop and mobile control implementations.
 
 `ParticleOverview.svelte` receives `barScale` as a prop and no longer renders the scale selector. Its spreadsheet, scrolling, and particle-column behavior remain unchanged.
+
+`CollocationItem.svelte` replaces the text disclosure glyph with a small neutral `currentColor` SVG chevron. Rotation still communicates the native `details` state. It never uses a corpus or grammatical-role color.
 
 No store, generic toolbar framework, popover dependency, or new API surface is introduced.
 
@@ -71,12 +79,12 @@ No store, generic toolbar framework, popover dependency, or new API surface is i
 - A successful response updates result identity and removes `Not applied`.
 - Request failure preserves the previous accepted result and its identity while the existing full-width error remains visible.
 - Corpus toggles continue to submit immediately and therefore do not produce a persistent draft-only corpus state.
-- Bar-scale changes remain local presentation changes and never trigger a request or dirty badge.
+- Bar-scale changes remain local presentation changes and never trigger a request or dirty badge. Moving the value to the page intentionally makes the chosen scale persist across accepted searches for the lifetime of the page; a reload restores the default `Within particle` scale.
 
 ## Responsive Contract
 
 - At `lg` (1024 CSS pixels) and above, the header query form is centered within the viewport to the existing four-pixel tolerance.
-- Below `lg`, the query form uses the full second header row without horizontal overflow.
+- Below `lg`, the brand remains on one line and the query form uses the full second header row without horizontal overflow or wrapping.
 - At `xl` and above, the results toolbar is one measured row with inline configuration.
 - Below `xl`, corpus and scale controls are absent from persistent layout and available through the Options overlay.
 - The toolbar itself never scrolls horizontally.
@@ -95,6 +103,8 @@ Browser coverage must prove:
 7. At 390 pixels, the toolbar does not overflow horizontally, corpus and scale controls are accessible through `Options (N)`, and the overlay does not move the spreadsheet.
 8. The overlay opens and closes by pointer, Escape, and focus departure, and reports `aria-expanded` correctly.
 9. Existing query-direction, autocomplete, corpus filtering, last-corpus protection, bar-scale, dark-mode, spreadsheet, and pagination flows remain protected.
+10. Bar scale persists across a successful new search, never produces a request, and resets only on page reload.
+11. The disclosure chevron rotates, uses neutral `currentColor`, and differs from every corpus and grammatical-role color.
 
 ## Deliberate Omissions
 
@@ -122,6 +132,18 @@ Revisit if configuration becomes a primary per-query workflow that must remain c
 The result identity is the necessary boundary between editable draft controls and the data currently displayed. It is compressed, not removed. The `Not applied` badge describes that relationship without a full sentence or additional row.
 
 Revisit if results update continuously as controls change and there is no longer a draft/accepted distinction.
+
+### 2026-08-15: Persist bar scale across searches
+
+Bar scale describes how the visitor wants to compare bars, not the identity of a search response. Resetting it whenever a new response remounts the overview makes repeated comparisons needlessly revert. Page-local ownership keeps the preference without adding storage, URL state, or a store.
+
+Revisit if different search modes acquire incompatible scale choices.
+
+### 2026-08-15: Keep disclosure chrome neutral
+
+The font-rendered `▶` currently appears as a bright orange square and collides with the orange corpus slot. A small `currentColor` SVG is deterministic across platforms and keeps expand/collapse state outside both semantic palettes.
+
+Revisit only if the interface adopts a shared icon set with the same neutral-state contract.
 
 ## Lifecycle
 
