@@ -1,0 +1,101 @@
+import tomllib
+from pathlib import Path
+
+ROOT = Path(__file__).parents[1]
+
+
+def project_configuration() -> dict:
+    return tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+
+
+def test_uv_selects_only_python_314() -> None:
+    configuration = project_configuration()
+
+    assert configuration["project"]["requires-python"] == ">=3.14,<3.15"
+    assert (ROOT / ".python-version").read_text(encoding="utf-8") == "3.14\n"
+
+
+def test_model_and_accelerator_extras_are_orthogonal() -> None:
+    configuration = project_configuration()
+    extras = configuration["project"]["optional-dependencies"]
+
+    assert extras["builder"] == [
+        "click>=8.4.2,<9",
+        "polars[pyarrow,excel]>=1.43.2,<2",
+        "ginza==5.2.0",
+        "ja-ginza==5.2.0",
+        "confection>=0.1.5,<1",
+        "numpy>=2,<3",
+        "spacy>=3.8.11,<3.8.12",
+        "wtpsplit>=2.2.1,<3",
+    ]
+    assert extras["electra"] == [
+        "ja-ginza-electra==5.2.0",
+        "transformers==4.57.6",
+        "tokenizers==0.22.2",
+    ]
+    assert extras["cpu"] == ["torch==2.13.0+cpu"]
+    assert extras["cuda"] == [
+        "torch==2.13.0+cu126",
+        "cupy-cuda12x>=14.1.1,<15",
+    ]
+    platform_marker = "sys_platform == 'linux' and platform_machine == 'x86_64'"
+    assert extras["rocm"] == [
+        f"torch==2.13.0+rocm7.2; {platform_marker}",
+        f"cupy-rocm-7-0==14.1.1; {platform_marker}",
+        f"triton-rocm==3.7.1; {platform_marker}",
+    ]
+
+
+def test_accelerator_extras_select_one_matching_torch_index() -> None:
+    configuration = project_configuration()
+    uv = configuration["tool"]["uv"]
+
+    conflicts = {
+        frozenset(member["extra"] for member in conflict)
+        for conflict in uv["conflicts"]
+    }
+    assert conflicts == {
+        frozenset(("cpu", "cuda")),
+        frozenset(("cpu", "rocm")),
+        frozenset(("cuda", "rocm")),
+    }
+    assert uv["sources"]["torch"] == [
+        {"index": "pytorch-cpu", "extra": "cpu"},
+        {"index": "pytorch-cuda", "extra": "cuda"},
+        {"index": "pytorch-rocm", "extra": "rocm"},
+    ]
+    indexes = {entry["name"]: entry for entry in uv["index"]}
+    assert indexes == {
+        "pytorch-cpu": {
+            "name": "pytorch-cpu",
+            "url": "https://download.pytorch.org/whl/cpu",
+            "explicit": True,
+        },
+        "pytorch-cuda": {
+            "name": "pytorch-cuda",
+            "url": "https://download.pytorch.org/whl/cu126",
+            "explicit": True,
+        },
+        "pytorch-rocm": {
+            "name": "pytorch-rocm",
+            "url": "https://download.pytorch.org/whl/rocm7.2",
+            "explicit": True,
+        },
+    }
+
+
+def test_python_314_compatibility_exceptions_are_narrow() -> None:
+    uv = project_configuration()["tool"]["uv"]
+
+    assert uv["override-dependencies"] == ["transformers==4.57.6"]
+    assert uv["extra-build-variables"] == {
+        "spacy-alignments": {"PYO3_USE_ABI3_FORWARD_COMPATIBILITY": "1"},
+        "sudachipy": {"PYO3_USE_ABI3_FORWARD_COMPATIBILITY": "1"},
+    }
+
+
+def test_rocm_transitive_packages_use_the_rocm_index() -> None:
+    sources = project_configuration()["tool"]["uv"]["sources"]
+
+    assert sources["triton-rocm"] == [{"index": "pytorch-rocm", "extra": "rocm"}]
