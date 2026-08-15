@@ -87,7 +87,7 @@
 </script>
 
 <form
-	class="flex w-full min-w-0 flex-nowrap items-center gap-1.5"
+	class="flex w-full min-w-0 flex-nowrap items-center gap-1"
 	onfocusin={() => (focusedWithin = true)}
 	onfocusout={focusout}
 	onsubmit={(event) => {
@@ -97,7 +97,7 @@
 	}}
 >
 	<fieldset class="flex h-10 shrink-0 items-center">
-		<legend class="float-left mr-1 text-sm font-medium">Search by</legend>
+		<legend class="float-left mr-1 text-xs font-medium sm:text-sm">Search by</legend>
 		<div class="flex h-10 rounded border border-gray-400 dark:border-gray-600">
 			<label class="relative flex h-full">
 				<input
@@ -109,7 +109,7 @@
 					bind:group={pos}
 				/>
 				<span
-					class="flex h-full items-center rounded-l px-2 text-sm peer-checked:bg-gray-200 peer-checked:font-bold peer-checked:shadow-[inset_0_0_0_2px_currentColor] peer-focus-visible:outline-2 peer-focus-visible:outline-offset-0 peer-focus-visible:outline-gray-900 dark:peer-checked:bg-gray-700 dark:peer-focus-visible:outline-gray-100"
+					class="flex h-full items-center rounded-l px-1 text-sm peer-checked:bg-gray-200 peer-checked:font-bold peer-checked:shadow-[inset_0_0_0_2px_currentColor] peer-focus-visible:outline-2 peer-focus-visible:outline-offset-0 peer-focus-visible:outline-gray-900 dark:peer-checked:bg-gray-700 dark:peer-focus-visible:outline-gray-100"
 				>
 					Noun
 				</span>
@@ -124,7 +124,7 @@
 					bind:group={pos}
 				/>
 				<span
-					class="flex h-full items-center rounded-r px-2 text-sm peer-checked:bg-gray-200 peer-checked:font-bold peer-checked:shadow-[inset_0_0_0_2px_currentColor] peer-focus-visible:outline-2 peer-focus-visible:outline-offset-0 peer-focus-visible:outline-gray-900 dark:peer-checked:bg-gray-700 dark:peer-focus-visible:outline-gray-100"
+					class="flex h-full items-center rounded-r px-1 text-sm peer-checked:bg-gray-200 peer-checked:font-bold peer-checked:shadow-[inset_0_0_0_2px_currentColor] peer-focus-visible:outline-2 peer-focus-visible:outline-offset-0 peer-focus-visible:outline-gray-900 dark:peer-checked:bg-gray-700 dark:peer-focus-visible:outline-gray-100"
 				>
 					Verb
 				</span>
@@ -175,7 +175,7 @@
 	</div>
 	<button
 		type="submit"
-		class="h-10 min-w-[5.25rem] shrink-0 rounded bg-gray-900 px-3 font-bold text-white hover:bg-gray-700 disabled:opacity-60 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-gray-300"
+		class="h-10 w-[5.5rem] shrink-0 rounded bg-gray-900 px-1 text-sm font-bold text-white hover:bg-gray-700 disabled:opacity-60 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-gray-300"
 		disabled={loading}
 	>
 		{loading ? 'Searching…' : dirty ? 'Update' : 'Go'}
