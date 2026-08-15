@@ -21,6 +21,34 @@ def fixture_client(tmp_path: Path) -> TestClient:
     return TestClient(create_app(artifact_dir))
 
 
+def balanced_examples_client(tmp_path: Path) -> TestClient:
+    artifact_dir = build_search_artifact(tmp_path / "artifact")
+    database_path = artifact_dir / "corpus.duckdb"
+    with duckdb.connect(str(database_path)) as connection:
+        connection.execute(
+            """
+            INSERT INTO corpus VALUES ('gamma', 'Gamma');
+            INSERT INTO source
+                (id, corpus_id, external_id, title, content_sha256)
+            VALUES (4, 'gamma', 'g1', 'Gamma one', 'sha-g1');
+            INSERT INTO sentence VALUES
+                (17, 4, 1, '情報を集める。'),
+                (18, 4, 2, '情報を集める。');
+            INSERT INTO collocation_occurrence VALUES
+                (17, '情報', 'を', '集める', 0, 2, 2, 3, 3, 6,
+                 'fixture-extractor'),
+                (18, '情報', 'を', '集める', 0, 2, 2, 3, 3, 6,
+                 'fixture-extractor');
+            INSERT INTO corpus_stats VALUES ('gamma', 1, 2, 2);
+            """
+        )
+    manifest_path = artifact_dir / "manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["databaseSha256"] = hashlib.sha256(database_path.read_bytes()).hexdigest()
+    manifest_path.write_text(json.dumps(manifest))
+    return TestClient(create_app(artifact_dir))
+
+
 def assert_database_unavailable(response, request_id: str):
     assert response.status_code == 503
     assert response.json() == {
@@ -623,6 +651,80 @@ def test_examples_pages_same_sentence_occurrences_in_total_order(tmp_path: Path)
     ]
     assert pages[3]["examples"] == []
     assert pages[4]["examples"] == []
+
+
+def test_balanced_examples_round_robin_and_fill_exhausted(tmp_path: Path):
+    with balanced_examples_client(tmp_path) as client:
+        first = client.get(
+            "/api/examples",
+            params={
+                "noun": "情報",
+                "particle": "を",
+                "verb": "集める",
+                "limit": 5,
+            },
+        ).json()
+        remainder = client.get(
+            "/api/examples",
+            params={
+                "noun": "情報",
+                "particle": "を",
+                "verb": "集める",
+                "limit": 5,
+                "offset": 5,
+            },
+        ).json()
+
+    assert [example["corpusId"] for example in first["examples"]] == [
+        "alpha",
+        "beta",
+        "gamma",
+        "alpha",
+        "gamma",
+    ]
+    assert first["hasMore"] is True
+    assert [example["corpusId"] for example in remainder["examples"]] == [
+        "alpha"
+    ]
+    assert remainder["hasMore"] is False
+
+
+def test_example_pages_compose_and_repeat(tmp_path: Path):
+    params = {"noun": "情報", "particle": "を", "verb": "集める"}
+    with balanced_examples_client(tmp_path) as client:
+        pages = [
+            client.get(
+                "/api/examples", params={**params, "limit": 2, "offset": offset}
+            ).json()
+            for offset in (0, 2, 4)
+        ]
+        complete = client.get(
+            "/api/examples", params={**params, "limit": 20}
+        ).json()
+        repeated = client.get(
+            "/api/examples", params={**params, "limit": 20}
+        ).json()
+
+    assert [[item["corpusId"] for item in page["examples"]] for page in pages] == [
+        ["alpha", "beta"],
+        ["gamma", "alpha"],
+        ["gamma", "alpha"],
+    ]
+    combined = [item for page in pages for item in page["examples"]]
+    assert combined == complete["examples"]
+    assert repeated == complete
+    identities = [
+        (
+            item["corpusId"],
+            item["sourceId"],
+            item["sentenceId"],
+            tuple(item["nounSpan"].items()),
+            tuple(item["particleSpan"].items()),
+            tuple(item["verbSpan"].items()),
+        )
+        for item in combined
+    ]
+    assert len(identities) == len(set(identities)) == 6
 
 
 def test_example_offset_rejects_negative_values(tmp_path: Path):

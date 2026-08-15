@@ -596,18 +596,33 @@ def create_app(artifact_dir: Path, *, frontend_dir: Path | None = None) -> FastA
             placeholders = ", ".join("?" for _ in selected)
             rows = connection.execute(
                 f"""
-                SELECT src.corpus_id, src.id, src.title, s.id, s.text,
-                       o.n_begin, o.n_end, o.p_begin, o.p_end, o.v_begin, o.v_end
-                FROM collocation_occurrence o
-                JOIN sentence s ON s.id = o.sentence_id
-                JOIN source src ON src.id = s.source_id
-                WHERE o.noun = ? AND o.particle = ? AND o.verb = ?
-                  AND src.corpus_id IN ({placeholders})
-                ORDER BY src.corpus_id, src.id, s.id,
-                         o.n_begin, o.n_end,
-                         o.p_begin, o.p_end,
-                         o.v_begin, o.v_end,
-                         o.extractor_id
+                WITH ranked_examples AS (
+                    SELECT src.corpus_id,
+                           src.id AS source_id,
+                           src.title AS source_title,
+                           s.id AS sentence_id,
+                           s.text,
+                           o.n_begin, o.n_end,
+                           o.p_begin, o.p_end,
+                           o.v_begin, o.v_end,
+                           ROW_NUMBER() OVER (
+                               PARTITION BY src.corpus_id
+                               ORDER BY src.id, s.id,
+                                        o.n_begin, o.n_end,
+                                        o.p_begin, o.p_end,
+                                        o.v_begin, o.v_end,
+                                        o.extractor_id
+                           ) AS corpus_row
+                    FROM collocation_occurrence o
+                    JOIN sentence s ON s.id = o.sentence_id
+                    JOIN source src ON src.id = s.source_id
+                    WHERE o.noun = ? AND o.particle = ? AND o.verb = ?
+                      AND src.corpus_id IN ({placeholders})
+                )
+                SELECT corpus_id, source_id, source_title, sentence_id, text,
+                       n_begin, n_end, p_begin, p_end, v_begin, v_end
+                FROM ranked_examples
+                ORDER BY corpus_row, corpus_id
                 LIMIT ? OFFSET ?
                 """,
                 [noun, particle, verb, *selected, limit + 1, offset],
