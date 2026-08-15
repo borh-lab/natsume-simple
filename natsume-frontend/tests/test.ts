@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test';
 async function expectSpreadsheet(page: import('@playwright/test').Page, width: number) {
 	await page.setViewportSize({ width, height: 844 });
 	await page.goto('/');
-	await expect(page.getByText(/matches · “時間” · Noun/)).toBeVisible();
+	await expect(page.getByText(/matches · “時間”–particle–verb/)).toBeVisible();
 	await page.getByRole('combobox', { name: 'Search term' }).fill('情報');
 	await page.getByRole('button', { name: 'Update' }).click();
 	const region = page.getByRole('region', { name: 'Particle collocations' });
@@ -62,6 +62,11 @@ test('searches, filters, rescales, and safely expands examples', async ({ page }
 	await expect(
 		disclosure.locator('li').filter({ hasText: '情報を集める。情報を集める。' })
 	).toHaveCount(2);
+	expect(
+		await disclosure
+			.getByTestId('example-row')
+			.evaluateAll((rows) => rows.map((row) => row.getAttribute('data-corpus-id')))
+	).toEqual(['alpha', 'beta', 'alpha', 'alpha']);
 	const alphaExample = disclosure
 		.locator('[data-testid="example-row"][data-corpus-id="alpha"]')
 		.first();
@@ -349,7 +354,7 @@ test('loads more collocations in only the selected particle column', async ({ pa
 		has: page.getByRole('heading', { name: 'が', exact: true })
 	});
 	await expect(
-		page.getByText(`${expectedTotal} matches · “情報” · Noun`, {
+		page.getByText(`${expectedTotal} matches · “情報”–particle–verb`, {
 			exact: true
 		})
 	).toBeVisible();
@@ -366,7 +371,7 @@ test('loads more collocations in only the selected particle column', async ({ pa
 	await expect(woColumn.getByText('追加する', { exact: true })).toBeVisible();
 	expect(await gaColumn.locator('summary').count()).toBe(otherCount);
 	await expect(
-		page.getByText(`${expectedTotal} matches · “情報” · Noun`, {
+		page.getByText(`${expectedTotal} matches · “情報”–particle–verb`, {
 			exact: true
 		})
 	).toBeVisible();
@@ -625,7 +630,7 @@ test('keeps displayed results tied to the submitted search while controls are ed
 	const search = page.getByRole('combobox', { name: 'Search term' });
 	await search.fill('情報');
 	await page.getByRole('button', { name: 'Update' }).click();
-	await expect(page.getByText(/matches · “情報” · Noun/)).toBeVisible();
+	await expect(page.getByText(/matches · “情報”–particle–verb/)).toBeVisible();
 	await expect(page.locator('summary').filter({ hasText: '集める' })).toBeVisible();
 
 	await page
@@ -634,10 +639,38 @@ test('keeps displayed results tied to the submitted search while controls are ed
 		.check();
 	await search.fill('集める');
 
-	await expect(page.getByText(/matches · “情報” · Noun/)).toBeVisible();
+	await expect(page.getByText(/matches · “情報”–particle–verb/)).toBeVisible();
 	await expect(page.locator('summary').filter({ hasText: '集める' })).toBeVisible();
 	await expect(page.getByText('Not applied', { exact: true })).toBeVisible();
 	await expect(page.getByRole('button', { name: 'Update' })).toBeVisible();
+});
+
+test('renders the accepted search as an explicit grammatical pattern', async ({ page }) => {
+	await page.goto('/');
+	const search = page.getByRole('combobox', { name: 'Search term' });
+	const searchBy = page.getByRole('group', { name: 'Search by' });
+
+	await search.fill('情報');
+	await page.getByRole('button', { name: 'Update' }).click();
+	const nounIdentity = page.getByLabel(
+		'10 matches; searched noun “情報”; pattern noun, particle, verb'
+	);
+	await expect(nounIdentity).toHaveText('10 matches · “情報”–particle–verb');
+	await expect(nounIdentity.locator('strong')).toHaveText('“情報”');
+
+	await searchBy.getByRole('radio', { name: 'Verb-particle collocations' }).check();
+	await search.fill('集める');
+	await page.getByRole('button', { name: 'Update' }).click();
+	const verbIdentity = page.getByLabel(
+		'1 match; searched verb “集める”; pattern noun, particle, verb'
+	);
+	await expect(verbIdentity).toHaveText('1 match · noun–particle–“集める”');
+	await expect(verbIdentity.locator('strong')).toHaveText('“集める”');
+
+	await searchBy.getByRole('radio', { name: 'Noun-particle collocations' }).check();
+	await search.fill('こと');
+	await expect(verbIdentity).toBeVisible();
+	await expect(page.getByText('Not applied', { exact: true })).toBeVisible();
 });
 
 test('keeps accepted identity and bar scale in one responsive results toolbar', async ({
@@ -656,13 +689,13 @@ test('keeps accepted identity and bar scale in one responsive results toolbar', 
 	await expect(scale).toBeVisible();
 	await scale.selectOption('global');
 
-	const acceptedIdentity = page.getByText(/matches · “時間” · Noun/);
+	const acceptedIdentity = page.getByText(/matches · “時間”–particle–verb/);
 	await expect(acceptedIdentity).toBeVisible();
 	await page.getByRole('combobox', { name: 'Search term' }).fill('情報');
 	await expect(acceptedIdentity).toBeVisible();
 	await expect(page.getByText('Not applied', { exact: true })).toBeVisible();
 	await page.getByRole('button', { name: 'Update' }).click();
-	await expect(page.getByText(/matches · “情報” · Noun/)).toBeVisible();
+	await expect(page.getByText(/matches · “情報”–particle–verb/)).toBeVisible();
 	await expect(page.getByText('Not applied', { exact: true })).toHaveCount(0);
 	await expect(scale).toHaveValue('global');
 
