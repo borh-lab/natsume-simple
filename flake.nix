@@ -304,7 +304,7 @@
                 ];
               }
               ''
-                if grep -E -- '-(torch|spacy|ginza|wtpsplit|polars|nodejs|jupyter|notebook|cuda)(-|$)' \
+                if grep -E -- '-(cuda|cupy|ginza|jupyter|nodejs|notebook|polars|rocm|spacy|tokenizers|torch|transformers|triton|wtpsplit)(-|$)' \
                   server-closure; then
                   echo "server closure contains a forbidden build or accelerator dependency" >&2
                   exit 1
