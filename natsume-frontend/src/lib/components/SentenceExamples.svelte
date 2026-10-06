@@ -74,14 +74,16 @@
 	$effect(() => () => request?.abort());
 </script>
 
-<div class="w-full text-sm" aria-live="polite" data-testid="sentence-examples">
+<div class="w-full text-sm leading-relaxed" aria-live="polite" data-testid="sentence-examples">
 	{#if status === 'loading' && examples.length === 0}
 		<p class="px-1 py-1">Loading examples…</p>
 	{:else if status === 'empty'}
 		<p>No examples found.</p>
 	{:else}
 		{#if examples.length > 0}
-			<p class="mb-0.5 px-1 text-xs text-gray-500">{examples.length} examples shown</p>
+			<p class="mb-0.5 px-1 text-xs text-gray-600 dark:text-gray-400">
+				{examples.length} examples shown
+			</p>
 			<ul class="divide-y divide-gray-200 dark:divide-gray-700">
 				{#each examples as example, exampleIndex (exampleIndex)}
 					{@const corpusStyle = corpusStyleForSlot(colorSlots[example.corpusId])}
@@ -91,15 +93,18 @@
 						data-testid="example-row"
 						data-corpus-id={example.corpusId}
 					>
-						<strong class={corpusStyle.titleClass} data-testid="example-source"
-							>{selectedCorpusIds.length > 1
-								? `${corpusLabels[example.corpusId] ?? example.corpusId} · `
-								: ''}{example.sourceTitle}:</strong
-						>
 						{#each sentenceSegments( example.text, [{ ...example.nounSpan, type: 'noun' }, { ...example.particleSpan, type: 'particle' }, { ...example.verbSpan, type: 'verb' }] ) as segment, index (index)}
 							{#if segment.className}<span class={segment.className}>{segment.text}</span
 								>{:else}{segment.text}{/if}
 						{/each}
+						<span
+							class={`block truncate text-xs font-medium ${corpusStyle.titleClass}`}
+							title={`${corpusLabels[example.corpusId] ?? example.corpusId} · ${example.sourceTitle}`}
+							data-testid="example-source"
+							>{selectedCorpusIds.length > 1
+								? `${corpusLabels[example.corpusId] ?? example.corpusId} · `
+								: ''}{example.sourceTitle}:</span
+						>
 					</li>
 				{/each}
 			</ul>

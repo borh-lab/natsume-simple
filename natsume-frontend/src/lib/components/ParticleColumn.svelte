@@ -97,13 +97,11 @@
 	$effect(() => () => request?.abort());
 </script>
 
-<section
-	class="min-w-80 flex-1 border-r px-3 py-2 last:border-r-0 dark:border-gray-700"
-	data-testid="particle-column"
->
+<section class="min-w-0 px-2 py-2 md:min-w-80 dark:border-gray-700" data-testid="particle-column">
 	<div class="flex items-baseline justify-between gap-2">
 		<h2 class="text-xl font-bold">{group.particle}</h2>
-		<span class="text-xs tabular-nums text-gray-500">{percentage}% of total</span>
+		<span class="text-xs tabular-nums text-gray-600 dark:text-gray-400">{percentage}% of total</span
+		>
 	</div>
 	<div
 		class="relative mt-1 h-1.5 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700"
@@ -122,8 +120,9 @@
 			></span>
 		{/each}
 	</div>
-	<p class="mt-1 text-xs text-gray-500">
-		Showing {items.length} of {group.totalMatchingCollocations}
+	<p class="mt-1 flex items-center justify-between text-xs text-gray-600 dark:text-gray-400">
+		<span>Showing {items.length} of {group.totalMatchingCollocations}</span>
+		<span title="Mean frequency per million collocations">/M</span>
 	</p>
 	{#each items as item (item)}
 		<CollocationItem

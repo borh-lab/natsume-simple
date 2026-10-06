@@ -8,13 +8,22 @@ async function expectSpreadsheet(page: import('@playwright/test').Page, width: n
 	await page.getByRole('button', { name: 'Update' }).click();
 	const region = page.getByRole('region', { name: 'Particle collocations' });
 	await expect(region).toBeVisible();
-	const columns = region.getByTestId('particle-column');
-	await expect.poll(() => columns.count()).toBeGreaterThan(1);
+	const columns = region.locator('[data-testid=particle-column]:visible');
+	if (width < 768) {
+		await expect(columns).toHaveCount(1);
+		await page.getByRole('button', { name: 'Particle を', exact: true }).click();
+		await expect(columns.getByRole('heading', { name: 'を', exact: true })).toBeVisible();
+		await expect(columns).toHaveCount(1);
+		await expect(page.getByTestId('corpus-legend')).toContainText('Alpha');
+		await expect(page.getByTestId('corpus-legend')).toContainText('Beta');
+	} else {
+		await expect.poll(() => columns.count()).toBeGreaterThan(1);
+	}
 	const dimensions = await region.evaluate((element) => ({
 		clientWidth: element.clientWidth,
 		scrollWidth: element.scrollWidth
 	}));
-	const shouldOverflow = width < 2560;
+	const shouldOverflow = width >= 768 && width < 2560;
 	if (shouldOverflow) expect(dimensions.scrollWidth).toBeGreaterThan(dimensions.clientWidth);
 	else expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth + 1);
 	for (const column of await columns.all()) {
@@ -567,7 +576,7 @@ test('supports both query directions and theme control', async ({ page }) => {
 	const controls = page.getByTestId('header-controls');
 	await expect(brand.getByRole('img', { name: 'Natsume Simple' })).toHaveAttribute(
 		'src',
-		'/favicon.png'
+		/^(?:\.\/|\/)favicon\.png$/
 	);
 	await expect(brand.getByRole('heading', { name: 'Natsume Simple' })).toBeVisible();
 	await expect(controls.getByRole('combobox', { name: 'Search term' })).toBeVisible();

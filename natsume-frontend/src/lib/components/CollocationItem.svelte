@@ -40,7 +40,7 @@
 	ontoggle={(event) => (expanded = event.currentTarget.open)}
 >
 	<summary
-		class="grid min-h-0 w-full cursor-pointer grid-cols-[auto_minmax(5rem,2fr)_minmax(0,3fr)] items-center gap-1 px-1 py-1 text-sm leading-5 hover:bg-gray-100 focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-gray-700 group-open:bg-gray-200 dark:hover:bg-gray-800 dark:focus-visible:outline-gray-200 dark:group-open:bg-gray-700"
+		class="grid min-h-8 w-full cursor-pointer grid-cols-[auto_minmax(0,3fr)_minmax(3.5rem,2fr)_3rem] md:min-h-0 items-center gap-1 px-1 py-1 text-sm leading-5 hover:bg-gray-100 focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-gray-700 group-open:bg-gray-200 dark:hover:bg-gray-800 dark:focus-visible:outline-gray-200 dark:group-open:bg-gray-700"
 	>
 		<svg
 			viewBox="0 0 10 10"
@@ -51,6 +51,9 @@
 		>
 			<path d="M2 1.5 8 5 2 8.5Z" />
 		</svg>
+		<span class="min-w-0 truncate" title={pos === 'noun' ? item.verb : item.noun}
+			>{pos === 'noun' ? item.verb : item.noun}</span
+		>
 		<svg
 			viewBox="0 0 100 16"
 			preserveAspectRatio="none"
@@ -77,7 +80,15 @@
 				</rect>
 			{/each}
 		</svg>
-		<span class="min-w-0 truncate">{pos === 'noun' ? item.verb : item.noun}</span>
+		<span
+			class="text-right text-xs tabular-nums text-gray-600 dark:text-gray-400"
+			title={`${item.meanFrequencyPerMillion.toLocaleString()} mean frequency per million`}
+			data-testid="item-frequency"
+			>{item.meanFrequencyPerMillion.toLocaleString(undefined, {
+				notation: 'compact',
+				maximumSignificantDigits: 3
+			})}</span
+		>
 	</summary>
 	<SentenceExamples
 		{client}
