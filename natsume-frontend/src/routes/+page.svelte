@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { base } from '$app/paths';
 	import { ApiClient } from '$lib/api/client';
 	import CorpusOptions from '$lib/components/CorpusOptions.svelte';
 	import ParticleOverview from '$lib/components/ParticleOverview.svelte';
@@ -10,7 +11,7 @@
 	import { SearchController } from '$lib/search/controller.svelte';
 	import '../tailwind.css';
 
-	const client = new ApiClient(import.meta.env.VITE_API_URL || '');
+	const client = new ApiClient(import.meta.env.VITE_API_URL || base);
 	const controller = new SearchController(client);
 	let barScale = $state<BarScale>('particle');
 	let optionsOpen = $state(false);
@@ -55,7 +56,7 @@
 		class="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 p-4 lg:grid-cols-[1fr_minmax(0,auto)_1fr]"
 	>
 		<div class="flex min-w-0 flex-nowrap items-center gap-3" data-testid="brand">
-			<img class="h-8 w-8" src="/favicon.png" alt="Natsume Simple" />
+			<img class="h-8 w-8" src={`${base}/favicon.png`} alt="Natsume Simple" />
 			<h1 class="whitespace-nowrap text-2xl font-bold" tabindex="-1">Natsume Simple</h1>
 		</div>
 		<div

@@ -136,58 +136,69 @@
           testPython = cpuPythonSet.mkVirtualEnv "natsume-test-python" test-dependencies;
           smokeFixturePython = pkgs.python314.withPackages (pythonPackages: [ pythonPackages.xlwt ]);
 
-          frontend = pkgs.buildNpmPackage {
-            pname = "natsume-frontend";
-            version = "0.3.0";
-            src = ./natsume-frontend;
-            npmDepsHash = "sha256-EzpXV1g9dpjpwSBoqKMZPWB4LUg5/HDuf2uurWMrE1s=";
-            npmBuildScript = "build";
-            installPhase = ''
-              runHook preInstall
-              mkdir -p "$out"
-              cp -r build/. "$out/"
-              runHook postInstall
-            '';
-          };
+          mkFrontend =
+            basePath:
+            pkgs.buildNpmPackage {
+              pname = "natsume-frontend";
+              version = "0.3.0";
+              src = ./natsume-frontend;
+              npmDepsHash = "sha256-EzpXV1g9dpjpwSBoqKMZPWB4LUg5/HDuf2uurWMrE1s=";
+              npmBuildScript = "build";
+              VITE_BASE_PATH = basePath;
+              installPhase = ''
+                runHook preInstall
+                mkdir -p "$out"
+                cp -r build/. "$out/"
+                runHook postInstall
+              '';
+            };
 
-          server = pkgs.writeShellApplication {
-            name = "natsume-serve";
-            runtimeInputs = [ serverPython ];
-            text = ''
-              artifact_dir="''${NATSUME_ARTIFACT_DIR:-deploy/current}"
-              host="''${NATSUME_HOST:-127.0.0.1}"
-              port="''${NATSUME_PORT:-8000}"
+          frontend = mkFrontend "";
+          hinokiFrontend = mkFrontend "/natsume-simple";
 
-              while (( $# )); do
-                case "$1" in
-                  --artifact-dir)
-                    artifact_dir="$2"
-                    shift 2
-                    ;;
-                  --host)
-                    host="$2"
-                    shift 2
-                    ;;
-                  --port)
-                    port="$2"
-                    shift 2
-                    ;;
-                  -h|--help)
-                    echo "usage: natsume-serve [--artifact-dir PATH] [--host HOST] [--port PORT]"
-                    exit 0
-                    ;;
-                  *)
-                    echo "natsume-serve: unknown argument: $1" >&2
-                    exit 2
-                    ;;
-                esac
-              done
+          mkServer =
+            frontend:
+            pkgs.writeShellApplication {
+              name = "natsume-serve";
+              runtimeInputs = [ serverPython ];
+              text = ''
+                artifact_dir="''${NATSUME_ARTIFACT_DIR:-deploy/current}"
+                host="''${NATSUME_HOST:-127.0.0.1}"
+                port="''${NATSUME_PORT:-8000}"
 
-              export NATSUME_ARTIFACT_DIR="$artifact_dir"
-              export NATSUME_FRONTEND_DIR=${frontend}
-              exec uvicorn natsume_simple.api:app --host "$host" --port "$port"
-            '';
-          };
+                while (( $# )); do
+                  case "$1" in
+                    --artifact-dir)
+                      artifact_dir="$2"
+                      shift 2
+                      ;;
+                    --host)
+                      host="$2"
+                      shift 2
+                      ;;
+                    --port)
+                      port="$2"
+                      shift 2
+                      ;;
+                    -h|--help)
+                      echo "usage: natsume-serve [--artifact-dir PATH] [--host HOST] [--port PORT]"
+                      exit 0
+                      ;;
+                    *)
+                      echo "natsume-serve: unknown argument: $1" >&2
+                      exit 2
+                      ;;
+                  esac
+                done
+
+                export NATSUME_ARTIFACT_DIR="$artifact_dir"
+                export NATSUME_FRONTEND_DIR=${frontend}
+                exec uvicorn natsume_simple.api:app --host "$host" --port "$port"
+              '';
+            };
+
+          server = mkServer frontend;
+          hinokiServer = mkServer hinokiFrontend;
 
           corpusBuilder = pkgs.writeShellApplication {
             name = "natsume-corpus";
@@ -521,6 +532,7 @@
 
           packages = {
             inherit frontend server;
+            server-hinoki = hinokiServer;
             corpus-builder-cpu = corpusBuilder;
             nlp-model-integration = modelIntegration;
             default = server;
